@@ -1,0 +1,13 @@
+{
+    "name": "rtsp-stream-server",
+    "version": "1.0.0",
+    "description": "RTSP to HLS Stream Server for Horse Racing Broadcast",
+    "main": "stream-server.js",
+    "scripts": {
+        "start": "node stream-server.js"
+    },
+    "dependencies": {
+        "cors": "^2.8.5",
+        "express": "^4.18.2"
+    }
+}

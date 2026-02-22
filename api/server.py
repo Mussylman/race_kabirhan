@@ -1,22 +1,38 @@
 """
-Race Vision — FastAPI Backend Server
+Race Vision — FastAPI Backend Server (Multi-Camera)
 
-Bridges the detection pipeline (YOLO + ColorClassifier) with the React frontend
-via WebSocket (ranking updates) and MJPEG (annotated video streams).
+Bridges the multi-camera detection pipeline with the React frontend
+via WebSocket (ranking updates) and MJPEG (display camera streams).
 
-Architecture:
-    RTSP → FrameGrabber thread → SharedState.frame
-                                      ↓
-                DetectionLoop thread → SharedState.rankings + annotated_frame
-                     ↓                    ↓
-           WebSocket /ws          MJPEG /stream/cam{1-4}
-           (ranking_update)       (multipart/x-mixed-replace)
+Architecture (4 layers):
+    Layer 0 — DECODE:
+        25 analytics cameras → MultiCameraReader (ffmpeg decode)
+        4 display cameras    → separate CameraStreams (MJPEG passthrough)
+
+    Layer 1 — TRIGGER:
+        TriggerLoop thread → YOLOv8n @ 640px on all 25 cameras
+        → updates CameraManager.active_cameras
+
+    Layer 2 — ANALYZE:
+        AnalysisLoop thread → YOLOv8s @ 1280px + ColorCNN on active cameras
+        → per-camera detections → FusionEngine
+
+    Layer 3 — FUSION:
+        FusionEngine → global track positions → rankings
+        → WebSocket broadcast
+
+    Display:
+        4 display CameraStreams → MJPEG /stream/cam{1-4}
 
 Usage:
-    python tools/race_server.py
-    python tools/race_server.py --url "rtsp://admin:pass@ip:554/stream"
-    python tools/race_server.py --video data/videos/exp10_cam1.mp4
-    python tools/race_server.py --gpu
+    # Multi-camera with RTSP config
+    python -m api.server --config cameras.json
+
+    # Local video files (simulate multi-camera)
+    python -m api.server --video data/videos/exp10_cam1.mp4 data/videos/exp10_cam2.mp4
+
+    # Single RTSP (legacy mode — still works)
+    python -m api.server --url "rtsp://admin:pass@ip:554/stream"
 """
 
 import cv2
@@ -37,16 +53,20 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse
 
-# Import from our existing modules
+# Pipeline modules
+from pipeline.camera_manager import CameraManager
+from pipeline.track_topology import TrackTopology
+from pipeline.trigger import TriggerLoop
+from pipeline.analyzer import AnalysisLoop, CameraDetections
+from pipeline.fusion import FusionEngine
+
+# Legacy imports (for single-camera fallback and drawing)
 from tools.test_race_count import (
-    RaceTracker, ColorClassifier, SimpleColorCNN, draw,
-    COLORS_BGR, REQUIRED_COLORS
+    RaceTracker, draw, COLORS_BGR, REQUIRED_COLORS
 )
-from tools.test_rtsp import (
-    FFmpegReader, FFMPEG, detect_codec, parse_resolution
-)
+from tools.ffmpeg_reader import CameraStream, MultiCameraReader, find_ffmpeg
 
 # ============================================================
 # CONFIGURATION
@@ -56,17 +76,9 @@ DEFAULT_RTSP_URL = "rtsp://admin:Qaz445566@192.168.18.59:554//stream"
 SERVER_HOST = "0.0.0.0"
 SERVER_PORT = 8000
 
-# Detection loop rate (seconds between updates)
-DETECTION_INTERVAL = 0.10  # ~10 fps
-
-# WebSocket broadcast rate
-BROADCAST_INTERVAL = 0.20  # 5 Hz
-
-# MJPEG settings
+BROADCAST_INTERVAL = 0.20  # 5 Hz WebSocket broadcast
 MJPEG_QUALITY = 75
 MJPEG_FPS = 25
-
-# Track mapping: pixel X range → distanceCovered (0-2500)
 TRACK_LENGTH = 2500
 
 # ============================================================
@@ -95,223 +107,241 @@ logging.basicConfig(
 log = logging.getLogger("race_server")
 
 # ============================================================
-# SHARED STATE
+# SHARED STATE (thread-safe)
 # ============================================================
 
 class SharedState:
-    """Thread-safe state shared between grabber, detector, and server."""
+    """Thread-safe state shared between all pipeline threads and the server."""
 
     def __init__(self):
         self._lock = threading.Lock()
-        self.frame: Optional[np.ndarray] = None
-        # Per-camera annotated frames (cam_index 0,1,2 → /stream/cam1,cam2,cam3)
-        self.annotated_frames: dict[int, np.ndarray] = {}
-        self.active_cam_index: int = 0   # Which camera is currently playing (0-based)
-        self.jockeys: list = []          # Latest detection result
-        self.rankings: list = []         # Formatted for frontend (last non-empty)
-        self.frame_width: int = 0
-        self.frame_height: int = 0
+
+        # Per-camera latest frames (cam_id → numpy array)
+        self._frames: dict[str, np.ndarray] = {}
+
+        # Per-camera annotated frames for MJPEG display
+        self._display_frames: dict[str, np.ndarray] = {}
+
+        # Current rankings (formatted for frontend)
+        self.rankings: list = []
+
+        # Race state
         self.race_active: bool = False
         self.detection_fps: float = 0.0
-        self.detection_count: int = 0    # Total frames processed
-        self.video_index: int = 0        # Which video is playing (incremented by grabber)
-        self.num_cameras: int = 1        # Total number of video sources
+        self.detection_count: int = 0
 
-    def set_frame(self, frame: np.ndarray):
+    def set_frame(self, cam_id: str, frame: np.ndarray):
+        """Store latest frame from a camera."""
         with self._lock:
-            self.frame = frame
-            self.frame_height, self.frame_width = frame.shape[:2]
+            self._frames[cam_id] = frame
 
-    def get_frame(self) -> Optional[np.ndarray]:
+    def get_frame(self, cam_id: str) -> Optional[np.ndarray]:
+        """Get latest frame (copy) from a camera."""
         with self._lock:
-            return self.frame.copy() if self.frame is not None else None
+            frame = self._frames.get(cam_id)
+            return frame.copy() if frame is not None else None
 
-    def set_detection_result(self, jockeys: list, annotated: np.ndarray, rankings: list, fps: float):
+    def set_display_frame(self, cam_id: str, frame: np.ndarray):
+        """Store annotated frame for MJPEG display."""
         with self._lock:
-            self.jockeys = jockeys
-            # Store annotated frame for the currently active camera
-            self.annotated_frames[self.active_cam_index] = annotated
-            # Only update rankings if we got detections (keep last good result)
+            self._display_frames[cam_id] = frame
+
+    def get_display_frame(self, cam_id: str) -> Optional[np.ndarray]:
+        """Get annotated display frame (copy)."""
+        with self._lock:
+            frame = self._display_frames.get(cam_id)
+            return frame.copy() if frame is not None else None
+
+    def set_rankings(self, rankings: list):
+        with self._lock:
             if rankings:
                 self.rankings = rankings
-            self.detection_fps = fps
-            self.detection_count += 1
-
-    def get_annotated_frame(self, cam_index: int = -1) -> Optional[np.ndarray]:
-        """Get annotated frame for a specific camera (0-based). -1 = active camera."""
-        with self._lock:
-            idx = cam_index if cam_index >= 0 else self.active_cam_index
-            frame = self.annotated_frames.get(idx)
-            return frame.copy() if frame is not None else None
 
     def get_rankings(self) -> list:
         with self._lock:
             return list(self.rankings)
 
-    def get_frame_dimensions(self) -> tuple:
-        with self._lock:
-            return self.frame_width, self.frame_height
-
 
 state = SharedState()
 
 # ============================================================
-# FRAME GRABBER THREAD
+# MULTI-CAMERA FRAME STORE
 # ============================================================
 
-class FrameGrabber(threading.Thread):
-    """Reads frames from RTSP or video file(s) in a background thread."""
+class FrameStore:
+    """Stores latest frames from all cameras for pipeline consumption.
 
-    def __init__(self, sources: list, use_gpu: bool = False, is_rtsp: bool = True):
-        super().__init__(daemon=True)
-        self.sources = sources  # list of paths/urls
-        self.use_gpu = use_gpu
-        self.is_rtsp = is_rtsp
+    Acts as the frame_source callable for TriggerLoop and AnalysisLoop.
+    """
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._frames: dict[str, np.ndarray] = {}
+        self._timestamps: dict[str, float] = {}
+
+    def put(self, cam_id: str, frame: np.ndarray):
+        with self._lock:
+            self._frames[cam_id] = frame
+            self._timestamps[cam_id] = time.monotonic()
+
+    def get(self, cam_id: str) -> Optional[np.ndarray]:
+        with self._lock:
+            frame = self._frames.get(cam_id)
+            return frame.copy() if frame is not None else None
+
+    def get_age(self, cam_id: str) -> float:
+        """Seconds since last frame update."""
+        with self._lock:
+            ts = self._timestamps.get(cam_id)
+            return time.monotonic() - ts if ts else float('inf')
+
+
+frame_store = FrameStore()
+
+# ============================================================
+# VIDEO FILE GRABBER (simulates multi-camera from video files)
+# ============================================================
+
+class VideoFileGrabber(threading.Thread):
+    """Reads local video files and puts frames into FrameStore.
+
+    Each video simulates a separate camera. Plays at native FPS.
+    """
+
+    def __init__(self, cam_video_map: dict[str, str]):
+        """
+        Args:
+            cam_video_map: {cam_id: video_path}
+        """
+        super().__init__(daemon=True, name="VideoFileGrabber")
+        self.cam_video_map = cam_video_map
         self.running = False
-        self._reader = None
-        self._cap = None
 
     def run(self):
         self.running = True
 
-        if self.is_rtsp:
-            self._run_rtsp()
-        else:
-            self._run_video()
-
-    def _run_rtsp(self):
-        """Read from RTSP using FFmpegReader with optional GPU decode."""
-        source = self.sources[0]
         while self.running:
-            try:
-                log.info(f"Connecting to RTSP: {source.split('@')[-1] if '@' in source else source}")
+            threads = []
+            for cam_id, video_path in self.cam_video_map.items():
+                t = threading.Thread(
+                    target=self._play_video,
+                    args=(cam_id, video_path),
+                    daemon=True,
+                )
+                threads.append(t)
+                t.start()
 
-                # Detect codec
-                codec = detect_codec(source)
-                log.info(f"Detected codec: {codec}")
-
-                # Get resolution
-                w, h = parse_resolution(source)
-                if w == 0:
-                    log.error("Could not detect stream resolution, retrying in 5s...")
-                    time.sleep(5)
-                    continue
-
-                log.info(f"Stream resolution: {w}x{h}, GPU: {self.use_gpu}")
-
-                reader = FFmpegReader(source, w, h, gpu=self.use_gpu, codec=codec)
-                reader.start()
-                self._reader = reader
-
-                frame_count = 0
-                while self.running:
-                    ret, frame = reader.read()
-                    if not ret:
-                        log.warning("RTSP frame read failed, reconnecting...")
-                        break
-                    state.set_frame(frame)
-                    frame_count += 1
-
-                reader.release()
-                self._reader = None
-
-            except Exception as e:
-                log.error(f"RTSP error: {e}, retrying in 5s...")
+            # Wait for all to finish (video end)
+            for t in threads:
+                t.join()
 
             if self.running:
-                time.sleep(5)
+                log.info("All videos finished, looping...")
 
-    def _run_video(self):
-        """Read from local video files sequentially, then loop."""
-        state.num_cameras = len(self.sources)
+    def _play_video(self, cam_id: str, video_path: str):
+        cap = cv2.VideoCapture(video_path)
+        if not cap.isOpened():
+            log.error("Cannot open video: %s", video_path)
+            return
+
+        fps = cap.get(cv2.CAP_PROP_FPS) or 25
+        delay = 1.0 / fps
+        name = Path(video_path).stem
+        log.info("Playing %s as %s @ %.0f fps", name, cam_id, fps)
+
         while self.running:
-            for cam_idx, source in enumerate(self.sources):
-                if not self.running:
-                    break
+            ret, frame = cap.read()
+            if not ret:
+                break
+            frame_store.put(cam_id, frame)
+            state.set_frame(cam_id, frame)
+            time.sleep(delay)
 
-                cap = cv2.VideoCapture(source)
-                self._cap = cap
-
-                if not cap.isOpened():
-                    log.error(f"Cannot open video: {source}")
-                    continue
-
-                fps = cap.get(cv2.CAP_PROP_FPS) or 25
-                delay = 1.0 / fps
-                name = Path(source).stem
-
-                # Signal video switch to detection loop + set active camera
-                state.video_index += 1
-                state.active_cam_index = cam_idx
-                log.info(f"Playing: {name} @ {fps:.0f} fps (video #{state.video_index}, cam{cam_idx+1})")
-
-                while self.running:
-                    ret, frame = cap.read()
-                    if not ret:
-                        log.info(f"{name} ended")
-                        break
-                    state.set_frame(frame)
-                    time.sleep(delay)
-
-                cap.release()
-                self._cap = None
-
-            if self.running:
-                log.info("All videos played, looping...")
+        cap.release()
+        log.info("%s (%s) ended", cam_id, name)
 
     def stop(self):
         self.running = False
-        if self._reader:
-            self._reader.release()
-        if self._cap:
-            self._cap.release()
 
 
 # ============================================================
-# DETECTION LOOP THREAD
+# RTSP MULTI-CAMERA GRABBER
 # ============================================================
 
-class DetectionLoop(threading.Thread):
-    """Runs YOLO + ColorClassifier on frames with 4-layer filtering.
+class RTSPGrabber:
+    """Manages MultiCameraReader for RTSP analytics cameras."""
 
-    Per-video logic:
-    1. Every detection passes 4 filters:
-       F1: Classifier confidence >= CONF_THRESHOLD
-       F2: CNN color == HSV color agreement (skip if CNN conf > HSV_SKIP_CONF)
-       F3: Speed constraint — reject teleportation
-       F4: Temporal confirmation — color seen >= TEMPORAL_MIN in last TEMPORAL_WINDOW frames
-    2. Filtered complete frames (all 5 colors) → X-sorted order voted per position
-    3. At video end: most-voted order wins → send to frontend
+    def __init__(self, camera_manager: CameraManager, gpu: bool = False):
+        self.camera_manager = camera_manager
+        self._reader = MultiCameraReader(gpu=gpu)
+        self._running = False
+        self._thread: Optional[threading.Thread] = None
+
+    def start(self):
+        # Add all analytics cameras to reader
+        for cam in self.camera_manager.get_analytics_cameras():
+            self._reader.add(
+                cam.cam_id,
+                cam.source,
+                on_frame=self._on_frame,
+                on_disconnect=self._on_disconnect,
+                on_reconnect=self._on_reconnect,
+            )
+
+        self._reader.start_all()
+        self._running = True
+        log.info("RTSP grabber started (%d cameras)", len(self._reader.cameras))
+
+    def _on_frame(self, cam_id: str, frame: np.ndarray):
+        frame_store.put(cam_id, frame)
+        state.set_frame(cam_id, frame)
+        self.camera_manager.set_connected(cam_id, True)
+
+    def _on_disconnect(self, cam_id: str, error: str):
+        log.warning("RTSP %s disconnected: %s", cam_id, error)
+        self.camera_manager.set_connected(cam_id, False)
+
+    def _on_reconnect(self, cam_id: str, info: dict):
+        log.info("RTSP %s connected: %dx%d %s",
+                 cam_id, info['width'], info['height'], info['codec'].upper())
+        self.camera_manager.set_connected(cam_id, True)
+
+    def stop(self):
+        self._running = False
+        self._reader.stop_all()
+
+
+# ============================================================
+# LEGACY SINGLE-CAMERA MODE
+# ============================================================
+
+class LegacyDetectionLoop(threading.Thread):
+    """Single-camera detection loop (backward-compatible).
+
+    Used when --url or single --video is passed. Uses the original
+    RaceTracker + 4-layer filtering from old server.py.
     """
 
-    # --- Filter thresholds ---
-    CONF_THRESHOLD = 0.75       # F1: min classifier confidence
-    HSV_SKIP_CONF = 0.92        # F2: skip HSV check if CNN conf > this
-    MAX_SPEED_MPS = 120.0       # F3: generous for pixel noise between frames
-    TEMPORAL_WINDOW = 5          # F4: sliding window (frames)
-    TEMPORAL_MIN = 2             # F4: need 2/5 frames confirmed
-    CAMERA_TRACK_M = 100.0       # each camera = 0..100 meters
+    CONF_THRESHOLD = 0.75
+    HSV_SKIP_CONF = 0.92
+    MAX_SPEED_MPS = 120.0
+    TEMPORAL_WINDOW = 5
+    TEMPORAL_MIN = 2
+    CAMERA_TRACK_M = 100.0
+    DETECTION_INTERVAL = 0.10
 
-    def __init__(self):
-        super().__init__(daemon=True)
+    def __init__(self, cam_id: str = "cam-01"):
+        super().__init__(daemon=True, name="LegacyDetection")
+        self.cam_id = cam_id
         self.running = False
         self.tracker: Optional[RaceTracker] = None
-        self._current_video_index = 0
 
-        # Current stable order for frontend: list of color names, 1st first
         self._current_order: list = []
-        # Smoothed center_x per color (EMA) for frontend visualization
         self._smooth_x: dict = {}
         self._smooth_alpha = 0.12
-
-        # --- Per-color tracking with filters ---
-        self._det_frames: dict = {}    # color -> list of frame numbers (sliding window)
-        self._last_pos: dict = {}      # color -> (pos_m, timestamp) for speed check
-
-        # Per-video voting: collect X-sorted orders from filtered complete frames
-        self._video_votes: list = []   # list of order tuples
-
-        # Metrics
+        self._det_frames: dict = {}
+        self._last_pos: dict = {}
+        self._video_votes: list = []
         self._order_changes = 0
         self._total_frames = 0
         self._start_time = 0.0
@@ -325,37 +355,33 @@ class DetectionLoop(threading.Thread):
         output_dir = Path("results/race_server")
         output_dir.mkdir(parents=True, exist_ok=True)
         self.tracker = RaceTracker(output_dir, save_crops=False)
-        log.info("Detection pipeline ready")
+        log.info("Legacy detection pipeline ready")
 
         fps_counter = 0
         fps_timer = time.time()
         current_fps = 0.0
 
         while self.running:
-            frame = state.get_frame()
+            frame = frame_store.get(self.cam_id)
             if frame is None:
                 time.sleep(0.05)
                 continue
 
             if not state.race_active:
                 rankings = self._build_rankings(frame.shape[1])
-                state.set_detection_result([], frame.copy(), rankings, 0.0)
+                state.set_rankings(rankings)
+                state.set_display_frame(self.cam_id, frame.copy())
                 time.sleep(0.1)
                 continue
-
-            # Video switch → finalize previous video, reset
-            if state.video_index != self._current_video_index:
-                self._on_video_switch(state.video_index)
 
             t0 = time.time()
             jockeys, detections = self.tracker.update(frame)
             self._total_frames += 1
             frame_width = frame.shape[1]
 
-            # Draw annotations on MJPEG
             annotated = draw(frame.copy(), jockeys, self.tracker)
+            state.set_display_frame(self.cam_id, annotated)
 
-            # Update smoothed positions (unfiltered, for visualization only)
             for j in jockeys:
                 color = j['color']
                 cx = float(j['center_x'])
@@ -364,8 +390,8 @@ class DetectionLoop(threading.Thread):
                 else:
                     self._smooth_x[color] = cx
 
-            # === 4-LAYER FILTERING on raw detections ===
-            filtered_dets = []  # detections that pass all 4 filters
+            # 4-layer filtering
+            filtered_dets = []
             for det in detections:
                 color = det['color']
                 conf = float(det.get('conf', 0.0))
@@ -374,17 +400,12 @@ class DetectionLoop(threading.Thread):
                 pos_m = (cx / max(frame_width, 1)) * self.CAMERA_TRACK_M
                 self._filter_stats['total'] += 1
 
-                # F1: Confidence threshold
                 if conf < self.CONF_THRESHOLD:
                     self._filter_stats['f1_low_conf'] += 1
                     continue
-
-                # F2: CNN + HSV agreement (skip if CNN very confident)
                 if hsv and hsv != color and conf < self.HSV_SKIP_CONF:
                     self._filter_stats['f2_hsv_mismatch'] += 1
                     continue
-
-                # F3: Speed constraint (skip if first detection for this color)
                 if color in self._last_pos:
                     last_pos_m, last_time = self._last_pos[color]
                     dt_sec = time.time() - last_time
@@ -394,7 +415,6 @@ class DetectionLoop(threading.Thread):
                             self._filter_stats['f3_speed'] += 1
                             continue
 
-                # Passed F1+F2+F3 → update position + sliding window
                 self._last_pos[color] = (pos_m, time.time())
                 if color not in self._det_frames:
                     self._det_frames[color] = []
@@ -402,7 +422,6 @@ class DetectionLoop(threading.Thread):
                 if len(self._det_frames[color]) > self.TEMPORAL_WINDOW:
                     self._det_frames[color] = self._det_frames[color][-self.TEMPORAL_WINDOW:]
 
-                # F4: Temporal confirmation
                 recent_count = sum(
                     1 for f in self._det_frames[color]
                     if f > self._total_frames - self.TEMPORAL_WINDOW
@@ -414,111 +433,44 @@ class DetectionLoop(threading.Thread):
                 self._filter_stats['accepted'] += 1
                 filtered_dets.append(det)
 
-            # If 4+ colors passed filters → vote this frame's X-sorted order
             filtered_colors = set(d['color'] for d in filtered_dets)
-            MIN_VOTE_COLORS = 4
-            if len(filtered_colors) >= MIN_VOTE_COLORS:
-                # Sort by -center_x (rightmost = 1st) — same as tracker
+            if len(filtered_colors) >= 4:
                 sorted_dets = sorted(filtered_dets, key=lambda d: -d['center_x'])
-                # Deduplicate: keep first occurrence of each color
                 seen = set()
                 order = []
                 for d in sorted_dets:
                     if d['color'] not in seen:
                         seen.add(d['color'])
                         order.append(d['color'])
-                # Append missing colors at the end
-                all_colors = {'red', 'blue', 'green', 'yellow', 'purple'}
-                for c in all_colors - seen:
+                for c in set(ALL_COLORS) - seen:
                     order.append(c)
                 self._video_votes.append(tuple(order))
 
-            # Build rankings from current order + smoothed positions
-            rankings = self._build_rankings(frame_width)
+            # Pick best order from votes
+            if self._video_votes:
+                vote_counts = Counter(self._video_votes)
+                best_order, _ = vote_counts.most_common(1)[0]
+                if list(best_order) != self._current_order:
+                    self._current_order = list(best_order)
+                    self._order_changes += 1
 
-            # FPS
+            rankings = self._build_rankings(frame_width)
+            state.set_rankings(rankings)
+
             fps_counter += 1
             elapsed_fps = time.time() - fps_timer
             if elapsed_fps >= 1.0:
                 current_fps = fps_counter / elapsed_fps
                 fps_counter = 0
                 fps_timer = time.time()
+                state.detection_fps = current_fps
 
-            state.set_detection_result(jockeys, annotated, rankings, current_fps)
-
-            # Rate limit
             dt = time.time() - t0
-            sleep_time = DETECTION_INTERVAL - dt
+            sleep_time = self.DETECTION_INTERVAL - dt
             if sleep_time > 0:
                 time.sleep(sleep_time)
 
-    def _on_video_switch(self, new_index: int):
-        """At video end: pick most-voted order → update → reset."""
-        old_idx = self._current_video_index
-        self._current_video_index = new_index
-
-        elapsed = time.time() - self._start_time
-        s = self._filter_stats
-        log.info(
-            f"[VIDEO END] #{old_idx} at t={elapsed:.1f}s | "
-            f"frames={self._total_frames} voted_frames={len(self._video_votes)}"
-        )
-        log.info(
-            f"  Filters: total={s['total']} → "
-            f"F1={s['f1_low_conf']} F2={s['f2_hsv_mismatch']} "
-            f"F3={s['f3_speed']} F4={s['f4_temporal']} "
-            f"→ accepted={s['accepted']}"
-        )
-
-        # Pick most-voted order
-        if self._video_votes:
-            vote_counts = Counter(self._video_votes)
-            for order, cnt in vote_counts.most_common():
-                log.info(f"    {' > '.join(c.upper()[:3] for c in order)}: {cnt}x")
-
-            best_order, best_count = vote_counts.most_common(1)[0]
-            new_order = list(best_order)
-
-            if new_order != self._current_order:
-                old_order = self._current_order
-                self._current_order = new_order
-                self._order_changes += 1
-                log.info(
-                    f"[ORDER CHANGE #{self._order_changes}] "
-                    f"{' > '.join(c.upper()[:3] for c in new_order)} "
-                    f"({best_count}/{len(self._video_votes)} votes)"
-                )
-                if old_order:
-                    changes = []
-                    for i, (o, n) in enumerate(zip(old_order, new_order)):
-                        if o != n:
-                            changes.append(f"P{i+1}: {o[:3]}→{n[:3]}")
-                    if changes:
-                        log.info(f"  Changes: {', '.join(changes)}")
-            else:
-                log.info(f"  Same order as before, no change")
-        else:
-            log.info(f"  No voted frames, keeping previous order")
-
-        # Reset per-video state
-        self._video_votes.clear()
-        self._det_frames.clear()
-        self._last_pos.clear()
-        self._filter_stats = {k: 0 for k in self._filter_stats}
-
-        # Reset tracker for next video
-        if self.tracker:
-            self.tracker.close()
-        output_dir = Path("results/race_server")
-        output_dir.mkdir(parents=True, exist_ok=True)
-        self.tracker = RaceTracker(output_dir, save_crops=False)
-
-        # Reset smoothed positions (different camera angle)
-        self._smooth_x.clear()
-        log.info(f"[VIDEO START] #{new_index}")
-
     def _build_rankings(self, frame_width: int) -> list:
-        """Build frontend rankings from current order + smoothed positions."""
         if not self._current_order:
             return []
 
@@ -528,11 +480,9 @@ class DetectionLoop(threading.Thread):
             if not horse_info:
                 continue
 
-            # Smoothed X → distanceCovered for track visualization
             sx = self._smooth_x.get(color_name, frame_width * (1.0 - pos * 0.15))
             distance = (float(sx) / max(frame_width, 1)) * TRACK_LENGTH
 
-            # Gap based on pixel distance to leader
             leader_x = self._smooth_x.get(self._current_order[0], float(frame_width))
             gap_px = float(leader_x) - float(sx)
             gap_seconds = abs(gap_px) / max(frame_width, 1) * 8.0
@@ -562,6 +512,119 @@ class DetectionLoop(threading.Thread):
 
 
 # ============================================================
+# MULTI-CAMERA PIPELINE ORCHESTRATOR
+# ============================================================
+
+class MultiCameraPipeline:
+    """Orchestrates TriggerLoop + AnalysisLoop + FusionEngine for 25+ cameras."""
+
+    def __init__(self, camera_manager: CameraManager, topology: TrackTopology):
+        self.camera_manager = camera_manager
+        self.topology = topology
+        self.fusion = FusionEngine(topology, colors=ALL_COLORS)
+
+        self._trigger: Optional[TriggerLoop] = None
+        self._analyzer: Optional[AnalysisLoop] = None
+
+    def start(self):
+        # Start trigger loop (YOLOv8n on all analytics cameras)
+        self._trigger = TriggerLoop(
+            camera_manager=self.camera_manager,
+            frame_source=frame_store.get,
+            trigger_fps=3.0,
+            fallback_pt="yolov8n.pt",
+            imgsz=640,
+            conf=0.25,
+        )
+        self._trigger.start()
+        log.info("TriggerLoop started")
+
+        # Start analysis loop (YOLOv8s + ColorCNN on active cameras)
+        self._analyzer = AnalysisLoop(
+            camera_manager=self.camera_manager,
+            frame_source=frame_store.get,
+            on_result=self._on_analysis_result,
+            on_annotated_frame=lambda cam_id, frame: state.set_display_frame(cam_id, frame),
+            analysis_fps=12.0,
+            yolo_fallback="yolov8s.pt",
+            classifier_fallback="models/color_classifier.pt",
+            imgsz=1280,
+        )
+        self._analyzer.start()
+        log.info("AnalysisLoop started")
+
+    def _on_analysis_result(self, cam_results: list[CameraDetections]):
+        """Called by AnalysisLoop when new detections arrive."""
+        if not state.race_active:
+            return
+
+        # Feed into fusion engine
+        self.fusion.update(cam_results)
+
+        # Build rankings from fusion output
+        fusion_ranking = self.fusion.get_ranking()
+        rankings = self._build_rankings(fusion_ranking)
+        state.set_rankings(rankings)
+
+    def _build_rankings(self, fusion_ranking: list[dict]) -> list:
+        """Convert fusion ranking to frontend format."""
+        rankings = []
+        for entry in fusion_ranking:
+            color = entry["color"]
+            horse_info = COLOR_TO_HORSE.get(color)
+            if not horse_info:
+                continue
+
+            distance = entry.get("position_m", 0)
+            rank = entry.get("rank", 0)
+
+            # Compute gap to leader
+            if rankings:
+                leader_dist = rankings[0]["distanceCovered"]
+                gap = abs(leader_dist - distance) / max(TRACK_LENGTH, 1) * 60.0
+            else:
+                gap = 0.0
+
+            rankings.append({
+                "id": horse_info["id"],
+                "number": int(horse_info["number"]),
+                "name": horse_info["name"],
+                "color": horse_info["color"],
+                "jockeyName": horse_info["jockeyName"],
+                "silkId": int(horse_info["silkId"]),
+                "position": rank,
+                "distanceCovered": round(float(distance), 1),
+                "currentLap": 1,
+                "timeElapsed": 0,
+                "speed": round(entry.get("speed_mps", 0) * 3.6, 1),  # m/s → km/h
+                "gapToLeader": round(float(gap), 2),
+                "lastCameraId": entry.get("last_camera", ""),
+            })
+
+        return rankings
+
+    def stop(self):
+        if self._trigger:
+            self._trigger.stop()
+        if self._analyzer:
+            self._analyzer.stop()
+
+    def reset(self):
+        """Reset for new race."""
+        self.fusion.reset()
+        if self._analyzer:
+            self._analyzer.reset_votes()
+
+    def get_stats(self) -> dict:
+        stats = {"fusion": self.fusion.get_stats()}
+        if self._trigger:
+            stats["trigger"] = self._trigger.get_stats()
+        if self._analyzer:
+            stats["analyzer"] = self._analyzer.get_stats()
+        return stats
+
+
+# ============================================================
 # FASTAPI APP
 # ============================================================
 
@@ -575,8 +638,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Connected WebSocket clients
 ws_clients: set[WebSocket] = set()
+
+# Global pipeline references
+_camera_manager: Optional[CameraManager] = None
+_pipeline: Optional[MultiCameraPipeline] = None
+_legacy_detector: Optional[LegacyDetectionLoop] = None
 
 # ============================================================
 # WEBSOCKET ENDPOINT
@@ -605,7 +672,7 @@ async def websocket_endpoint(websocket: WebSocket):
     }
     await websocket.send_json(horses_msg)
 
-    # Send race_start if race is active
+    # Send race_start if active
     if state.race_active:
         await websocket.send_json({
             "type": "race_start",
@@ -614,6 +681,13 @@ async def websocket_endpoint(websocket: WebSocket):
                 "totalLaps": 1,
                 "trackLength": TRACK_LENGTH,
             },
+        })
+
+    # Send camera status if multi-camera
+    if _camera_manager:
+        await websocket.send_json({
+            "type": "camera_status",
+            **_camera_manager.get_status(),
         })
 
     try:
@@ -626,7 +700,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
             elif msg.get("type") == "get_state":
                 rankings = state.get_rankings()
-                await websocket.send_json({
+                resp = {
                     "type": "state",
                     "race": {
                         "name": "Live Race",
@@ -635,25 +709,36 @@ async def websocket_endpoint(websocket: WebSocket):
                         "status": "active" if state.race_active else "pending",
                     },
                     "rankings": rankings,
-                })
+                }
+                if _camera_manager:
+                    resp["cameras"] = _camera_manager.get_status()
+                await websocket.send_json(resp)
 
             elif msg.get("type") == "start_race":
                 state.race_active = True
+                if _pipeline:
+                    _pipeline.reset()
                 log.info("Race started (from operator)")
-                broadcast_msg = {
+                await broadcast({
                     "type": "race_start",
                     "race": {
                         "name": "Live Race",
                         "totalLaps": 1,
                         "trackLength": TRACK_LENGTH,
                     },
-                }
-                await broadcast(broadcast_msg)
+                })
 
             elif msg.get("type") == "stop_race":
                 state.race_active = False
                 log.info("Race stopped (from operator)")
                 await broadcast({"type": "race_stop"})
+
+            elif msg.get("type") == "get_cameras":
+                if _camera_manager:
+                    await websocket.send_json({
+                        "type": "camera_status",
+                        **_camera_manager.get_status(),
+                    })
 
     except WebSocketDisconnect:
         pass
@@ -665,7 +750,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
 
 async def broadcast(msg: dict):
-    """Send a message to all connected WebSocket clients."""
+    """Send to all connected WebSocket clients."""
     dead = set()
     for client in ws_clients:
         try:
@@ -676,19 +761,112 @@ async def broadcast(msg: dict):
 
 
 # ============================================================
+# REST ENDPOINTS
+# ============================================================
+
+from fastapi.responses import HTMLResponse
+
+
+@app.get("/", response_class=HTMLResponse)
+async def root():
+    """Dashboard page with live camera streams and stats."""
+    # Build camera grid
+    cam_count = 4
+    if _camera_manager:
+        cams = _camera_manager.get_analytics_cameras()
+        cam_count = len(cams) if cams else 4
+
+    cam_cells = ""
+    for i in range(1, cam_count + 1):
+        cam_cells += f"""
+        <div class="cam">
+            <div class="cam-header">cam-{i:02d}</div>
+            <img src="/stream/cam{i}" alt="Camera {i}">
+        </div>"""
+
+    return f"""<!DOCTYPE html>
+<html><head>
+<title>Race Vision</title>
+<style>
+    * {{ margin:0; padding:0; box-sizing:border-box; }}
+    body {{ background:#111; color:#eee; font-family:monospace; padding:16px; }}
+    h1 {{ margin-bottom:12px; }}
+    .info {{ background:#222; padding:12px; border-radius:8px; margin-bottom:16px; display:flex; gap:24px; flex-wrap:wrap; }}
+    .info a {{ color:#4fc3f7; }}
+    .grid {{ display:grid; grid-template-columns:repeat(auto-fill, minmax(460px, 1fr)); gap:12px; }}
+    .cam {{ background:#000; border-radius:8px; overflow:hidden; }}
+    .cam img {{ width:100%; display:block; }}
+    .cam-header {{ padding:6px 12px; background:#222; font-size:13px; }}
+    #stats {{ background:#1a1a2e; padding:12px; border-radius:8px; margin-bottom:16px; white-space:pre; font-size:13px; }}
+</style>
+</head><body>
+<h1>Race Vision — Multi-Camera Dashboard</h1>
+<div class="info">
+    <span>WebSocket: <a href="javascript:void(0)">ws://localhost:8000/ws</a></span>
+    <span><a href="/api/stats">/api/stats</a></span>
+    <span><a href="/api/cameras">/api/cameras</a></span>
+</div>
+<div id="stats">Loading stats...</div>
+<div class="grid">{cam_cells}</div>
+<script>
+async function refreshStats() {{
+    try {{
+        const [stats, cams] = await Promise.all([
+            fetch('/api/stats').then(r=>r.json()),
+            fetch('/api/cameras').then(r=>r.json()),
+        ]);
+        const active = cams.active_analytics || 0;
+        const total = cams.total_analytics || 0;
+        const t = stats.trigger || {{}};
+        const a = stats.analyzer || {{}};
+        const f = stats.fusion || {{}};
+        document.getElementById('stats').textContent =
+            `Mode: ${{stats.mode}}  |  Cameras: ${{active}}/${{total}} active  |  ` +
+            `Horses tracked: ${{f.horses_tracked || 0}}/5\\n` +
+            `Trigger: ${{t.frames_processed||0}} frames, ${{t.last_batch_time_ms||0}}ms/batch  |  ` +
+            `Analysis: ${{a.frames_processed||0}} frames @ ${{a.current_fps||0}} fps, ${{a.last_batch_time_ms||0}}ms/batch`;
+    }} catch(e) {{}}
+}}
+refreshStats();
+setInterval(refreshStats, 2000);
+</script>
+</body></html>"""
+
+
+@app.get("/api/cameras")
+async def get_cameras():
+    """Camera status (activation map, connection status)."""
+    if _camera_manager:
+        return JSONResponse(_camera_manager.get_status())
+    return JSONResponse({"total_analytics": 0, "cameras": []})
+
+
+@app.get("/api/stats")
+async def get_stats():
+    """Pipeline performance stats."""
+    stats = {"mode": "multi" if _pipeline else "legacy"}
+    if _pipeline:
+        stats.update(_pipeline.get_stats())
+    return JSONResponse(stats)
+
+
+# ============================================================
 # MJPEG STREAM ENDPOINT
 # ============================================================
 
-def mjpeg_generator(cam_index: int):
-    """Yield MJPEG frames for a specific camera (0-based index)."""
+def mjpeg_generator(cam_id: str):
+    """Yield MJPEG frames for a specific camera."""
     delay = 1.0 / MJPEG_FPS
 
     while True:
-        frame = state.get_annotated_frame(cam_index)
+        # Try display frame first (annotated), then raw frame
+        frame = state.get_display_frame(cam_id)
         if frame is None:
-            # Show a black frame with camera label
+            frame = frame_store.get(cam_id)
+
+        if frame is None:
             frame = np.zeros((480, 640, 3), dtype=np.uint8)
-            label = f"Camera {cam_index + 1} — waiting..."
+            label = f"{cam_id} - waiting..."
             cv2.putText(frame, label, (80, 240),
                         cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 2)
 
@@ -707,10 +885,18 @@ def mjpeg_generator(cam_index: int):
 
 @app.get("/stream/cam{cam_id}")
 async def mjpeg_stream(cam_id: int):
-    """MJPEG video stream for a specific camera. cam_id is 1-based."""
-    cam_index = cam_id - 1  # convert to 0-based
+    """MJPEG video stream. cam_id is 1-based (cam1..cam4 for display cameras)."""
+    # Map 1-based cam_id to cam_id string
+    cam_id_str = f"cam-{cam_id:02d}"
+
+    # For display cameras (ptz-1..4), check those first
+    if _camera_manager:
+        display_cams = _camera_manager.get_display_cameras()
+        if cam_id <= len(display_cams):
+            cam_id_str = display_cams[cam_id - 1].cam_id
+
     return StreamingResponse(
-        mjpeg_generator(cam_index),
+        mjpeg_generator(cam_id_str),
         media_type="multipart/x-mixed-replace; boundary=frame",
     )
 
@@ -722,27 +908,48 @@ async def mjpeg_stream(cam_id: int):
 async def ranking_broadcast_loop():
     """Periodically broadcast ranking updates to all WebSocket clients."""
     last_log_time = 0
+    last_activation_broadcast = 0
+
     while True:
         await asyncio.sleep(BROADCAST_INTERVAL)
 
-        if not ws_clients or not state.race_active:
+        if not ws_clients:
             continue
 
-        rankings = state.get_rankings()
-        if not rankings:
-            continue
+        # Broadcast rankings
+        if state.race_active:
+            rankings = state.get_rankings()
+            if rankings:
+                await broadcast({
+                    "type": "ranking_update",
+                    "rankings": rankings,
+                })
 
-        msg = {
-            "type": "ranking_update",
-            "rankings": rankings,
-        }
-        await broadcast(msg)
+        # Broadcast activation map every 2 seconds
+        now = time.time()
+        if _camera_manager and now - last_activation_broadcast > 2.0:
+            activation = _camera_manager.get_activation_map()
+            await broadcast({
+                "type": "activation_map",
+                "cameras": activation,
+            })
+            last_activation_broadcast = now
 
         # Log every 5 seconds
-        now = time.time()
-        if now - last_log_time > 5.0:
-            colors = [r.get("name", "?") for r in rankings]
-            log.info(f"Broadcasting {len(rankings)} horses to {len(ws_clients)} clients: {colors}")
+        if state.race_active and now - last_log_time > 5.0:
+            rankings = state.get_rankings()
+            if rankings:
+                names = [r.get("name", "?") for r in rankings[:3]]
+                log.info("Broadcasting %d horses to %d clients (top 3: %s)",
+                         len(rankings), len(ws_clients), names)
+            if _pipeline:
+                stats = _pipeline.get_stats()
+                trigger = stats.get("trigger", {})
+                analyzer = stats.get("analyzer", {})
+                log.info("  Trigger: %d frames, Analysis: %d frames @ %.1f fps",
+                         trigger.get("frames_processed", 0),
+                         analyzer.get("frames_processed", 0),
+                         analyzer.get("current_fps", 0))
             last_log_time = now
 
 
@@ -752,64 +959,174 @@ async def startup():
     log.info(f"Race Vision backend running on http://{SERVER_HOST}:{SERVER_PORT}")
     log.info(f"  WebSocket: ws://localhost:{SERVER_PORT}/ws")
     log.info(f"  MJPEG:     http://localhost:{SERVER_PORT}/stream/cam1")
+    if _camera_manager:
+        status = _camera_manager.get_status()
+        log.info(f"  Cameras:   {status['total_analytics']} analytics, {status['total_display']} display")
+
+
+# ============================================================
+# CAMERA CONFIG LOADER
+# ============================================================
+
+def load_camera_config(config_path: str) -> tuple[CameraManager, TrackTopology]:
+    """Load camera configuration from JSON file.
+
+    Expected format:
+    {
+        "track_length": 2500,
+        "analytics": [
+            {"id": "cam-01", "url": "rtsp://...", "track_start": 0, "track_end": 110},
+            ...
+        ],
+        "display": [
+            {"id": "ptz-1", "url": "rtsp://..."},
+            ...
+        ]
+    }
+    """
+    with open(config_path) as f:
+        config = json.load(f)
+
+    track_length = config.get("track_length", TRACK_LENGTH)
+    mgr = CameraManager(max_active=config.get("max_active", 8))
+    topo = TrackTopology(track_length=track_length)
+
+    for cam in config.get("analytics", []):
+        mgr.add_analytics(
+            cam["id"],
+            cam["url"],
+            track_start=cam.get("track_start", 0),
+            track_end=cam.get("track_end", 100),
+        )
+        topo.add_camera(
+            cam["id"],
+            cam.get("track_start", 0),
+            cam.get("track_end", 100),
+        )
+
+    for cam in config.get("display", []):
+        mgr.add_display(cam["id"], cam["url"])
+
+    return mgr, topo
 
 
 # ============================================================
 # MAIN
 # ============================================================
 
-# Global references so we can clean up
-_grabber: Optional[FrameGrabber] = None
-_detector: Optional[DetectionLoop] = None
+_grabber = None  # VideoFileGrabber or RTSPGrabber
 
 
 def main():
-    global _grabber, _detector
+    global _grabber, _pipeline, _legacy_detector, _camera_manager
 
     parser = argparse.ArgumentParser(description="Race Vision Backend Server")
-    parser.add_argument("--url", default=DEFAULT_RTSP_URL, help="RTSP stream URL")
+    parser.add_argument("--url", default=None, help="Single RTSP stream URL (legacy mode)")
     parser.add_argument("--video", nargs="+", default=None,
-                        help="Local video file(s) played sequentially (instead of RTSP)")
-    parser.add_argument("--gpu", action="store_true", help="Use GPU decode (hevc_cuvid)")
+                        help="Local video file(s) — each simulates a camera")
+    parser.add_argument("--config", default=None,
+                        help="Camera config JSON file (multi-camera mode)")
+    parser.add_argument("--gpu", action="store_true", help="Use GPU decode")
     parser.add_argument("--host", default=SERVER_HOST, help="Server host")
     parser.add_argument("--port", type=int, default=SERVER_PORT, help="Server port")
     parser.add_argument("--auto-start", action="store_true",
-                        help="Auto-start race on launch (skip operator start)")
+                        help="Auto-start race on launch")
+    parser.add_argument("--mode", choices=["auto", "multi", "legacy"], default="auto",
+                        help="Pipeline mode: multi (trigger+analysis+fusion) or legacy (single detector)")
     args = parser.parse_args()
 
-    # Determine video source(s)
-    if args.video:
-        sources = args.video
-        is_rtsp = False
-        log.info(f"Video sources: {[Path(s).stem for s in sources]}")
+    # ── Determine mode and sources ────────────────────────────────────
+
+    use_multi = False
+
+    if args.config:
+        # Multi-camera from config file
+        _camera_manager, topology = load_camera_config(args.config)
+        _grabber = RTSPGrabber(_camera_manager, gpu=args.gpu)
+        _grabber.start()
+        use_multi = True
+        log.info("Multi-camera mode from config: %s", args.config)
+
+    elif args.video:
+        if len(args.video) >= 2 or args.mode == "multi":
+            # Multi-camera from video files
+            _camera_manager = CameraManager(max_active=8)
+            topology = TrackTopology(track_length=TRACK_LENGTH)
+
+            cam_video_map = {}
+            segment_len = TRACK_LENGTH / len(args.video)
+            for i, vpath in enumerate(args.video):
+                cam_id = f"cam-{i+1:02d}"
+                start = i * segment_len
+                end = start + segment_len + 10  # 10m overlap
+                _camera_manager.add_analytics(cam_id, vpath, track_start=start, track_end=end)
+                topology.add_camera(cam_id, start, end)
+                cam_video_map[cam_id] = vpath
+
+            _grabber = VideoFileGrabber(cam_video_map)
+            _grabber.start()
+            use_multi = True
+            log.info("Multi-camera mode from %d videos", len(args.video))
+
+        else:
+            # Single video → legacy mode
+            cam_id = "cam-01"
+            cam_video_map = {cam_id: args.video[0]}
+            _grabber = VideoFileGrabber(cam_video_map)
+            _grabber.start()
+            log.info("Legacy mode: single video %s", Path(args.video[0]).stem)
+
     else:
-        sources = [args.url]
-        is_rtsp = True
-        log.info(f"RTSP source: {args.url.split('@')[-1] if '@' in args.url else args.url}")
+        # Single RTSP → legacy mode
+        url = args.url or DEFAULT_RTSP_URL
+        cam_id = "cam-01"
+        cam_video_map = {cam_id: url}
 
-    # Start frame grabber
-    _grabber = FrameGrabber(sources, use_gpu=args.gpu, is_rtsp=is_rtsp)
-    _grabber.start()
-    log.info("Frame grabber started")
+        # Use CameraStream for RTSP with reconnect
+        def _rtsp_on_frame(cid, frame):
+            frame_store.put(cam_id, frame)
+            state.set_frame(cam_id, frame)
 
-    # Start detection loop
-    _detector = DetectionLoop()
-    _detector.start()
-    log.info("Detection loop started")
+        cam = CameraStream(
+            cam_id, url, gpu=args.gpu,
+            reconnect_delay=5.0,
+            on_frame=_rtsp_on_frame,
+        )
+        cam.start()
+        _grabber = cam
+        log.info("Legacy mode: RTSP %s",
+                 url.split('@')[-1] if '@' in url else url)
 
-    # Auto-start race if requested
+    # ── Start pipeline ────────────────────────────────────────────────
+
+    if use_multi and args.mode != "legacy":
+        _pipeline = MultiCameraPipeline(_camera_manager, topology)
+        _pipeline.start()
+        log.info("Multi-camera pipeline started (trigger + analysis + fusion)")
+    else:
+        cam_id = "cam-01"
+        _legacy_detector = LegacyDetectionLoop(cam_id=cam_id)
+        _legacy_detector.start()
+        log.info("Legacy detection loop started")
+
     if args.auto_start:
         state.race_active = True
         log.info("Race auto-started")
 
-    # Run FastAPI server
+    # ── Run server ────────────────────────────────────────────────────
+
     import uvicorn
     try:
         uvicorn.run(app, host=args.host, port=args.port, log_level="info")
     finally:
         log.info("Shutting down...")
-        _grabber.stop()
-        _detector.stop()
+        if _grabber:
+            if hasattr(_grabber, 'stop'):
+                _grabber.stop()
+        if _pipeline:
+            _pipeline.stop()
+        if _legacy_detector:
+            _legacy_detector.stop()
 
 
 if __name__ == "__main__":

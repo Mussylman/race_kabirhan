@@ -217,6 +217,23 @@ const handleBackendMessage = (message: BackendMessage) => {
             }
             break;
 
+        case 'activation_map':
+            // Camera activation map from multi-camera pipeline
+            // {cameras: {cam_id: active_bool}}
+            if (message.cameras) {
+                console.log('📷 Activation map:', Object.values(message.cameras).filter(Boolean).length, 'active');
+                const { updateCameraActivation } = useCameraStore.getState();
+                if (typeof updateCameraActivation === 'function') {
+                    updateCameraActivation(message.cameras as Record<string, boolean>);
+                }
+            }
+            break;
+
+        case 'camera_status':
+            // Full camera status from backend
+            console.log('📷 Camera status:', message.total_analytics, 'analytics,', message.active_analytics, 'active');
+            break;
+
         // ============ SYSTEM EVENTS ============
         case 'pong':
             // Heartbeat response
@@ -270,6 +287,19 @@ interface BackendMessage {
     cameraId?: string;
     horseIds?: string[];
     message?: string;
+    // Multi-camera fields
+    cameras?: Record<string, boolean> | CameraStatusEntry[];
+    total_analytics?: number;
+    active_analytics?: number;
+    total_display?: number;
+}
+
+interface CameraStatusEntry {
+    cam_id: string;
+    role: string;
+    active: boolean;
+    connected: boolean;
+    track_segment: string | null;
 }
 
 interface HorseData {

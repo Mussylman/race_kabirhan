@@ -1,0 +1,37 @@
+{
+    "track_length": 2500,
+    "max_active": 8,
+    "analytics": [
+        {"id": "cam-01", "url": "rtsp://admin:pass@192.168.1.101:554/stream", "track_start": 0,    "track_end": 110},
+        {"id": "cam-02", "url": "rtsp://admin:pass@192.168.1.102:554/stream", "track_start": 100,  "track_end": 210},
+        {"id": "cam-03", "url": "rtsp://admin:pass@192.168.1.103:554/stream", "track_start": 200,  "track_end": 310},
+        {"id": "cam-04", "url": "rtsp://admin:pass@192.168.1.104:554/stream", "track_start": 300,  "track_end": 410},
+        {"id": "cam-05", "url": "rtsp://admin:pass@192.168.1.105:554/stream", "track_start": 400,  "track_end": 510},
+        {"id": "cam-06", "url": "rtsp://admin:pass@192.168.1.106:554/stream", "track_start": 500,  "track_end": 610},
+        {"id": "cam-07", "url": "rtsp://admin:pass@192.168.1.107:554/stream", "track_start": 600,  "track_end": 710},
+        {"id": "cam-08", "url": "rtsp://admin:pass@192.168.1.108:554/stream", "track_start": 700,  "track_end": 810},
+        {"id": "cam-09", "url": "rtsp://admin:pass@192.168.1.109:554/stream", "track_start": 800,  "track_end": 910},
+        {"id": "cam-10", "url": "rtsp://admin:pass@192.168.1.110:554/stream", "track_start": 900,  "track_end": 1010},
+        {"id": "cam-11", "url": "rtsp://admin:pass@192.168.1.111:554/stream", "track_start": 1000, "track_end": 1110},
+        {"id": "cam-12", "url": "rtsp://admin:pass@192.168.1.112:554/stream", "track_start": 1100, "track_end": 1210},
+        {"id": "cam-13", "url": "rtsp://admin:pass@192.168.1.113:554/stream", "track_start": 1200, "track_end": 1310},
+        {"id": "cam-14", "url": "rtsp://admin:pass@192.168.1.114:554/stream", "track_start": 1300, "track_end": 1410},
+        {"id": "cam-15", "url": "rtsp://admin:pass@192.168.1.115:554/stream", "track_start": 1400, "track_end": 1510},
+        {"id": "cam-16", "url": "rtsp://admin:pass@192.168.1.116:554/stream", "track_start": 1500, "track_end": 1610},
+        {"id": "cam-17", "url": "rtsp://admin:pass@192.168.1.117:554/stream", "track_start": 1600, "track_end": 1710},
+        {"id": "cam-18", "url": "rtsp://admin:pass@192.168.1.118:554/stream", "track_start": 1700, "track_end": 1810},
+        {"id": "cam-19", "url": "rtsp://admin:pass@192.168.1.119:554/stream", "track_start": 1800, "track_end": 1910},
+        {"id": "cam-20", "url": "rtsp://admin:pass@192.168.1.120:554/stream", "track_start": 1900, "track_end": 2010},
+        {"id": "cam-21", "url": "rtsp://admin:pass@192.168.1.121:554/stream", "track_start": 2000, "track_end": 2110},
+        {"id": "cam-22", "url": "rtsp://admin:pass@192.168.1.122:554/stream", "track_start": 2100, "track_end": 2210},
+        {"id": "cam-23", "url": "rtsp://admin:pass@192.168.1.123:554/stream", "track_start": 2200, "track_end": 2310},
+        {"id": "cam-24", "url": "rtsp://admin:pass@192.168.1.124:554/stream", "track_start": 2300, "track_end": 2410},
+        {"id": "cam-25", "url": "rtsp://admin:pass@192.168.1.125:554/stream", "track_start": 2400, "track_end": 2500}
+    ],
+    "display": [
+        {"id": "ptz-1", "url": "rtsp://admin:pass@192.168.1.201:554/stream"},
+        {"id": "ptz-2", "url": "rtsp://admin:pass@192.168.1.202:554/stream"},
+        {"id": "ptz-3", "url": "rtsp://admin:pass@192.168.1.203:554/stream"},
+        {"id": "ptz-4", "url": "rtsp://admin:pass@192.168.1.204:554/stream"}
+    ]
+}
