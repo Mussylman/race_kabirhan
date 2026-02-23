@@ -1,6 +1,6 @@
-import { Camera, Check, Wifi } from 'lucide-react';
+import { Check, Wifi } from 'lucide-react';
 import { useCameraStore } from '../../store/cameraStore';
-import { MJPEGPlayer } from '../MJPEGPlayer';
+import { Go2RTCPlayer } from '../Go2RTCPlayer';
 
 export const PTZControlPanel = () => {
     const { ptzCameras, activePTZCameraId, setActivePTZCamera } = useCameraStore();
@@ -28,10 +28,10 @@ export const PTZControlPanel = () => {
                                     : 'bg-[var(--surface)] border border-[var(--border)] hover:border-[var(--text-muted)]'}
               `}
                         >
-                            {/* Video Preview */}
+                            {/* Video Preview via WebRTC */}
                             <div className="absolute inset-0">
-                                <MJPEGPlayer
-                                    url={camera.mjpegUrl}
+                                <Go2RTCPlayer
+                                    cameraId={camera.go2rtcId}
                                     cameraName={camera.name}
                                     className="w-full h-full"
                                 />

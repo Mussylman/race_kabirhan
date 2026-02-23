@@ -5,7 +5,7 @@ import { Trophy } from 'lucide-react';
 import { connectToBackend, disconnectFromBackend } from '../services/backendConnection';
 import { useRaceStore } from '../store/raceStore';
 import { useCameraStore } from '../store/cameraStore';
-import { MJPEGPlayer } from '../components/MJPEGPlayer';
+import { Go2RTCPlayer } from '../components/Go2RTCPlayer';
 import { getSilkImagePath } from '../utils/silkUtils';
 
 // Track position changes per horse for arc animations
@@ -90,9 +90,8 @@ export const PublicDisplay = () => {
         return () => window.removeEventListener('storage', handleStorageChange);
     }, [syncFromStorage]);
 
-    // Get active PTZ camera — only show video if mjpegUrl is set
+    // Get active PTZ camera
     const activePTZ = ptzCameras.find(c => c.id === activePTZCameraId);
-    const ptzStreamUrl = activePTZ?.mjpegUrl || '';
 
     const leader = rankings[0];
     const speed = leader ? leader.speed * 3.6 : 0;
@@ -107,11 +106,11 @@ export const PublicDisplay = () => {
 
     return (
         <div className="h-screen w-screen bg-black relative overflow-hidden">
-            {/* PTZ Video Background — only if PTZ camera has a stream URL configured */}
-            {ptzStreamUrl && (
-                <MJPEGPlayer
-                    url={ptzStreamUrl}
-                    cameraName={activePTZ?.name || 'PTZ'}
+            {/* PTZ Video Background via WebRTC */}
+            {activePTZ && (
+                <Go2RTCPlayer
+                    cameraId={activePTZ.go2rtcId}
+                    cameraName={activePTZ.name}
                     className="absolute inset-0 w-full h-full"
                 />
             )}

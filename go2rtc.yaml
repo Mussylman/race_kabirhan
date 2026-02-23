@@ -1,0 +1,71 @@
+# go2rtc configuration for Race Vision
+# Passthrough H.264 from all 29 Hikvision RTSP cameras (no transcoding)
+# RTX 3060 NVENC limit: ~5 sessions, so passthrough is required
+
+streams:
+  # ============================================================
+  # ANALYTICS CAMERAS (23 cameras covering 2500m track)
+  # ============================================================
+  cam-01:
+    - rtsp://admin:Zxcv2Zxcv2@10.223.70.32:554/Streaming/Channels/101
+  cam-02:
+    - rtsp://admin:Zxcv2Zxcv2@10.223.70.16:554/Streaming/Channels/101
+  cam-03:
+    - rtsp://admin:Zxcv2Zxcv2@10.223.70.46:554/Streaming/Channels/101
+  cam-04:
+    - rtsp://admin:Zxcv2Zxcv2@10.223.70.44:554/Streaming/Channels/101
+  cam-05:
+    - rtsp://admin:Zxcv2Zxcv2@10.223.70.17:554/Streaming/Channels/101
+  cam-06:
+    - rtsp://admin:Zxcv2Zxcv2@10.223.70.18:554/Streaming/Channels/101
+  cam-07:
+    - rtsp://admin:Zxcv2Zxcv2@10.223.70.24:554/Streaming/Channels/101
+  cam-08:
+    - rtsp://admin:Zxcv2Zxcv2@10.223.70.34:554/Streaming/Channels/101
+  cam-09:
+    - rtsp://admin:Zxcv2Zxcv2@10.223.70.25:554/Streaming/Channels/101
+  cam-10:
+    - rtsp://admin:Zxcv2Zxcv2@10.223.70.31:554/Streaming/Channels/101
+  cam-11:
+    - rtsp://admin:Zxcv2Zxcv2@10.223.70.30:554/Streaming/Channels/101
+  cam-12:
+    - rtsp://admin:Zxcv2Zxcv2@10.223.70.20:554/Streaming/Channels/101
+  cam-13:
+    - rtsp://admin:Zxcv2Zxcv2@10.223.70.19:554/Streaming/Channels/101
+  cam-14:
+    - rtsp://admin:Zxcv2Zxcv2@10.223.70.27:554/Streaming/Channels/101
+  cam-15:
+    - rtsp://admin:Zxcv2Zxcv2@10.223.70.21:554/Streaming/Channels/101
+  cam-16:
+    - rtsp://admin:Zxcv2Zxcv2@10.223.70.28:554/Streaming/Channels/101
+  cam-17:
+    - rtsp://admin:Zxcv2Zxcv2@10.223.70.15:554/Streaming/Channels/101
+  cam-18:
+    - rtsp://admin:Zxcv2Zxcv2@10.223.70.22:554/Streaming/Channels/101
+  cam-19:
+    - rtsp://admin:Zxcv2Zxcv2@10.223.70.26:554/Streaming/Channels/101
+  cam-20:
+    - rtsp://admin:Zxcv2Zxcv2@10.223.70.29:554/Streaming/Channels/101
+  cam-21:
+    - rtsp://admin:Zxcv2Zxcv2@10.223.70.23:554/Streaming/Channels/101
+  cam-22:
+    - rtsp://admin:Zxcv2Zxcv2@10.223.70.33:554/Streaming/Channels/101
+  cam-23:
+    - rtsp://admin:Zxcv2Zxcv2@10.223.70.45:554/Streaming/Channels/101
+
+  # ============================================================
+  # PTZ DISPLAY CAMERAS (4 cameras for public broadcast)
+  # ============================================================
+  ptz-1:
+    - rtsp://admin:Turkestan707@10.223.70.43:554/Streaming/Channels/101
+  ptz-2:
+    - rtsp://admin:Turkestan707@10.223.70.44:554/Streaming/Channels/102
+  ptz-3:
+    - rtsp://admin:Turkestan707@10.223.70.45:554/Streaming/Channels/102
+  ptz-4:
+    - rtsp://admin:Turkestan707@10.223.70.46:554/Streaming/Channels/102
+
+# WebRTC configuration
+webrtc:
+  candidates:
+    - stun:stun.l.google.com:19302

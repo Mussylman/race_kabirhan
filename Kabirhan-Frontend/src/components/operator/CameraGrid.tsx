@@ -1,10 +1,8 @@
-import { Camera, Video, VideoOff } from 'lucide-react';
+import { Video, VideoOff } from 'lucide-react';
 import { useCameraStore } from '../../store/cameraStore';
 import { useRaceStore } from '../../store/raceStore';
-import { MJPEGPlayer } from '../MJPEGPlayer';
+import { Go2RTCPlayer } from '../Go2RTCPlayer';
 import { TRACK_LENGTH } from '../../types';
-
-const BACKEND_URL = 'http://localhost:8000';
 
 export const CameraGrid = () => {
     const { analyticsCameras } = useCameraStore();
@@ -22,9 +20,8 @@ export const CameraGrid = () => {
 
             {/* Camera Grid — 3 cameras side by side */}
             <div className="grid grid-cols-3 gap-4 flex-1 overflow-y-auto">
-                {analyticsCameras.map((camera, index) => {
+                {analyticsCameras.map((camera) => {
                     const isOnline = camera.status === 'online';
-                    const camNumber = index + 1;
 
                     // Find horses within this camera's track segment
                     const horsesNear = rankings.filter(horse => {
@@ -43,10 +40,10 @@ export const CameraGrid = () => {
                                     : 'border border-[var(--border)]'}
                             `}
                         >
-                            {/* MJPEG Detection Stream */}
+                            {/* WebRTC Stream via go2rtc */}
                             <div className="aspect-video bg-black">
-                                <MJPEGPlayer
-                                    url={`${BACKEND_URL}/stream/cam${camNumber}`}
+                                <Go2RTCPlayer
+                                    cameraId={camera.go2rtcId}
                                     cameraName={camera.name}
                                     className="w-full h-full"
                                 />

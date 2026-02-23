@@ -1,0 +1,31 @@
+version: "3.8"
+
+services:
+  # ==========================================================
+  # go2rtc — RTSP passthrough to WebRTC (no transcoding)
+  # All 29 cameras available via WebRTC at http://localhost:1984
+  # ==========================================================
+  go2rtc:
+    image: alexxit/go2rtc
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./go2rtc.yaml:/config/go2rtc.yaml:ro
+
+  # ==========================================================
+  # DeepStream — GPU analytics pipeline
+  # RTSP → NVDEC → nvinfer (YOLO+ColorCNN) → SHM → Python
+  # ==========================================================
+  deepstream:
+    image: race-vision-deepstream:latest
+    restart: unless-stopped
+    runtime: nvidia
+    ipc: host
+    network_mode: host
+    volumes:
+      - ./cameras_example.json:/data/cameras.json:ro
+      - ./models:/data/models:ro
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+    depends_on:
+      - go2rtc
