@@ -40,7 +40,7 @@ WORKDIR /app
 # C++ binary + custom parser library
 COPY --from=builder /build/build/race_vision_deepstream /app/bin/
 COPY --from=builder /build/build/libnvdsinfer_yolov8_parser.so /app/lib/
-COPY deepstream/configs/ /app/deepstream_configs/
+COPY deepstream/configs/ /app/configs/
 
 # Python code
 COPY api/ api/

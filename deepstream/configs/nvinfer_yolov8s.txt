@@ -7,7 +7,7 @@
 gpu-id=0
 
 # Model paths
-model-engine-file=/data/models/yolov8s_deepstream.engine
+model-engine-file=/app/models/yolov8s_deepstream.engine
 
 # Network parameters
 batch-size=25
