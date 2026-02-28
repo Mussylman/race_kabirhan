@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from .track_topology import TrackTopology
-from .analyzer import CameraDetections
+from .detections import CameraDetections
 
 log = logging.getLogger("pipeline.fusion")
 

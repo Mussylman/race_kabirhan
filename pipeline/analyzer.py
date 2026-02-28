@@ -28,6 +28,7 @@ import numpy as np
 
 from .trt_inference import YOLODetector, ColorClassifierInfer
 from .camera_manager import CameraManager
+from .detections import CameraDetections
 from .vote_engine import VoteEngine
 
 log = logging.getLogger("pipeline.analyzer")
@@ -156,30 +157,6 @@ def analyze_hsv(crop_bgr: np.ndarray) -> tuple[str, int]:
     return 'unknown', dominant_hue
 
 
-# ── Per-camera detection result ──────────────────────────────────────
-
-class CameraDetections:
-    """Results from analyzing one frame of one camera."""
-
-    def __init__(self, cam_id: str, frame_width: int, frame_height: int):
-        self.cam_id = cam_id
-        self.frame_width = frame_width
-        self.frame_height = frame_height
-        self.detections: list[dict] = []
-        self.timestamp: float = time.time()
-
-    def add(self, det: dict):
-        self.detections.append(det)
-
-    @property
-    def colors(self) -> list[str]:
-        return [d['color'] for d in self.detections]
-
-    @property
-    def n_detections(self) -> int:
-        return len(self.detections)
-
-
 # ── Analysis Loop ────────────────────────────────────────────────────
 
 class AnalysisLoop(threading.Thread):
@@ -229,6 +206,9 @@ class AnalysisLoop(threading.Thread):
 
         # Per-camera vote engines
         self._vote_engines: dict[str, VoteEngine] = {}
+        # Track when each camera was first analyzed (for time-based completion)
+        self._cam_first_analysis: dict[str, float] = {}
+        self.max_analysis_sec: float = 3.0  # max seconds to analyze one camera
 
     def _get_vote_engine(self, cam_id: str) -> VoteEngine:
         if cam_id not in self._vote_engines:
@@ -278,6 +258,9 @@ class AnalysisLoop(threading.Thread):
         active_cams = self.camera_manager.get_active_cameras()
         if not active_cams:
             return
+
+        log.debug("Analyzing %d active cameras: %s",
+                  len(active_cams), [c.cam_id for c in active_cams])
 
         # Collect frames from active cameras
         cam_ids = []
@@ -372,6 +355,36 @@ class AnalysisLoop(threading.Thread):
 
             all_results.append(cam_result)
             self.detections_total += cam_result.n_detections
+
+            if cam_result.n_detections > 0:
+                log.info("ANALYZE  %s  %d dets  colors=[%s]  vote_frames=%d  %.0fms",
+                         cam_id, cam_result.n_detections,
+                         ", ".join(cam_result.colors),
+                         engine.vote_frames,
+                         (time.monotonic() - t0) * 1000)
+
+            # Track first analysis time for this camera
+            if cam_id not in self._cam_first_analysis:
+                self._cam_first_analysis[cam_id] = time.monotonic()
+
+            # Check completion: either all positions filled OR time limit reached
+            should_complete = False
+            reason = ""
+
+            if engine.is_result_ready():
+                should_complete = True
+                reason = "all positions filled"
+            elif engine.vote_frames >= 3:
+                elapsed_analysis = time.monotonic() - self._cam_first_analysis[cam_id]
+                if elapsed_analysis >= self.max_analysis_sec:
+                    should_complete = True
+                    reason = f"time limit ({elapsed_analysis:.1f}s)"
+
+            if should_complete and not self.camera_manager.is_completed(cam_id):
+                vote_result = engine.compute_result()
+                log.info("RESULT READY  %s  order=[%s]  (%s, %d vote frames)",
+                         cam_id, " > ".join(vote_result), reason, engine.vote_frames)
+                self.camera_manager.mark_completed(cam_id)
 
             # Draw annotations on frame
             if self.on_annotated_frame:

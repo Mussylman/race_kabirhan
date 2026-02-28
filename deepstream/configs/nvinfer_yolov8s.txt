@@ -1,0 +1,49 @@
+# nvinfer config for YOLOv8s — Race Vision DeepStream pipeline
+#
+# This config is loaded by the nvinfer GStreamer plugin.
+# It specifies the TensorRT engine, batch size, custom parser, etc.
+
+[property]
+gpu-id=0
+
+# Model paths
+model-engine-file=/data/models/yolov8s_deepstream.engine
+
+# Network parameters
+batch-size=25
+# 0=FP32, 1=INT8, 2=FP16
+network-mode=2
+# 0=NCHW
+network-input-order=0
+
+# Input dimensions (must match export)
+infer-dims=3;1280;1280
+
+# Detection parameters
+num-detected-classes=80
+# 1=primary detector
+process-mode=1
+
+# Preprocessing
+maintain-aspect-ratio=1
+symmetric-padding=1
+# 1/255.0
+net-scale-factor=0.00392157
+
+# Clustering / NMS
+# 2=NMS
+cluster-mode=2
+
+# Custom output parser (our YOLOv8 parser)
+parse-bbox-func-name=NvDsInferParseYoloV8
+custom-lib-path=/app/lib/libnvdsinfer_yolov8_parser.so
+
+# Output layers (YOLOv8 has single output)
+output-blob-names=output0
+
+# Per-class detection thresholds
+[class-attrs-all]
+pre-cluster-threshold=0.35
+
+[class-attrs-0]
+pre-cluster-threshold=0.35

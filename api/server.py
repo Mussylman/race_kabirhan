@@ -35,14 +35,17 @@ Usage:
     python -m api.server --url "rtsp://admin:pass@ip:554/stream"
 """
 
+import os
 import cv2
 import sys
 import time
 import json
+import signal
 import asyncio
 import logging
 import argparse
 import threading
+import subprocess
 import numpy as np
 from pathlib import Path
 from typing import Optional
@@ -55,18 +58,43 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse
 
-# Pipeline modules
+# Pipeline modules (always available — no torch dependency)
 from pipeline.camera_manager import CameraManager
 from pipeline.track_topology import TrackTopology
-from pipeline.trigger import TriggerLoop
-from pipeline.analyzer import AnalysisLoop, CameraDetections
+from pipeline.detections import CameraDetections
 from pipeline.fusion import FusionEngine
+from pipeline.shm_reader import SharedMemoryReader
 
-# Legacy imports (for single-camera fallback and drawing)
-from tools.test_race_count import (
-    RaceTracker, draw, COLORS_BGR, REQUIRED_COLORS
-)
-from tools.ffmpeg_reader import CameraStream, MultiCameraReader, find_ffmpeg
+# Heavy imports — only needed in non-DeepStream mode (require torch/ultralytics)
+# Deferred to avoid import errors when running in lightweight DeepStream container
+TriggerLoop = None
+AnalysisLoop = None
+_RaceTracker = None
+_draw = None
+_COLORS_BGR = None
+_REQUIRED_COLORS = None
+_CameraStream = None
+_MultiCameraReader = None
+
+def _load_heavy_imports():
+    """Load torch/ultralytics-dependent modules. Call only in non-DeepStream mode."""
+    global TriggerLoop, AnalysisLoop
+    global _RaceTracker, _draw, _COLORS_BGR, _REQUIRED_COLORS
+    global _CameraStream, _MultiCameraReader
+    from pipeline.trigger import TriggerLoop as _TL
+    from pipeline.analyzer import AnalysisLoop as _AL
+    TriggerLoop = _TL
+    AnalysisLoop = _AL
+    from tools.test_race_count import (
+        RaceTracker, draw, COLORS_BGR, REQUIRED_COLORS
+    )
+    _RaceTracker = RaceTracker
+    _draw = draw
+    _COLORS_BGR = COLORS_BGR
+    _REQUIRED_COLORS = REQUIRED_COLORS
+    from tools.ffmpeg_reader import CameraStream, MultiCameraReader
+    _CameraStream = CameraStream
+    _MultiCameraReader = MultiCameraReader
 
 # ============================================================
 # CONFIGURATION
@@ -273,7 +301,7 @@ class RTSPGrabber:
 
     def __init__(self, camera_manager: CameraManager, gpu: bool = False):
         self.camera_manager = camera_manager
-        self._reader = MultiCameraReader(gpu=gpu)
+        self._reader = _MultiCameraReader(gpu=gpu)
         self._running = False
         self._thread: Optional[threading.Thread] = None
 
@@ -334,7 +362,7 @@ class LegacyDetectionLoop(threading.Thread):
         super().__init__(daemon=True, name="LegacyDetection")
         self.cam_id = cam_id
         self.running = False
-        self.tracker: Optional[RaceTracker] = None
+        self.tracker = None
 
         self._current_order: list = []
         self._smooth_x: dict = {}
@@ -354,7 +382,7 @@ class LegacyDetectionLoop(threading.Thread):
 
         output_dir = Path("results/race_server")
         output_dir.mkdir(parents=True, exist_ok=True)
-        self.tracker = RaceTracker(output_dir, save_crops=False)
+        self.tracker = _RaceTracker(output_dir, save_crops=False)
         log.info("Legacy detection pipeline ready")
 
         fps_counter = 0
@@ -379,7 +407,7 @@ class LegacyDetectionLoop(threading.Thread):
             self._total_frames += 1
             frame_width = frame.shape[1]
 
-            annotated = draw(frame.copy(), jockeys, self.tracker)
+            annotated = _draw(frame.copy(), jockeys, self.tracker)
             state.set_display_frame(self.cam_id, annotated)
 
             for j in jockeys:
@@ -625,6 +653,268 @@ class MultiCameraPipeline:
 
 
 # ============================================================
+# DEEPSTREAM C++ SUBPROCESS MANAGER
+# ============================================================
+
+class DeepStreamSubprocess:
+    """Manages the C++ DeepStream process as a subprocess."""
+
+    def __init__(self, config_path: str,
+                 yolo_engine: str = "/app/models/yolov8s_deepstream.engine",
+                 color_engine: str = "/app/models/color_classifier.engine",
+                 binary: str = "/app/bin/race_vision_deepstream"):
+        self.config_path = config_path
+        self.yolo_engine = yolo_engine
+        self.color_engine = color_engine
+        self.binary = binary
+        self._proc: Optional[subprocess.Popen] = None
+        self._monitor_thread: Optional[threading.Thread] = None
+        self._running = False
+
+    def start(self):
+        cmd = [
+            self.binary,
+            "--config", self.config_path,
+            "--yolo-engine", self.yolo_engine,
+            "--color-engine", self.color_engine,
+        ]
+        log.info("Starting DeepStream C++: %s", " ".join(cmd))
+
+        env = os.environ.copy()
+        env["LD_LIBRARY_PATH"] = (
+            "/opt/nvidia/deepstream/deepstream/lib:"
+            "/app/lib:"
+            + env.get("LD_LIBRARY_PATH", "")
+        )
+
+        self._proc = subprocess.Popen(
+            cmd, env=env,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        )
+        self._running = True
+
+        self._monitor_thread = threading.Thread(
+            target=self._monitor, daemon=True, name="DeepStreamMonitor")
+        self._monitor_thread.start()
+        log.info("DeepStream C++ started (PID=%d)", self._proc.pid)
+
+    def _monitor(self):
+        """Forward C++ stdout/stderr to Python log and detect crashes."""
+        for line in iter(self._proc.stdout.readline, b''):
+            if not self._running:
+                break
+            text = line.decode('utf-8', errors='replace').rstrip()
+            if text:
+                log.info("[DeepStream C++] %s", text)
+
+        retcode = self._proc.wait()
+        if self._running:
+            log.error("DeepStream C++ exited unexpectedly (code=%d)", retcode)
+
+    def stop(self):
+        self._running = False
+        if self._proc and self._proc.poll() is None:
+            log.info("Stopping DeepStream C++ (PID=%d)...", self._proc.pid)
+            self._proc.terminate()
+            try:
+                self._proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                log.warning("DeepStream C++ did not stop, killing...")
+                self._proc.kill()
+                self._proc.wait()
+            log.info("DeepStream C++ stopped")
+
+    @property
+    def is_running(self) -> bool:
+        return self._proc is not None and self._proc.poll() is None
+
+    @property
+    def pid(self) -> Optional[int]:
+        return self._proc.pid if self._proc else None
+
+
+# ============================================================
+# DEEPSTREAM PIPELINE (replaces MultiCameraPipeline when --deepstream)
+# ============================================================
+
+class DeepStreamPipeline:
+    """Reads detections from DeepStream C++ via shared memory.
+
+    Replaces TriggerLoop + AnalysisLoop with a single SharedMemoryReader
+    that receives pre-computed detections (YOLO + color) from the C++ pipeline.
+    Keeps VoteEngine per camera and FusionEngine for ranking.
+    """
+
+    def __init__(self, camera_manager: CameraManager, topology: TrackTopology):
+        self.camera_manager = camera_manager
+        self.topology = topology
+        self.fusion = FusionEngine(topology, colors=ALL_COLORS)
+
+        self._reader = SharedMemoryReader(timeout_ms=200)
+        self._thread: Optional[threading.Thread] = None
+        self._running = False
+
+        # Per-camera vote engines
+        from pipeline.vote_engine import VoteEngine
+        self._vote_engines: dict[str, VoteEngine] = {}
+
+        # Stats
+        self.frames_processed = 0
+        self.cycles = 0
+        self.last_cycle_time = 0.0
+        self.current_fps = 0.0
+
+    def _get_vote_engine(self, cam_id: str):
+        from pipeline.vote_engine import VoteEngine
+        if cam_id not in self._vote_engines:
+            self._vote_engines[cam_id] = VoteEngine(ALL_COLORS)
+        return self._vote_engines[cam_id]
+
+    def start(self):
+        # Attach to shared memory (retry until DeepStream C++ is ready)
+        self._running = True
+        self._thread = threading.Thread(
+            target=self._reader_loop, daemon=True, name="DeepStreamReader"
+        )
+        self._thread.start()
+        log.info("DeepStreamPipeline started (waiting for SHM)")
+
+    def _reader_loop(self):
+        # Retry attach until successful
+        while self._running and not self._reader.is_attached:
+            if self._reader.attach():
+                log.info("DeepStreamPipeline attached to shared memory")
+                break
+            log.info("Waiting for DeepStream C++ process (SHM not found)...")
+            time.sleep(2.0)
+
+        fps_counter = 0
+        fps_timer = time.monotonic()
+        stale_counter = 0
+        STALE_THRESHOLD = 30  # ~6 sec at 200ms timeout
+
+        while self._running:
+            t0 = time.monotonic()
+
+            # Read detections from shared memory
+            cam_results = self._reader.read()
+            if cam_results is None:
+                stale_counter += 1
+                if self._reader.is_attached and stale_counter > STALE_THRESHOLD:
+                    log.warning("SHM stale (%d timeouts), re-attaching...", stale_counter)
+                    self._reader.detach()
+                    stale_counter = 0
+                if not self._reader.is_attached:
+                    while self._running and not self._reader.is_attached:
+                        if self._reader.attach():
+                            log.info("Re-attached to SHM")
+                            break
+                        time.sleep(2.0)
+                continue
+            stale_counter = 0
+
+            self.cycles += 1
+
+            if not state.race_active:
+                continue
+
+            # Process through vote engines (same as AnalysisLoop)
+            voted_results = []
+            for cam_det in cam_results:
+                if cam_det.n_detections == 0:
+                    voted_results.append(cam_det)
+                    continue
+
+                engine = self._get_vote_engine(cam_det.cam_id)
+                assigned, weight = engine.submit_frame(cam_det.detections)
+
+                # Rebuild CameraDetections with voted assignments
+                voted = CameraDetections(cam_det.cam_id, cam_det.frame_width, cam_det.frame_height)
+                voted.timestamp = cam_det.timestamp
+                for d in assigned:
+                    voted.add(d)
+                voted_results.append(voted)
+
+                self.frames_processed += 1
+
+            # Feed into fusion engine
+            self.fusion.update(voted_results)
+
+            # Build rankings
+            fusion_ranking = self.fusion.get_ranking()
+            rankings = self._build_rankings(fusion_ranking)
+            state.set_rankings(rankings)
+
+            # FPS tracking
+            fps_counter += 1
+            elapsed_fps = time.monotonic() - fps_timer
+            if elapsed_fps >= 1.0:
+                self.current_fps = fps_counter / elapsed_fps
+                fps_counter = 0
+                fps_timer = time.monotonic()
+
+            self.last_cycle_time = time.monotonic() - t0
+
+    def _build_rankings(self, fusion_ranking: list[dict]) -> list:
+        """Convert fusion ranking to frontend format (same as MultiCameraPipeline)."""
+        rankings = []
+        for entry in fusion_ranking:
+            color = entry["color"]
+            horse_info = COLOR_TO_HORSE.get(color)
+            if not horse_info:
+                continue
+
+            distance = entry.get("position_m", 0)
+            rank = entry.get("rank", 0)
+
+            if rankings:
+                leader_dist = rankings[0]["distanceCovered"]
+                gap = abs(leader_dist - distance) / max(TRACK_LENGTH, 1) * 60.0
+            else:
+                gap = 0.0
+
+            rankings.append({
+                "id": horse_info["id"],
+                "number": int(horse_info["number"]),
+                "name": horse_info["name"],
+                "color": horse_info["color"],
+                "jockeyName": horse_info["jockeyName"],
+                "silkId": int(horse_info["silkId"]),
+                "position": rank,
+                "distanceCovered": round(float(distance), 1),
+                "currentLap": 1,
+                "timeElapsed": 0,
+                "speed": round(entry.get("speed_mps", 0) * 3.6, 1),
+                "gapToLeader": round(float(gap), 2),
+                "lastCameraId": entry.get("last_camera", ""),
+            })
+
+        return rankings
+
+    def stop(self):
+        self._running = False
+        self._reader.detach()
+
+    def reset(self):
+        self.fusion.reset()
+        for engine in self._vote_engines.values():
+            engine.reset()
+
+    def get_stats(self) -> dict:
+        return {
+            "deepstream": {
+                "shm_attached": self._reader.is_attached,
+                "shm_seq": self._reader.last_seq,
+                "cycles": self.cycles,
+                "frames_processed": self.frames_processed,
+                "current_fps": round(self.current_fps, 1),
+                "last_cycle_ms": round(self.last_cycle_time * 1000, 1),
+            },
+            "fusion": self.fusion.get_stats(),
+        }
+
+
+# ============================================================
 # FASTAPI APP
 # ============================================================
 
@@ -643,6 +933,8 @@ ws_clients: set[WebSocket] = set()
 # Global pipeline references
 _camera_manager: Optional[CameraManager] = None
 _pipeline: Optional[MultiCameraPipeline] = None
+_deepstream_subprocess: Optional[DeepStreamSubprocess] = None
+_deepstream_pipeline: Optional[DeepStreamPipeline] = None
 _legacy_detector: Optional[LegacyDetectionLoop] = None
 
 # ============================================================
@@ -718,6 +1010,8 @@ async def websocket_endpoint(websocket: WebSocket):
                 state.race_active = True
                 if _pipeline:
                     _pipeline.reset()
+                if _deepstream_pipeline:
+                    _deepstream_pipeline.reset()
                 log.info("Race started (from operator)")
                 await broadcast({
                     "type": "race_start",
@@ -844,9 +1138,19 @@ async def get_cameras():
 @app.get("/api/stats")
 async def get_stats():
     """Pipeline performance stats."""
-    stats = {"mode": "multi" if _pipeline else "legacy"}
-    if _pipeline:
+    if _deepstream_pipeline:
+        stats = {"mode": "deepstream"}
+        stats.update(_deepstream_pipeline.get_stats())
+        if _deepstream_subprocess:
+            stats["subprocess"] = {
+                "pid": _deepstream_subprocess.pid,
+                "running": _deepstream_subprocess.is_running,
+            }
+    elif _pipeline:
+        stats = {"mode": "multi"}
         stats.update(_pipeline.get_stats())
+    else:
+        stats = {"mode": "legacy"}
     return JSONResponse(stats)
 
 
@@ -950,6 +1254,14 @@ async def ranking_broadcast_loop():
                          trigger.get("frames_processed", 0),
                          analyzer.get("frames_processed", 0),
                          analyzer.get("current_fps", 0))
+            if _deepstream_pipeline:
+                stats = _deepstream_pipeline.get_stats()
+                ds = stats.get("deepstream", {})
+                log.info("  DeepStream: seq=%d, %d frames @ %.1f fps, %.1fms/cycle",
+                         ds.get("shm_seq", 0),
+                         ds.get("frames_processed", 0),
+                         ds.get("current_fps", 0),
+                         ds.get("last_cycle_ms", 0))
             last_log_time = now
 
 
@@ -1017,8 +1329,23 @@ def load_camera_config(config_path: str) -> tuple[CameraManager, TrackTopology]:
 _grabber = None  # VideoFileGrabber or RTSPGrabber
 
 
+def _shutdown_handler(signum, frame):
+    """Graceful shutdown on SIGTERM/SIGINT."""
+    log.info("Received signal %d, shutting down...", signum)
+    if _deepstream_subprocess:
+        _deepstream_subprocess.stop()
+    if _deepstream_pipeline:
+        _deepstream_pipeline.stop()
+    if _pipeline:
+        _pipeline.stop()
+    if _legacy_detector:
+        _legacy_detector.stop()
+    sys.exit(0)
+
+
 def main():
-    global _grabber, _pipeline, _legacy_detector, _camera_manager
+    global _grabber, _pipeline, _deepstream_subprocess, _deepstream_pipeline
+    global _legacy_detector, _camera_manager
 
     parser = argparse.ArgumentParser(description="Race Vision Backend Server")
     parser.add_argument("--url", default=None, help="Single RTSP stream URL (legacy mode)")
@@ -1033,7 +1360,28 @@ def main():
                         help="Auto-start race on launch")
     parser.add_argument("--mode", choices=["auto", "multi", "legacy"], default="auto",
                         help="Pipeline mode: multi (trigger+analysis+fusion) or legacy (single detector)")
+    parser.add_argument("--deepstream", action="store_true",
+                        help="Use DeepStream C++ pipeline via shared memory")
+    parser.add_argument("--ds-binary", default="/app/bin/race_vision_deepstream",
+                        help="Path to DeepStream C++ binary")
+    parser.add_argument("--yolo-engine", default="/app/models/yolov8s_deepstream.engine",
+                        help="Path to YOLO TensorRT engine")
+    parser.add_argument("--color-engine", default="/app/models/color_classifier.engine",
+                        help="Path to color classifier TensorRT engine")
     args = parser.parse_args()
+
+    # Environment variable override (for Docker: DEEPSTREAM=1)
+    if os.environ.get("DEEPSTREAM") == "1":
+        args.deepstream = True
+
+    # Signal handlers for graceful shutdown
+    signal.signal(signal.SIGTERM, _shutdown_handler)
+    signal.signal(signal.SIGINT, _shutdown_handler)
+
+    # Load heavy imports only when needed (non-DeepStream modes require torch)
+    if not args.deepstream:
+        log.info("Loading torch/ultralytics modules...")
+        _load_heavy_imports()
 
     # ── Determine mode and sources ────────────────────────────────────
 
@@ -1042,8 +1390,11 @@ def main():
     if args.config:
         # Multi-camera from config file
         _camera_manager, topology = load_camera_config(args.config)
-        _grabber = RTSPGrabber(_camera_manager, gpu=args.gpu)
-        _grabber.start()
+        if not args.deepstream:
+            _grabber = RTSPGrabber(_camera_manager, gpu=args.gpu)
+            _grabber.start()
+        else:
+            log.info("DeepStream mode — skipping RTSP grabber")
         use_multi = True
         log.info("Multi-camera mode from config: %s", args.config)
 
@@ -1080,14 +1431,12 @@ def main():
         # Single RTSP → legacy mode
         url = args.url or DEFAULT_RTSP_URL
         cam_id = "cam-01"
-        cam_video_map = {cam_id: url}
 
-        # Use CameraStream for RTSP with reconnect
         def _rtsp_on_frame(cid, frame):
             frame_store.put(cam_id, frame)
             state.set_frame(cam_id, frame)
 
-        cam = CameraStream(
+        cam = _CameraStream(
             cam_id, url, gpu=args.gpu,
             reconnect_delay=5.0,
             on_frame=_rtsp_on_frame,
@@ -1099,7 +1448,25 @@ def main():
 
     # ── Start pipeline ────────────────────────────────────────────────
 
-    if use_multi and args.mode != "legacy":
+    if args.deepstream and use_multi:
+        # Launch C++ DeepStream as subprocess (if binary exists)
+        if os.path.isfile(args.ds_binary):
+            _deepstream_subprocess = DeepStreamSubprocess(
+                config_path=args.config,
+                yolo_engine=args.yolo_engine,
+                color_engine=args.color_engine,
+                binary=args.ds_binary,
+            )
+            _deepstream_subprocess.start()
+        else:
+            log.info("DeepStream binary not found at %s — assuming external C++ process",
+                     args.ds_binary)
+
+        # Python SHM reader (retries until C++ creates SHM)
+        _deepstream_pipeline = DeepStreamPipeline(_camera_manager, topology)
+        _deepstream_pipeline.start()
+        log.info("DeepStream pipeline started (C++ SHM → Python fusion)")
+    elif use_multi and args.mode != "legacy":
         _pipeline = MultiCameraPipeline(_camera_manager, topology)
         _pipeline.start()
         log.info("Multi-camera pipeline started (trigger + analysis + fusion)")
@@ -1125,6 +1492,10 @@ def main():
                 _grabber.stop()
         if _pipeline:
             _pipeline.stop()
+        if _deepstream_pipeline:
+            _deepstream_pipeline.stop()
+        if _deepstream_subprocess:
+            _deepstream_subprocess.stop()
         if _legacy_detector:
             _legacy_detector.stop()
 
