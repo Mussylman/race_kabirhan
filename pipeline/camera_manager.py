@@ -60,6 +60,7 @@ class CameraManager:
         self.cooldown_sec = cooldown_sec
         self._lock = threading.Lock()
         self._cameras: dict[str, CameraInfo] = {}
+        self._completed: set[str] = set()  # cameras that produced final results
 
     # ── Camera registration ───────────────────────────────────────────
 
@@ -125,6 +126,28 @@ class CameraManager:
                 if elapsed >= self.cooldown_sec:
                     cam.active = False
 
+    def mark_completed(self, cam_id: str):
+        """Mark camera as completed — result produced, no more analysis needed."""
+        with self._lock:
+            self._completed.add(cam_id)
+            cam = self._cameras.get(cam_id)
+            if cam:
+                cam.active = False
+            log.info("COMPLETED  %s  (result finalized)", cam_id)
+
+    def is_completed(self, cam_id: str) -> bool:
+        with self._lock:
+            return cam_id in self._completed
+
+    def reset_completed(self):
+        """Reset completed state (for next race)."""
+        with self._lock:
+            self._completed.clear()
+
+    def get_completed_cameras(self) -> set[str]:
+        with self._lock:
+            return set(self._completed)
+
     def update_trigger_results(self, results: dict[str, int]):
         """Batch update from trigger loop.
 
@@ -136,6 +159,11 @@ class CameraManager:
             for cam_id, count in results.items():
                 cam = self._cameras.get(cam_id)
                 if not cam or cam.role != "analytics":
+                    continue
+
+                # Skip completed cameras — they already have final results
+                if cam_id in self._completed:
+                    cam.active = False
                     continue
 
                 if count > 0:

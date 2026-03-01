@@ -3,11 +3,19 @@
 
 import { useRaceStore } from '../store/raceStore';
 import { useCameraStore } from '../store/cameraStore';
-import { findClosestSilkId, getSilkColor, getDefaultSilkId } from '../utils/silkUtils';
+import { findClosestSilkId, getSilkColor } from '../utils/silkUtils';
+
+// Derive WebSocket URL from current page origin (works behind nginx proxy)
+const getWsUrl = (): string => {
+    const envUrl = import.meta.env.VITE_WS_URL;
+    if (envUrl && envUrl !== '__AUTO__') return envUrl;
+    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    return `${proto}//${window.location.host}/ws`;
+};
 
 // Configuration
 const CONFIG = {
-    WS_URL: 'ws://localhost:8000/ws',  // Backend WebSocket URL (race_vision backend)
+    WS_URL: getWsUrl(),
     RECONNECT_DELAY: 3000,              // Retry connection every 3 seconds
     HEARTBEAT_INTERVAL: 5000,           // Send ping every 5 seconds
 };

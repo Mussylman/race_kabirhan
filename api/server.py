@@ -47,6 +47,7 @@ import argparse
 import threading
 import subprocess
 import numpy as np
+import urllib.request
 from pathlib import Path
 from typing import Optional
 from collections import Counter
@@ -930,12 +931,135 @@ app.add_middleware(
 
 ws_clients: set[WebSocket] = set()
 
+
+# ============================================================
+# GO2RTC STREAM MONITOR
+# ============================================================
+
+class Go2RTCMonitor:
+    """Periodically polls go2rtc REST API and logs stream health.
+
+    go2rtc /api/streams returns per-stream info:
+    {
+      "cam-01": {
+        "producers": [{"url": "rtsp://...", "recv": <bytes>, ...}],
+        "consumers": [...]
+      }
+    }
+    A stream with no producers = RTSP source disconnected.
+    """
+
+    POLL_INTERVAL = 30  # seconds between polls
+    LOG_INTERVAL = 60   # seconds between full status logs
+
+    def __init__(self, go2rtc_url: str):
+        self._url = go2rtc_url.rstrip("/")
+        self._api_url = f"{self._url}/api/streams"
+        self._running = False
+        self._task: Optional[asyncio.Task] = None
+        # Per-stream state: {stream_id: {"online": bool, "recv": int, "last_change": float}}
+        self._streams: dict[str, dict] = {}
+        self._last_log = 0.0
+        self._lock = threading.Lock()
+
+    def start(self):
+        self._running = True
+        self._task = asyncio.create_task(self._poll_loop())
+        log.info("Go2RTC monitor started (%s)", self._api_url)
+
+    def stop(self):
+        self._running = False
+        if self._task:
+            self._task.cancel()
+            self._task = None
+
+    def get_status(self) -> dict:
+        """Return current stream health for /api/stats."""
+        with self._lock:
+            online = sum(1 for s in self._streams.values() if s.get("online"))
+            offline = sum(1 for s in self._streams.values() if not s.get("online"))
+            offline_list = [sid for sid, s in self._streams.items() if not s.get("online")]
+            return {
+                "total": len(self._streams),
+                "online": online,
+                "offline": offline,
+                "offline_streams": offline_list,
+            }
+
+    async def _poll_loop(self):
+        # Initial delay — let go2rtc boot up
+        await asyncio.sleep(5)
+        while self._running:
+            try:
+                await self._poll_once()
+            except Exception as e:
+                log.warning("Go2RTC monitor poll failed: %s", e)
+            await asyncio.sleep(self.POLL_INTERVAL)
+
+    async def _poll_once(self):
+        loop = asyncio.get_event_loop()
+        data = await loop.run_in_executor(None, self._fetch_streams)
+        if data is None:
+            return
+
+        now = time.time()
+        changes = []
+
+        with self._lock:
+            for stream_id, info in data.items():
+                producers = info.get("producers") or []
+                has_producer = len(producers) > 0
+                recv_bytes = sum(p.get("recv", 0) for p in producers)
+
+                prev = self._streams.get(stream_id)
+                was_online = prev["online"] if prev else None
+
+                self._streams[stream_id] = {
+                    "online": has_producer,
+                    "recv": recv_bytes,
+                    "consumers": len(info.get("consumers") or []),
+                    "last_change": prev["last_change"] if prev else now,
+                }
+
+                # Detect state change
+                if was_online is not None and has_producer != was_online:
+                    self._streams[stream_id]["last_change"] = now
+                    status = "ONLINE" if has_producer else "OFFLINE"
+                    changes.append((stream_id, status))
+
+        # Log state changes immediately
+        for stream_id, status in changes:
+            log.warning("go2rtc stream %s → %s", stream_id, status)
+
+        # Periodic full status log
+        if now - self._last_log >= self.LOG_INTERVAL:
+            status = self.get_status()
+            if status["offline"] > 0:
+                log.warning("go2rtc: %d/%d online, offline: %s",
+                            status["online"], status["total"],
+                            ", ".join(status["offline_streams"]))
+            else:
+                log.info("go2rtc: %d/%d streams online", status["online"], status["total"])
+            self._last_log = now
+
+    def _fetch_streams(self) -> Optional[dict]:
+        """Synchronous HTTP GET to go2rtc /api/streams."""
+        try:
+            req = urllib.request.Request(self._api_url, method="GET")
+            req.add_header("Accept", "application/json")
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                return json.loads(resp.read().decode())
+        except Exception:
+            return None
+
+
 # Global pipeline references
 _camera_manager: Optional[CameraManager] = None
 _pipeline: Optional[MultiCameraPipeline] = None
 _deepstream_subprocess: Optional[DeepStreamSubprocess] = None
 _deepstream_pipeline: Optional[DeepStreamPipeline] = None
 _legacy_detector: Optional[LegacyDetectionLoop] = None
+_go2rtc_monitor: Optional[Go2RTCMonitor] = None
 
 # ============================================================
 # WEBSOCKET ENDPOINT
@@ -1059,6 +1183,13 @@ async def broadcast(msg: dict):
 # ============================================================
 
 from fastapi.responses import HTMLResponse
+from starlette.responses import FileResponse
+
+
+@app.get("/admin")
+async def admin_panel():
+    admin_path = Path(__file__).resolve().parent.parent / "admin" / "index.html"
+    return FileResponse(admin_path, media_type="text/html")
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -1151,6 +1282,8 @@ async def get_stats():
         stats.update(_pipeline.get_stats())
     else:
         stats = {"mode": "legacy"}
+    if _go2rtc_monitor:
+        stats["go2rtc"] = _go2rtc_monitor.get_status()
     return JSONResponse(stats)
 
 
@@ -1268,6 +1401,8 @@ async def ranking_broadcast_loop():
 @app.on_event("startup")
 async def startup():
     asyncio.create_task(ranking_broadcast_loop())
+    if _go2rtc_monitor:
+        _go2rtc_monitor.start()
     log.info(f"Race Vision backend running on http://{SERVER_HOST}:{SERVER_PORT}")
     log.info(f"  WebSocket: ws://localhost:{SERVER_PORT}/ws")
     log.info(f"  MJPEG:     http://localhost:{SERVER_PORT}/stream/cam1")
@@ -1345,7 +1480,7 @@ def _shutdown_handler(signum, frame):
 
 def main():
     global _grabber, _pipeline, _deepstream_subprocess, _deepstream_pipeline
-    global _legacy_detector, _camera_manager
+    global _legacy_detector, _camera_manager, _go2rtc_monitor
 
     parser = argparse.ArgumentParser(description="Race Vision Backend Server")
     parser.add_argument("--url", default=None, help="Single RTSP stream URL (legacy mode)")
@@ -1368,6 +1503,8 @@ def main():
                         help="Path to YOLO TensorRT engine")
     parser.add_argument("--color-engine", default="/app/models/color_classifier.engine",
                         help="Path to color classifier TensorRT engine")
+    parser.add_argument("--go2rtc-url", default="http://localhost:1984",
+                        help="go2rtc API URL for stream health monitoring")
     args = parser.parse_args()
 
     # Environment variable override (for Docker: DEEPSTREAM=1)
@@ -1377,6 +1514,9 @@ def main():
     # Signal handlers for graceful shutdown
     signal.signal(signal.SIGTERM, _shutdown_handler)
     signal.signal(signal.SIGINT, _shutdown_handler)
+
+    # go2rtc stream health monitor (started in FastAPI startup event)
+    _go2rtc_monitor = Go2RTCMonitor(args.go2rtc_url)
 
     # Load heavy imports only when needed (non-DeepStream modes require torch)
     if not args.deepstream:
@@ -1487,6 +1627,8 @@ def main():
         uvicorn.run(app, host=args.host, port=args.port, log_level="info")
     finally:
         log.info("Shutting down...")
+        if _go2rtc_monitor:
+            _go2rtc_monitor.stop()
         if _grabber:
             if hasattr(_grabber, 'stop'):
                 _grabber.stop()

@@ -4,7 +4,8 @@ export_trt.py — Export YOLO and color classifier models to TensorRT FP16.
 Exports:
     1. YOLOv8n → yolov8n_trigger.engine (640px, FP16, batch=25)
     2. YOLOv8s → yolov8s_analysis.engine (1280px, FP16, batch=8)
-    3. SimpleColorCNN → color_classifier.engine (64px, FP16, batch=64)
+    3. YOLOv8s → yolov8s_deepstream.engine (1280px, FP16, batch=25) — for DeepStream
+    4. SimpleColorCNN → color_classifier.engine (64px, FP16, dynamic batch 1-128)
 
 Requirements:
     - NVIDIA GPU with TensorRT support
@@ -12,10 +13,11 @@ Requirements:
     - torch + tensorrt
 
 Usage:
-    python tools/export_trt.py                    # export all
-    python tools/export_trt.py --model trigger    # export trigger only
-    python tools/export_trt.py --model analysis   # export analysis only
-    python tools/export_trt.py --model classifier # export classifier only
+    python tools/export_trt.py                     # export all
+    python tools/export_trt.py --model trigger     # export trigger only
+    python tools/export_trt.py --model analysis    # export analysis only
+    python tools/export_trt.py --model deepstream  # export YOLOv8s for DeepStream (batch=25)
+    python tools/export_trt.py --model classifier  # export classifier only
 """
 
 import sys
@@ -96,6 +98,40 @@ def export_yolo_analysis():
         log.info("  Saved: %s (%.1f MB)", output, output.stat().st_size / 1024 / 1024)
 
 
+def export_yolo_deepstream():
+    """Export YOLOv8s for DeepStream (1280px, batch=25, FP16).
+
+    This engine runs ALL 25 cameras simultaneously in the DeepStream C++
+    pipeline. No trigger/analysis split needed — TRT FP16 is fast enough.
+    """
+    from ultralytics import YOLO
+
+    pt_path = "yolov8s.pt"
+    output = MODELS_DIR / "yolov8s_deepstream.engine"
+
+    log.info("=== Exporting YOLOv8s for DeepStream ===")
+    log.info("  Source: %s", pt_path)
+    log.info("  Target: %s", output)
+    log.info("  imgsz=1280, half=True, batch=25")
+
+    model = YOLO(pt_path)
+    model.export(
+        format="engine",
+        imgsz=1280,
+        half=True,
+        batch=25,
+        device=0,
+        simplify=True,
+    )
+
+    exported = Path(pt_path).with_suffix(".engine")
+    if exported.exists():
+        exported.rename(output)
+        log.info("  Saved: %s (%.1f MB)", output, output.stat().st_size / 1024 / 1024)
+    else:
+        log.warning("  Export may have saved to a different location, check yolov8s.engine")
+
+
 def export_color_classifier():
     """Export SimpleColorCNN to TensorRT via ONNX → TRT."""
     import torch
@@ -141,11 +177,11 @@ def export_color_classifier():
         network = builder.create_network(1 << int(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH))
         parser = trt.OnnxParser(network, TRT_LOGGER)
 
-        with open(onnx_path, "rb") as f:
-            if not parser.parse(f.read()):
-                for i in range(parser.num_errors):
-                    log.error("  ONNX parse error: %s", parser.get_error(i))
-                return
+        # parse_from_file resolves external weights relative to ONNX path
+        if not parser.parse_from_file(str(onnx_path)):
+            for i in range(parser.num_errors):
+                log.error("  ONNX parse error: %s", parser.get_error(i))
+            return
 
         config = builder.create_builder_config()
         config.set_memory_pool_limit(trt.MemoryPoolType.WORKSPACE, 1 << 28)  # 256MB
@@ -155,8 +191,8 @@ def export_color_classifier():
         profile = builder.create_optimization_profile()
         profile.set_shape("input",
                           min=(1, 3, 64, 64),
-                          opt=(16, 3, 64, 64),
-                          max=(64, 3, 64, 64))
+                          opt=(32, 3, 64, 64),
+                          max=(128, 3, 64, 64))
         config.add_optimization_profile(profile)
 
         serialized = builder.build_serialized_network(network, config)
@@ -175,7 +211,7 @@ def export_color_classifier():
 
 def main():
     parser = argparse.ArgumentParser(description="Export models to TensorRT")
-    parser.add_argument("--model", choices=["trigger", "analysis", "classifier", "all"],
+    parser.add_argument("--model", choices=["trigger", "analysis", "deepstream", "classifier", "all"],
                         default="all", help="Which model to export")
     args = parser.parse_args()
 
@@ -186,6 +222,9 @@ def main():
 
     if args.model in ("analysis", "all"):
         export_yolo_analysis()
+
+    if args.model in ("deepstream", "all"):
+        export_yolo_deepstream()
 
     if args.model in ("classifier", "all"):
         export_color_classifier()

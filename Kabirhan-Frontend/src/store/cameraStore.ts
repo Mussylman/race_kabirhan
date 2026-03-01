@@ -21,6 +21,7 @@ interface CameraState {
     setActivePTZ: (cameraId: string) => void;
     updateCameraStatus: (cameraId: string, status: 'online' | 'offline') => void;
     updateAnalyticsCameraHorses: (cameraId: string, horseIds: string[]) => void;
+    updateCameraActivation: (cameras: Record<string, boolean>) => void;
     initializeCameras: () => void;
     syncFromStorage: () => void;
 }
@@ -87,6 +88,13 @@ export const useCameraStore = create<CameraState>((set, get) => ({
         analyticsCameras: state.analyticsCameras.map(cam =>
             cam.id === cameraId ? { ...cam, horsesInView: horseIds } : cam
         )
+    })),
+
+    updateCameraActivation: (cameras) => set((state) => ({
+        analyticsCameras: state.analyticsCameras.map(cam => ({
+            ...cam,
+            status: cameras[cam.id] ? 'online' as const : cam.status,
+        }))
     })),
 
     initializeCameras: () => set({

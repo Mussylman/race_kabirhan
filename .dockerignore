@@ -1,0 +1,39 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+venv/
+.venv/
+*.egg-info/
+
+# Node (frontend builds separately)
+Kabirhan-Frontend/node_modules/
+Kabirhan-Frontend/dist/
+Kabirhan-Frontend/.vite/
+
+# Data & archives (too large for image)
+data/
+data.rar
+models.rar
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Claude
+.claude/
+
+# Docs
+*.docx
+DOCS.md
+README.md
+Camera 1.docx
+
+# DeepStream builds separately
+deepstream/build/

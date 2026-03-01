@@ -115,7 +115,7 @@ export const CameraSettings = () => {
     // Fetch stream status
     const fetchStreamStatus = async () => {
         try {
-            const response = await fetch('http://localhost:8000/api/streams/status');
+            const response = await fetch('/api/streams/status');
             const status = await response.json();
             const activeIds: Record<string, boolean> = {};
             Object.keys(status).forEach(id => {
@@ -137,7 +137,7 @@ export const CameraSettings = () => {
     const startStream = useCallback(async (cameraId: string) => {
         setLoading(prev => ({ ...prev, [cameraId]: true }));
         try {
-            await fetch(`http://localhost:8000/api/cameras/${cameraId}/start`, { method: 'POST' });
+            await fetch(`/api/cameras/${cameraId}/start`, { method: 'POST' });
             await fetchStreamStatus();
         } catch (error) {
             console.error('Failed to start stream:', error);
@@ -149,7 +149,7 @@ export const CameraSettings = () => {
     const stopStream = useCallback(async (cameraId: string) => {
         setLoading(prev => ({ ...prev, [cameraId]: true }));
         try {
-            await fetch(`http://localhost:8000/api/cameras/${cameraId}/stop`, { method: 'POST' });
+            await fetch(`/api/cameras/${cameraId}/stop`, { method: 'POST' });
             await fetchStreamStatus();
         } catch (error) {
             console.error('Failed to stop stream:', error);
@@ -160,7 +160,7 @@ export const CameraSettings = () => {
     // Save camera URL
     const saveCamera = useCallback(async (cameraId: string, url: string, type: 'ptz' | 'analytics') => {
         try {
-            await fetch(`http://localhost:8000/api/cameras/${cameraId}`, {
+            await fetch(`/api/cameras/${cameraId}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ rtspUrl: url })
@@ -240,7 +240,7 @@ export const CameraSettings = () => {
             <div className="mt-6 racing-card p-4">
                 <h4 className="text-sm font-medium text-[var(--text-primary)] mb-2">Backend Server</h4>
                 <div className="text-xs text-[var(--text-muted)] space-y-1">
-                    <p>Backend: <code className="text-[var(--text-secondary)]">http://localhost:8000</code></p>
+                    <p>Backend: <code className="text-[var(--text-secondary)]">/api (proxied via nginx)</code></p>
                     <p>Run: <code className="text-[var(--text-secondary)]">python api/server.py --video data/videos/exp10_cam1.mp4 --auto-start</code></p>
                 </div>
             </div>

@@ -1,0 +1,17 @@
+# go2rtc test config — 5 analytics cameras only
+
+streams:
+  cam-01:
+    - rtsp://admin:Zxcv2Zxcv2@10.223.70.32:554/Streaming/Channels/101
+  cam-02:
+    - rtsp://admin:Zxcv2Zxcv2@10.223.70.16:554/Streaming/Channels/101
+  cam-03:
+    - rtsp://admin:Zxcv2Zxcv2@10.223.70.46:554/Streaming/Channels/101
+  cam-04:
+    - rtsp://admin:Zxcv2Zxcv2@10.223.70.44:554/Streaming/Channels/101
+  cam-05:
+    - rtsp://admin:Zxcv2Zxcv2@10.223.70.17:554/Streaming/Channels/101
+
+webrtc:
+  candidates:
+    - stun:stun.l.google.com:19302

@@ -196,6 +196,29 @@ class VoteEngine:
 
         return [c for c in result if c is not None]
 
+    # ── Readiness check ────────────────────────────────────────────────
+
+    def is_result_ready(self, min_frames: int = 3) -> bool:
+        """Check if we have enough votes for a confident result.
+
+        Ready when:
+            - At least min_frames voted frames collected
+            - All 5 positions have a clear winner (>= min_votes_per_pos)
+        """
+        if self.vote_frames < min_frames:
+            return False
+
+        # Check that each position up to n_colors has a winner
+        for pos in range(min(self.n_colors, max(self.position_votes.keys()) + 1 if self.position_votes else 0)):
+            votes = self.position_votes.get(pos, Counter())
+            if not votes:
+                return False
+            top_count = votes.most_common(1)[0][1]
+            if top_count < self.min_votes_per_pos:
+                return False
+
+        return len(self.position_votes) >= self.n_colors
+
     # ── Utilities ──────────────────────────────────────────────────────
 
     def reset(self):

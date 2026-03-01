@@ -1,0 +1,12 @@
+{
+    "track_length": 2500,
+    "max_active": 5,
+    "analytics": [
+        {"id": "cam-01", "url": "rtsp://admin:Zxcv2Zxcv2@10.223.70.32:554/Streaming/Channels/102", "track_start": 0,    "track_end": 110},
+        {"id": "cam-02", "url": "rtsp://admin:Zxcv2Zxcv2@10.223.70.16:554/Streaming/Channels/102", "track_start": 100,  "track_end": 210},
+        {"id": "cam-03", "url": "rtsp://admin:Zxcv2Zxcv2@10.223.70.46:554/Streaming/Channels/102", "track_start": 200,  "track_end": 310},
+        {"id": "cam-04", "url": "rtsp://admin:Zxcv2Zxcv2@10.223.70.44:554/Streaming/Channels/102", "track_start": 300,  "track_end": 410},
+        {"id": "cam-05", "url": "rtsp://admin:Zxcv2Zxcv2@10.223.70.17:554/Streaming/Channels/102", "track_start": 400,  "track_end": 510}
+    ],
+    "display": []
+}

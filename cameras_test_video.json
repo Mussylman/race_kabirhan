@@ -1,0 +1,10 @@
+{
+    "track_length": 300,
+    "max_active": 3,
+    "analytics": [
+        {"id": "test-cam-01", "url": "file:///data/videos/exp10_cam1.mp4", "track_start": 0,   "track_end": 110},
+        {"id": "test-cam-02", "url": "file:///data/videos/exp10_cam2.mp4", "track_start": 100, "track_end": 210},
+        {"id": "test-cam-03", "url": "file:///data/videos/exp10_cam3.mp4", "track_start": 200, "track_end": 300}
+    ],
+    "display": []
+}

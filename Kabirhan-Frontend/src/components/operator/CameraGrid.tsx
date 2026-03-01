@@ -41,11 +41,13 @@ export const CameraGrid = () => {
                             `}
                         >
                             {/* WebRTC Stream via go2rtc */}
-                            <div className="aspect-video bg-black">
+                            <div className="relative aspect-video bg-black">
                                 <Go2RTCPlayer
-                                    cameraId={camera.go2rtcId}
+                                    cameraId={`${camera.go2rtcId}-sub`}
                                     cameraName={camera.name}
-                                    className="w-full h-full"
+                                    className="absolute inset-0"
+                                    connectDelay={0}
+                                    lazy
                                 />
                             </div>
 

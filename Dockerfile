@@ -46,6 +46,7 @@ COPY deepstream/configs/ /app/configs/
 COPY api/ api/
 COPY pipeline/ pipeline/
 COPY tools/ tools/
+COPY admin/ admin/
 
 EXPOSE 8000
 

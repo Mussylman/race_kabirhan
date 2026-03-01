@@ -148,12 +148,32 @@ class TriggerLoop(threading.Thread):
 
             trigger_results[cam_id] = valid
 
+        # Log per-camera trigger results
+        prev_active = self.camera_manager.get_activation_map()
+
         # Batch update camera manager
         self.camera_manager.update_trigger_results(trigger_results)
+
+        new_active = self.camera_manager.get_activation_map()
+
+        # Log activations/deactivations
+        for cam_id in trigger_results:
+            was = prev_active.get(cam_id, False)
+            now = new_active.get(cam_id, False)
+            count = trigger_results[cam_id]
+            if now and not was:
+                log.info("ACTIVATE  %s  (%d detections)", cam_id, count)
+            elif not now and was:
+                log.info("DEACTIVATE  %s  (cooldown expired)", cam_id)
 
         activated = sum(1 for v in trigger_results.values() if v >= self.min_detections)
         if activated > 0:
             self.trigger_count += 1
+            if self.frames_processed % 30 == 0:  # log summary every ~10s
+                active_list = [c for c, a in new_active.items() if a]
+                log.info("Trigger: %d/%d cameras active [%s] batch=%.1fms",
+                         len(active_list), len(trigger_results),
+                         ", ".join(active_list), self.last_batch_time * 1000)
 
     def stop(self):
         self.running = False

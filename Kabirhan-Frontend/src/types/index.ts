@@ -87,7 +87,7 @@ export interface CameraStatusUpdate {
 
 // Constants
 export const TRACK_LENGTH = 2500;
-export const PTZ_CAMERA_COUNT = 3;
+export const PTZ_CAMERA_COUNT = 4;
 export const MAX_HORSES = 5;
 export const TOP_HORSES_DISPLAY = 10;
 export const TOTAL_SILKS = 10;
