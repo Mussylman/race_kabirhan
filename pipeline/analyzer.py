@@ -1,7 +1,7 @@
 """
 analyzer.py — Full analysis pipeline for active cameras.
 
-Runs YOLOv8s @ 1280px + torso crop + SimpleColorCNN on cameras where
+Runs YOLOv8s @ 800px + torso crop + SimpleColorCNN on cameras where
 the trigger detected horses.  Produces per-camera detection results
 that are fed into the fusion module.
 
@@ -44,7 +44,7 @@ TORSO_RIGHT = 0.20
 
 # Bbox filters
 MIN_ASPECT_RATIO = 1.2
-MIN_BBOX_HEIGHT = 100
+MIN_BBOX_HEIGHT = 65
 EDGE_MARGIN = 10
 
 # Classifier thresholds
@@ -169,12 +169,12 @@ class AnalysisLoop(threading.Thread):
         on_result: Optional[Callable[[list[CameraDetections]], None]] = None,
         on_annotated_frame: Optional[Callable[[str, np.ndarray], None]] = None,
         *,
-        analysis_fps: float = 12.0,
+        analysis_fps: float = 4.0,
         yolo_engine: Optional[str] = None,
         yolo_fallback: str = "yolov8s.pt",
         classifier_engine: Optional[str] = None,
         classifier_fallback: str = "models/color_classifier.pt",
-        imgsz: int = 1280,
+        imgsz: int = 800,
         det_conf: float = 0.35,
         det_iou: float = 0.3,
     ):
@@ -208,7 +208,12 @@ class AnalysisLoop(threading.Thread):
         self._vote_engines: dict[str, VoteEngine] = {}
         # Track when each camera was first analyzed (for time-based completion)
         self._cam_first_analysis: dict[str, float] = {}
-        self.max_analysis_sec: float = 3.0  # max seconds to analyze one camera
+        # Track when all 5 colors became visible (for grace period)
+        self._cam_all_visible_time: dict[str, float] = {}
+        # Cameras that already emitted their result
+        self._cam_completed: set[str] = set()
+        self.max_analysis_sec: float = 8.0
+        self.grace_period_sec: float = 2.0
 
     def _get_vote_engine(self, cam_id: str) -> VoteEngine:
         if cam_id not in self._vote_engines:
@@ -346,6 +351,10 @@ class AnalysisLoop(threading.Thread):
                 }
                 frame_dets.append(frame_det)
 
+            # Skip already completed cameras
+            if cam_id in self._cam_completed:
+                continue
+
             # Submit to per-camera vote engine
             engine = self._get_vote_engine(cam_id)
             assigned, weight = engine.submit_frame(frame_dets)
@@ -353,7 +362,6 @@ class AnalysisLoop(threading.Thread):
             for d in assigned:
                 cam_result.add(d)
 
-            all_results.append(cam_result)
             self.detections_total += cam_result.n_detections
 
             if cam_result.n_detections > 0:
@@ -364,27 +372,56 @@ class AnalysisLoop(threading.Thread):
                          (time.monotonic() - t0) * 1000)
 
             # Track first analysis time for this camera
+            now = time.monotonic()
             if cam_id not in self._cam_first_analysis:
-                self._cam_first_analysis[cam_id] = time.monotonic()
+                self._cam_first_analysis[cam_id] = now
 
-            # Check completion: either all positions filled OR time limit reached
+            # Track when all 5 colors become visible
+            if weight > 0:
+                visible_colors = set(d['color'] for d in assigned)
+                if len(visible_colors) >= 5 and cam_id not in self._cam_all_visible_time:
+                    self._cam_all_visible_time[cam_id] = now
+
+            # Check completion conditions
             should_complete = False
             reason = ""
 
             if engine.is_result_ready():
-                should_complete = True
-                reason = "all positions filled"
-            elif engine.vote_frames >= 3:
-                elapsed_analysis = time.monotonic() - self._cam_first_analysis[cam_id]
-                if elapsed_analysis >= self.max_analysis_sec:
+                # Condition 1: confident + grace period after all 5 visible
+                if cam_id in self._cam_all_visible_time:
+                    elapsed_grace = now - self._cam_all_visible_time[cam_id]
+                    if elapsed_grace >= self.grace_period_sec:
+                        should_complete = True
+                        reason = f"confident + grace {elapsed_grace:.1f}s"
+                # Condition 2: confident + high frame count
+                if not should_complete and engine.vote_frames >= 8:
                     should_complete = True
-                    reason = f"time limit ({elapsed_analysis:.1f}s)"
+                    reason = f"confident + {engine.vote_frames} frames"
 
-            if should_complete and not self.camera_manager.is_completed(cam_id):
+            if not should_complete and engine.vote_frames >= 2:
+                # Condition 3: timeout with votes
+                elapsed = now - self._cam_first_analysis[cam_id]
+                if elapsed >= self.max_analysis_sec:
+                    should_complete = True
+                    reason = f"timeout ({elapsed:.1f}s)"
+
+            if not should_complete and cam_id in self._cam_first_analysis:
+                # Condition 4: partial timeout — straggler case (few horses, no votes)
+                # Still send partial data to fusion so it knows horse positions
+                elapsed = now - self._cam_first_analysis[cam_id]
+                if elapsed >= self.max_analysis_sec:
+                    should_complete = True
+                    reason = f"partial timeout ({elapsed:.1f}s, {cam_result.n_detections} horses)"
+
+            if should_complete:
+                self._cam_completed.add(cam_id)
                 vote_result = engine.compute_result()
-                log.info("RESULT READY  %s  order=[%s]  (%s, %d vote frames)",
+                log.info("CAMERA COMPLETE  %s  order=[%s]  (%s, %d vote frames)",
                          cam_id, " > ".join(vote_result), reason, engine.vote_frames)
                 self.camera_manager.mark_completed(cam_id)
+
+                # Deliver result to fusion ONCE
+                all_results.append(cam_result)
 
             # Draw annotations on frame
             if self.on_annotated_frame:
@@ -395,7 +432,7 @@ class AnalysisLoop(threading.Thread):
         self.last_batch_time = time.monotonic() - t0
         self.frames_processed += len(frames)
 
-        # Deliver results to fusion
+        # Deliver completed camera results to fusion
         if self.on_result and all_results:
             self.on_result(all_results)
 
@@ -405,14 +442,20 @@ class AnalysisLoop(threading.Thread):
         return engine.compute_result() if engine else []
 
     def reset_votes(self, cam_id: Optional[str] = None):
-        """Reset vote engines."""
+        """Reset vote engines and completion state."""
         if cam_id:
             engine = self._vote_engines.get(cam_id)
             if engine:
                 engine.reset()
+            self._cam_first_analysis.pop(cam_id, None)
+            self._cam_all_visible_time.pop(cam_id, None)
+            self._cam_completed.discard(cam_id)
         else:
             for engine in self._vote_engines.values():
                 engine.reset()
+            self._cam_first_analysis.clear()
+            self._cam_all_visible_time.clear()
+            self._cam_completed.clear()
 
     def stop(self):
         self.running = False

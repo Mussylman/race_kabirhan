@@ -14,7 +14,7 @@ Architecture (4 layers):
         → updates CameraManager.active_cameras
 
     Layer 2 — ANALYZE:
-        AnalysisLoop thread → YOLOv8s @ 1280px + ColorCNN on active cameras
+        AnalysisLoop thread → YOLOv8s @ 800px + ColorCNN on active cameras
         → per-camera detections → FusionEngine
 
     Layer 3 — FUSION:
@@ -574,10 +574,10 @@ class MultiCameraPipeline:
             frame_source=frame_store.get,
             on_result=self._on_analysis_result,
             on_annotated_frame=lambda cam_id, frame: state.set_display_frame(cam_id, frame),
-            analysis_fps=12.0,
+            analysis_fps=4.0,
             yolo_fallback="yolov8s.pt",
             classifier_fallback="models/color_classifier.pt",
-            imgsz=1280,
+            imgsz=800,
         )
         self._analyzer.start()
         log.info("AnalysisLoop started")
@@ -663,11 +663,13 @@ class DeepStreamSubprocess:
     def __init__(self, config_path: str,
                  yolo_engine: str = "/app/models/yolov8s_deepstream.engine",
                  color_engine: str = "/app/models/color_classifier.engine",
-                 binary: str = "/app/bin/race_vision_deepstream"):
+                 binary: str = "/app/bin/race_vision_deepstream",
+                 file_mode: bool = False):
         self.config_path = config_path
         self.yolo_engine = yolo_engine
         self.color_engine = color_engine
         self.binary = binary
+        self.file_mode = file_mode
         self._proc: Optional[subprocess.Popen] = None
         self._monitor_thread: Optional[threading.Thread] = None
         self._running = False
@@ -679,6 +681,8 @@ class DeepStreamSubprocess:
             "--yolo-engine", self.yolo_engine,
             "--color-engine", self.color_engine,
         ]
+        if self.file_mode:
+            cmd.append("--file-mode")
         log.info("Starting DeepStream C++: %s", " ".join(cmd))
 
         env = os.environ.copy()
@@ -759,11 +763,26 @@ class DeepStreamPipeline:
         from pipeline.vote_engine import VoteEngine
         self._vote_engines: dict[str, VoteEngine] = {}
 
+        # Frame skip: ~25fps from DeepStream → ~4fps effective
+        self._cam_frame_count: dict[str, int] = {}
+        self.frame_skip: int = 6
+
+        # One-result-per-camera state
+        self._cam_first_analysis: dict[str, float] = {}
+        self._cam_all_visible_time: dict[str, float] = {}
+        self._cam_completed: set[str] = set()
+        self._pending_camera_results: list[dict] = []
+        self.max_analysis_sec: float = 8.0
+        self.grace_period_sec: float = 2.0
+
         # Stats
         self.frames_processed = 0
         self.cycles = 0
         self.last_cycle_time = 0.0
         self.current_fps = 0.0
+
+        # Live detection status: {cam_id: n_detections} — updated every SHM read
+        self.live_detections: dict[str, int] = {}
 
     def _get_vote_engine(self, cam_id: str):
         from pipeline.vote_engine import VoteEngine
@@ -816,35 +835,103 @@ class DeepStreamPipeline:
 
             self.cycles += 1
 
+            # Update live detection map (regardless of race_active)
+            live = {}
+            for cam_det in cam_results:
+                if cam_det.n_detections > 0:
+                    live[cam_det.cam_id] = cam_det.n_detections
+            self.live_detections = live
+
             if not state.race_active:
                 continue
 
-            # Process through vote engines (same as AnalysisLoop)
-            voted_results = []
+            # Process through vote engines with frame skip + one-result-per-camera
             for cam_det in cam_results:
-                if cam_det.n_detections == 0:
-                    voted_results.append(cam_det)
+                cam_id = cam_det.cam_id
+
+                # Skip completed cameras
+                if cam_id in self._cam_completed:
                     continue
 
-                engine = self._get_vote_engine(cam_det.cam_id)
+                if cam_det.n_detections == 0:
+                    continue
+
+                # Frame skip: ~25fps → ~4fps effective
+                self._cam_frame_count[cam_id] = self._cam_frame_count.get(cam_id, 0) + 1
+                if self._cam_frame_count[cam_id] % self.frame_skip != 0:
+                    continue
+
+                engine = self._get_vote_engine(cam_id)
                 assigned, weight = engine.submit_frame(cam_det.detections)
-
-                # Rebuild CameraDetections with voted assignments
-                voted = CameraDetections(cam_det.cam_id, cam_det.frame_width, cam_det.frame_height)
-                voted.timestamp = cam_det.timestamp
-                for d in assigned:
-                    voted.add(d)
-                voted_results.append(voted)
-
                 self.frames_processed += 1
 
-            # Feed into fusion engine
-            self.fusion.update(voted_results)
+                # Track first analysis time
+                now = time.monotonic()
+                if cam_id not in self._cam_first_analysis:
+                    self._cam_first_analysis[cam_id] = now
 
-            # Build rankings
-            fusion_ranking = self.fusion.get_ranking()
-            rankings = self._build_rankings(fusion_ranking)
-            state.set_rankings(rankings)
+                # Track when all 5 colors become visible
+                if weight > 0:
+                    visible_colors = set(d['color'] for d in assigned)
+                    if len(visible_colors) >= 5 and cam_id not in self._cam_all_visible_time:
+                        self._cam_all_visible_time[cam_id] = now
+
+                # Check completion conditions
+                should_complete = False
+                reason = ""
+
+                if engine.is_result_ready():
+                    # Condition 1: all positions filled + grace period
+                    if cam_id in self._cam_all_visible_time:
+                        elapsed_grace = now - self._cam_all_visible_time[cam_id]
+                        if elapsed_grace >= self.grace_period_sec:
+                            should_complete = True
+                            reason = f"confident + grace {elapsed_grace:.1f}s"
+                    # Condition 2: confident + enough frames (no need to wait)
+                    if not should_complete and engine.vote_frames >= 8:
+                        should_complete = True
+                        reason = f"confident + {engine.vote_frames} frames"
+
+                if not should_complete and engine.vote_frames >= 2:
+                    # Condition 3: timeout with votes
+                    elapsed = now - self._cam_first_analysis[cam_id]
+                    if elapsed >= self.max_analysis_sec:
+                        should_complete = True
+                        reason = f"timeout ({elapsed:.1f}s)"
+
+                if not should_complete and cam_id in self._cam_first_analysis:
+                    # Condition 4: partial timeout — straggler case (few horses, no votes)
+                    # Still send partial data to fusion so it knows horse positions
+                    elapsed = now - self._cam_first_analysis[cam_id]
+                    if elapsed >= self.max_analysis_sec:
+                        should_complete = True
+                        reason = f"partial timeout ({elapsed:.1f}s, {len(assigned)} horses)"
+
+                if should_complete:
+                    self._cam_completed.add(cam_id)
+                    vote_result = engine.compute_result()
+                    log.info("CAMERA COMPLETE  %s  order=[%s]  (%s, %d vote frames)",
+                             cam_id, " > ".join(vote_result), reason, engine.vote_frames)
+
+                    # Build single-camera CameraDetections and update fusion ONCE
+                    voted = CameraDetections(cam_id, cam_det.frame_width, cam_det.frame_height)
+                    voted.timestamp = cam_det.timestamp
+                    for d in assigned:
+                        voted.add(d)
+                    self.fusion.update([voted])
+
+                    # Build rankings and update state
+                    fusion_ranking = self.fusion.get_ranking()
+                    rankings = self._build_rankings(fusion_ranking)
+                    state.set_rankings(rankings)
+
+                    # Queue camera_result for broadcast
+                    self._pending_camera_results.append({
+                        "type": "camera_result",
+                        "camera_id": cam_id,
+                        "ranking": vote_result,
+                        "vote_frames": engine.vote_frames,
+                    })
 
             # FPS tracking
             fps_counter += 1
@@ -900,6 +987,11 @@ class DeepStreamPipeline:
         self.fusion.reset()
         for engine in self._vote_engines.values():
             engine.reset()
+        self._cam_first_analysis.clear()
+        self._cam_all_visible_time.clear()
+        self._cam_completed.clear()
+        self._cam_frame_count.clear()
+        self._pending_camera_results.clear()
 
     def get_stats(self) -> dict:
         return {
@@ -1346,6 +1438,7 @@ async def ranking_broadcast_loop():
     """Periodically broadcast ranking updates to all WebSocket clients."""
     last_log_time = 0
     last_activation_broadcast = 0
+    last_rankings_hash = ""
 
     while True:
         await asyncio.sleep(BROADCAST_INTERVAL)
@@ -1353,14 +1446,35 @@ async def ranking_broadcast_loop():
         if not ws_clients:
             continue
 
-        # Broadcast rankings
+        # Broadcast pending camera_result events from DeepStreamPipeline
+        if _deepstream_pipeline and _deepstream_pipeline._pending_camera_results:
+            pending = list(_deepstream_pipeline._pending_camera_results)
+            _deepstream_pipeline._pending_camera_results.clear()
+            for result_msg in pending:
+                await broadcast(result_msg)
+
+        # Broadcast rankings only when changed
         if state.race_active:
             rankings = state.get_rankings()
             if rankings:
-                await broadcast({
-                    "type": "ranking_update",
-                    "rankings": rankings,
-                })
+                # Hash by positions to detect changes
+                rankings_hash = "|".join(
+                    f"{r.get('color','')}{r.get('position','')}{r.get('distanceCovered','')}"
+                    for r in rankings
+                )
+                if rankings_hash != last_rankings_hash:
+                    last_rankings_hash = rankings_hash
+                    await broadcast({
+                        "type": "ranking_update",
+                        "rankings": rankings,
+                    })
+
+        # Broadcast live detections from DeepStream (which cameras see horses NOW)
+        if _deepstream_pipeline and _deepstream_pipeline.live_detections:
+            await broadcast({
+                "type": "live_detections",
+                "cameras": _deepstream_pipeline.live_detections,
+            })
 
         # Broadcast activation map every 2 seconds
         now = time.time()
@@ -1503,6 +1617,8 @@ def main():
                         help="Path to YOLO TensorRT engine")
     parser.add_argument("--color-engine", default="/app/models/color_classifier.engine",
                         help="Path to color classifier TensorRT engine")
+    parser.add_argument("--file-mode", action="store_true",
+                        help="File playback mode (auto-detected if URLs start with file://)")
     parser.add_argument("--go2rtc-url", default="http://localhost:1984",
                         help="go2rtc API URL for stream health monitoring")
     args = parser.parse_args()
@@ -1591,11 +1707,27 @@ def main():
     if args.deepstream and use_multi:
         # Launch C++ DeepStream as subprocess (if binary exists)
         if os.path.isfile(args.ds_binary):
+            # Auto-detect file mode from camera URLs
+            file_mode = args.file_mode
+            if not file_mode:
+                try:
+                    import json as _json
+                    with open(args.config) as _f:
+                        _cfg = _json.load(_f)
+                    file_mode = any(
+                        c.get("url", "").startswith("file://")
+                        for c in _cfg.get("analytics", [])
+                    )
+                except Exception:
+                    pass
+            if file_mode:
+                log.info("File mode detected — passing --file-mode to C++")
             _deepstream_subprocess = DeepStreamSubprocess(
                 config_path=args.config,
                 yolo_engine=args.yolo_engine,
                 color_engine=args.color_engine,
                 binary=args.ds_binary,
+                file_mode=file_mode,
             )
             _deepstream_subprocess.start()
         else:

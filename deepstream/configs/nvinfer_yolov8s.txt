@@ -7,6 +7,7 @@
 gpu-id=0
 
 # Model paths
+onnx-file=/app/models/yolov8s.onnx
 model-engine-file=/app/models/yolov8s_deepstream.engine
 
 # Network parameters
@@ -17,7 +18,7 @@ network-mode=2
 network-input-order=0
 
 # Input dimensions (must match export)
-infer-dims=3;1280;1280
+infer-dims=3;800;800
 
 # Detection parameters
 num-detected-classes=80
@@ -29,6 +30,8 @@ maintain-aspect-ratio=1
 symmetric-padding=1
 # 1/255.0
 net-scale-factor=0.00392157
+# 0=BGR, 1=RGB — YOLOv8 expects RGB
+model-color-format=1
 
 # Clustering / NMS
 # 2=NMS

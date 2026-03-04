@@ -107,6 +107,10 @@ export const Go2RTCPlayer = ({
                     }
                 } else {
                     // Binary data — mp4 segment
+                    // Keep buffer small: drop old segments if queue grows
+                    if (queue.length > 10) {
+                        queue.splice(0, queue.length - 2);
+                    }
                     queue.push(event.data);
                     if (!appending) appendNext();
                 }

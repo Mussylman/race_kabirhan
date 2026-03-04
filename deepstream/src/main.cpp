@@ -80,6 +80,7 @@ static void print_usage(const char* prog) {
     fprintf(stderr, "  --mux-width <int>      Streammux width (default: 1280)\n");
     fprintf(stderr, "  --mux-height <int>     Streammux height (default: 1280)\n");
     fprintf(stderr, "  --conf <float>         Detection confidence threshold (default: 0.35)\n");
+    fprintf(stderr, "  --file-mode            Use file:// URIs (sets live-source=FALSE)\n");
     fprintf(stderr, "\nDual pipeline (trigger + analysis):\n");
     fprintf(stderr, "  --dual                 Enable dual-pipeline mode\n");
     fprintf(stderr, "  --trigger-conf <path>  Trigger nvinfer config (default: configs/nvinfer_yolov8n_trigger.txt)\n");
@@ -98,6 +99,7 @@ int main(int argc, char* argv[]) {
 
     // Dual pipeline options
     bool dual_mode = false;
+    bool file_mode = false;   // --file-mode: set live-source=FALSE for file:// URIs
     std::string trigger_conf = "configs/nvinfer_yolov8n_trigger.txt";
     float cooldown = 3.0f;
     int max_active = 8;
@@ -119,6 +121,8 @@ int main(int argc, char* argv[]) {
             det_conf = std::atof(argv[++i]);
         } else if (arg == "--dual") {
             dual_mode = true;
+        } else if (arg == "--file-mode") {
+            file_mode = true;
         } else if (arg == "--trigger-conf" && i + 1 < argc) {
             trigger_conf = argv[++i];
         } else if (arg == "--cooldown" && i + 1 < argc) {
@@ -201,6 +205,12 @@ int main(int argc, char* argv[]) {
         pipeline_config.mux_width        = mux_width;
         pipeline_config.mux_height       = mux_height;
         pipeline_config.det_conf         = det_conf;
+        // Always TRUE — with 25 files, live-source=FALSE blocks waiting for all decoders
+        pipeline_config.live_source      = true;
+        // For file mode: larger timeout gives decoders time to start
+        if (file_mode) {
+            pipeline_config.mux_batched_push_timeout = 4000000; // 4s for files
+        }
         pipeline_config.batch_size       = static_cast<int>(cameras.size());
         if (pipeline_config.batch_size > rv::MAX_CAMERAS) {
             pipeline_config.batch_size = rv::MAX_CAMERAS;

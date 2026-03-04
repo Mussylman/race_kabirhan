@@ -6,7 +6,7 @@
 # ============================================================
 
 # ── Build stage: compile C++ DeepStream binary ────────────────
-FROM nvcr.io/nvidia/deepstream:7.1-triton-multiarch AS builder
+FROM nvcr.io/nvidia/deepstream:8.0-triton-multiarch AS builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     cmake build-essential pkg-config \
@@ -25,7 +25,7 @@ RUN mkdir build && cd build && \
     && make -j$(nproc)
 
 # ── Runtime stage ─────────────────────────────────────────────
-FROM nvcr.io/nvidia/deepstream:7.1-triton-multiarch
+FROM nvcr.io/nvidia/deepstream:8.0-triton-multiarch
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-pip ffmpeg \
@@ -33,7 +33,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Lightweight Python deps (no torch/ultralytics)
 COPY requirements_deepstream.txt /tmp/
-RUN pip3 install --no-cache-dir -r /tmp/requirements_deepstream.txt
+RUN pip3 install --no-cache-dir --break-system-packages -r /tmp/requirements_deepstream.txt
 
 WORKDIR /app
 

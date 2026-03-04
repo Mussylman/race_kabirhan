@@ -28,33 +28,33 @@ streams:
   cam-11-sub:
     - rtsp://admin:Zxcv2Zxcv2@10.223.70.31:554/Streaming/Channels/102
   cam-12-sub:
-    - rtsp://admin:Zxcv2Zxcv2@10.223.70.30:554/Streaming/Channels/102
-  cam-13-sub:
-    - rtsp://admin:Zxcv2Zxcv2@10.223.70.23:554/Streaming/Channels/102
-  cam-14-sub:
     - rtsp://admin:Zxcv2Zxcv2@10.223.70.42:554/Streaming/Channels/102
-  cam-15-sub:
-    - rtsp://admin:Zxcv2Zxcv2@10.223.70.27:554/Streaming/Channels/102
-  cam-16-sub:
+  cam-13-sub:
     - rtsp://admin:Zxcv2Zxcv2@10.223.70.21:554/Streaming/Channels/102
-  cam-17-sub:
+  cam-14-sub:
+    - rtsp://admin:Zxcv2Zxcv2@10.223.70.27:554/Streaming/Channels/102
+  cam-15-sub:
+    - rtsp://admin:Zxcv2Zxcv2@10.223.70.30:554/Streaming/Channels/102
+  cam-16-sub:
     - rtsp://admin:Zxcv2Zxcv2@10.223.70.20:554/Streaming/Channels/102
-  cam-18-sub:
+  cam-17-sub:
     - rtsp://admin:Zxcv2Zxcv2@10.223.70.19:554/Streaming/Channels/102
-  cam-19-sub:
+  cam-18-sub:
     - rtsp://admin:Zxcv2Zxcv2@10.223.70.28:554/Streaming/Channels/102
-  cam-20-sub:
+  cam-19-sub:
     - rtsp://admin:Zxcv2Zxcv2@10.223.70.15:554/Streaming/Channels/102
-  cam-21-sub:
+  cam-20-sub:
     - rtsp://admin:Zxcv2Zxcv2@10.223.70.22:554/Streaming/Channels/102
-  cam-22-sub:
+  cam-21-sub:
     - rtsp://admin:Zxcv2Zxcv2@10.223.70.48:554/Streaming/Channels/102
-  cam-23-sub:
+  cam-22-sub:
     - rtsp://admin:Zxcv2Zxcv2@10.223.70.24:554/Streaming/Channels/102
-  cam-24-sub:
+  cam-23-sub:
     - rtsp://admin:Zxcv2Zxcv2@10.223.70.29:554/Streaming/Channels/102
-  cam-25-sub:
+  cam-24-sub:
     - rtsp://admin:Zxcv2Zxcv2@10.223.70.45:554/Streaming/Channels/102
+  cam-25-sub:
+    - rtsp://admin:Zxcv2Zxcv2@10.223.70.23:554/Streaming/Channels/102
 
   # ============================================================
   # PTZ DISPLAY CAMERAS (4 cameras for public broadcast)
@@ -71,4 +71,5 @@ streams:
 # WebRTC configuration
 webrtc:
   candidates:
+    - 100.104.201.30
     - stun:stun.l.google.com:19302

@@ -27,10 +27,11 @@ struct PipelineConfig {
     std::string yolo_engine_path;
     std::string color_engine_path;
     int batch_size       = 25;
-    int mux_width        = 1280;
-    int mux_height       = 1280;
+    int mux_width        = 800;
+    int mux_height       = 800;
     float det_conf       = 0.35f;
-    int mux_batched_push_timeout = 40000; // microseconds
+    int mux_batched_push_timeout = 40000; // microseconds (40ms for RTSP, override for files)
+    bool live_source     = true;   // false for file:// playback
 };
 
 class Pipeline {
@@ -117,7 +118,7 @@ private:
     // ── Detection filtering ────────────────────────────────────────
 
     // Min bbox height in pixels, min aspect ratio, edge margin
-    static constexpr int   MIN_BBOX_HEIGHT   = 100;
+    static constexpr int   MIN_BBOX_HEIGHT   = 65;
     static constexpr float MIN_ASPECT_RATIO  = 1.2f;
     static constexpr int   EDGE_MARGIN       = 10;
     static constexpr int   MIN_CROP_PIXELS   = 400;

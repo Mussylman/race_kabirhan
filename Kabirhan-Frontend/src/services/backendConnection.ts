@@ -237,6 +237,21 @@ const handleBackendMessage = (message: BackendMessage) => {
             }
             break;
 
+        case 'live_detections':
+            // Real-time detection status from DeepStream C++
+            if (message.cameras) {
+                const { setLiveDetections } = useCameraStore.getState();
+                if (typeof setLiveDetections === 'function') {
+                    setLiveDetections(message.cameras as unknown as Record<string, number>);
+                }
+            }
+            break;
+
+        case 'camera_result':
+            // Single camera finished analysis — ranking from vote engine
+            console.log(`📷 Camera ${message.cameraId} result:`, message.ranking, `(${message.voteFrames} frames)`);
+            break;
+
         case 'camera_status':
             // Full camera status from backend
             console.log('📷 Camera status:', message.total_analytics, 'analytics,', message.active_analytics, 'active');
@@ -300,6 +315,9 @@ interface BackendMessage {
     total_analytics?: number;
     active_analytics?: number;
     total_display?: number;
+    // Camera result fields
+    ranking?: string[];
+    voteFrames?: number;
 }
 
 interface CameraStatusEntry {

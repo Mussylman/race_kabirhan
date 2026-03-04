@@ -15,6 +15,7 @@ interface CameraState {
     ptzCameras: PTZCameraState[];
     analyticsCameras: AnalyticsCameraState[];
     activePTZCameraId: string;
+    liveDetections: Record<string, number>;  // cam_id → detection count (from DeepStream)
 
     // Actions
     setActivePTZCamera: (cameraId: string) => void;
@@ -22,6 +23,7 @@ interface CameraState {
     updateCameraStatus: (cameraId: string, status: 'online' | 'offline') => void;
     updateAnalyticsCameraHorses: (cameraId: string, horseIds: string[]) => void;
     updateCameraActivation: (cameras: Record<string, boolean>) => void;
+    setLiveDetections: (cameras: Record<string, number>) => void;
     initializeCameras: () => void;
     syncFromStorage: () => void;
 }
@@ -52,6 +54,7 @@ export const useCameraStore = create<CameraState>((set, get) => ({
     ptzCameras: createPTZCameras(),
     analyticsCameras: createAnalyticsCameras(),
     activePTZCameraId: getSavedCamera(),
+    liveDetections: {},
 
     setActivePTZCamera: (cameraId) => {
         localStorage.setItem('activePTZCamera', cameraId);
@@ -96,6 +99,8 @@ export const useCameraStore = create<CameraState>((set, get) => ({
             status: cameras[cam.id] ? 'online' as const : cam.status,
         }))
     })),
+
+    setLiveDetections: (cameras) => set({ liveDetections: cameras }),
 
     initializeCameras: () => set({
         ptzCameras: createPTZCameras(),

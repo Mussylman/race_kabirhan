@@ -5,7 +5,7 @@ import { Go2RTCPlayer } from '../Go2RTCPlayer';
 import { TRACK_LENGTH } from '../../types';
 
 export const CameraGrid = () => {
-    const { analyticsCameras } = useCameraStore();
+    const { analyticsCameras, liveDetections } = useCameraStore();
     const { rankings } = useRaceStore();
 
     return (
@@ -23,23 +23,38 @@ export const CameraGrid = () => {
                 {analyticsCameras.map((camera) => {
                     const isOnline = camera.status === 'online';
 
-                    // Find horses within this camera's track segment
+                    // Find horses within this camera's track segment (from rankings)
                     const horsesNear = rankings.filter(horse => {
                         const horsePos = horse.distanceCovered % TRACK_LENGTH;
                         return horsePos >= camera.trackStart && horsePos < camera.trackEnd;
                     });
                     const hasHorses = horsesNear.length > 0;
 
+                    // Live detection from DeepStream C++ (real-time)
+                    const detCount = liveDetections[camera.id] || 0;
+                    const isActive = detCount > 0;
+
                     return (
                         <div
                             key={camera.id}
+                            onDoubleClick={(e) => e.currentTarget.requestFullscreen()}
                             className={`
                                 relative rounded-xl overflow-hidden transition-all duration-300
-                                ${hasHorses
-                                    ? 'ring-2 ring-amber-500 shadow-lg shadow-amber-500/20'
-                                    : 'border border-[var(--border)]'}
+                                ${isActive
+                                    ? 'ring-2 ring-green-500 shadow-lg shadow-green-500/30'
+                                    : hasHorses
+                                        ? 'ring-2 ring-amber-500 shadow-lg shadow-amber-500/20'
+                                        : 'border border-[var(--border)]'}
                             `}
                         >
+                            {/* ACTIVE badge — top-right overlay */}
+                            {isActive && (
+                                <div className="absolute top-2 right-2 z-10 flex items-center gap-1.5 bg-green-500 text-white text-xs font-bold px-2.5 py-1 rounded-full shadow-lg animate-pulse">
+                                    <div className="w-2 h-2 rounded-full bg-white" />
+                                    ACTIVE
+                                </div>
+                            )}
+
                             {/* WebRTC Stream via go2rtc */}
                             <div className="relative aspect-video bg-black">
                                 <Go2RTCPlayer
@@ -47,7 +62,6 @@ export const CameraGrid = () => {
                                     cameraName={camera.name}
                                     className="absolute inset-0"
                                     connectDelay={0}
-                                    lazy
                                 />
                             </div>
 
@@ -56,28 +70,35 @@ export const CameraGrid = () => {
                                 <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-2">
                                         {isOnline ? (
-                                            <Video className={`w-4 h-4 ${hasHorses ? 'text-amber-400' : 'text-[var(--text-muted)]'}`} />
+                                            <Video className={`w-4 h-4 ${isActive ? 'text-green-400' : hasHorses ? 'text-amber-400' : 'text-[var(--text-muted)]'}`} />
                                         ) : (
                                             <VideoOff className="w-4 h-4 text-[var(--danger)]" />
                                         )}
-                                        <span className={`text-sm font-semibold ${hasHorses ? 'text-amber-400' : 'text-[var(--text-primary)]'}`}>
+                                        <span className={`text-sm font-semibold ${isActive ? 'text-green-400' : hasHorses ? 'text-amber-400' : 'text-[var(--text-primary)]'}`}>
                                             {camera.name}
                                         </span>
                                     </div>
 
                                     <div className="flex items-center gap-2">
-                                        <div className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-500' : 'bg-red-500'}`} />
+                                        <div className={`w-2 h-2 rounded-full ${isActive ? 'bg-green-500 animate-pulse' : isOnline ? 'bg-emerald-500' : 'bg-red-500'}`} />
                                         <span className="text-xs text-[var(--text-muted)]">
                                             {camera.trackStart}–{camera.trackEnd}m
                                         </span>
                                     </div>
                                 </div>
 
-                                {/* Horse detection badge */}
-                                {hasHorses && (
+                                {/* Detection info */}
+                                {isActive && (
+                                    <div className="mt-2 flex items-center gap-1">
+                                        <span className="text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full font-medium">
+                                            {detCount} person{detCount > 1 ? 's' : ''} detected
+                                        </span>
+                                    </div>
+                                )}
+                                {!isActive && hasHorses && (
                                     <div className="mt-2 flex items-center gap-1">
                                         <span className="text-xs bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded-full font-medium">
-                                            {horsesNear.length} horse{horsesNear.length > 1 ? 's' : ''} detected
+                                            {horsesNear.length} horse{horsesNear.length > 1 ? 's' : ''} in segment
                                         </span>
                                     </div>
                                 )}
@@ -94,12 +115,16 @@ export const CameraGrid = () => {
                     <span>Online</span>
                 </div>
                 <div className="flex items-center gap-2">
-                    <div className="w-2.5 h-2.5 rounded-full bg-red-500" />
-                    <span>Offline</span>
+                    <div className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse" />
+                    <span>Active (detecting)</span>
                 </div>
                 <div className="flex items-center gap-2">
                     <div className="w-4 h-4 rounded border-2 border-amber-500" />
-                    <span>Horse Detected</span>
+                    <span>Horse in Segment</span>
+                </div>
+                <div className="flex items-center gap-2">
+                    <div className="w-2.5 h-2.5 rounded-full bg-red-500" />
+                    <span>Offline</span>
                 </div>
             </div>
         </div>

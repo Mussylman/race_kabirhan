@@ -79,9 +79,36 @@ bool parseYoloV8(
     if (!data) return false;
 
     // YOLOv8 output: [84, num_dets] (after batch dim is stripped by nvinfer)
-    // dims: inferDims contains the post-batch shape
-    const int num_features = layer.inferDims.d[0]; // 84
-    const int num_dets     = layer.inferDims.d[1]; // 8400
+    // inferDims contains the post-batch shape
+    int dim0 = layer.inferDims.d[0];
+    int dim1 = layer.inferDims.d[1];
+    int ndims = layer.inferDims.numDims;
+
+    // Determine which dim is features(84) and which is detections
+    int num_features, num_dets;
+    bool transposed = false;
+    if (dim0 == (BBOX_PARAMS + NUM_CLASSES)) {
+        // Normal: [84, num_dets]
+        num_features = dim0;
+        num_dets = dim1;
+    } else if (dim1 == (BBOX_PARAMS + NUM_CLASSES)) {
+        // Transposed: [num_dets, 84]
+        num_features = dim1;
+        num_dets = dim0;
+        transposed = true;
+    } else {
+        // Unknown layout — try to use dim0 as features
+        num_features = dim0;
+        num_dets = dim1;
+    }
+
+    // Debug logging (first call only)
+    static bool debug_done = false;
+    if (!debug_done) {
+        fprintf(stderr, "[YoloParser] ndims=%d dim0=%d dim1=%d => features=%d dets=%d transposed=%d\n",
+                ndims, dim0, dim1, num_features, num_dets, transposed);
+        debug_done = true;
+    }
 
     if (num_features < BBOX_PARAMS + 1) return false;
 
@@ -89,35 +116,43 @@ bool parseYoloV8(
         ? detectionParams.perClassPreclusterThreshold[0]
         : 0.35f;
 
-    const float net_w = static_cast<float>(networkInfo.width);
-    const float net_h = static_cast<float>(networkInfo.height);
-
     std::vector<RawDetection> raw_dets;
     raw_dets.reserve(256);
 
     for (int i = 0; i < num_dets; ++i) {
-        // data layout: [feature_idx * num_dets + det_idx]
-        float cx   = data[0 * num_dets + i];
-        float cy   = data[1 * num_dets + i];
-        float w    = data[2 * num_dets + i];
-        float h    = data[3 * num_dets + i];
-        float conf = data[(BBOX_PARAMS + PERSON_CLASS) * num_dets + i];
+        float cx, cy, w, h, conf;
+        if (!transposed) {
+            // [84, num_dets] layout
+            cx   = data[0 * num_dets + i];
+            cy   = data[1 * num_dets + i];
+            w    = data[2 * num_dets + i];
+            h    = data[3 * num_dets + i];
+            conf = data[(BBOX_PARAMS + PERSON_CLASS) * num_dets + i];
+        } else {
+            // [num_dets, 84] layout
+            cx   = data[i * num_features + 0];
+            cy   = data[i * num_features + 1];
+            w    = data[i * num_features + 2];
+            h    = data[i * num_features + 3];
+            conf = data[i * num_features + BBOX_PARAMS + PERSON_CLASS];
+        }
 
         if (conf < conf_thresh) continue;
 
-        // Convert cx,cy,w,h to x1,y1,x2,y2 (normalized by network size)
+        // Convert cx,cy,w,h to x1,y1,x2,y2 in PIXEL coords (network scale)
+        // DeepStream expects coords in network input resolution, NOT normalized!
         RawDetection det;
-        det.x1   = (cx - w / 2.0f) / net_w;
-        det.y1   = (cy - h / 2.0f) / net_h;
-        det.x2   = (cx + w / 2.0f) / net_w;
-        det.y2   = (cy + h / 2.0f) / net_h;
+        det.x1   = cx - w / 2.0f;
+        det.y1   = cy - h / 2.0f;
+        det.x2   = cx + w / 2.0f;
+        det.y2   = cy + h / 2.0f;
         det.conf = conf;
 
-        // Clamp to [0, 1]
-        det.x1 = std::max(0.0f, std::min(1.0f, det.x1));
-        det.y1 = std::max(0.0f, std::min(1.0f, det.y1));
-        det.x2 = std::max(0.0f, std::min(1.0f, det.x2));
-        det.y2 = std::max(0.0f, std::min(1.0f, det.y2));
+        // Clamp to network dimensions
+        det.x1 = std::max(0.0f, std::min(static_cast<float>(networkInfo.width),  det.x1));
+        det.y1 = std::max(0.0f, std::min(static_cast<float>(networkInfo.height), det.y1));
+        det.x2 = std::max(0.0f, std::min(static_cast<float>(networkInfo.width),  det.x2));
+        det.y2 = std::max(0.0f, std::min(static_cast<float>(networkInfo.height), det.y2));
 
         raw_dets.push_back(det);
     }
@@ -125,12 +160,11 @@ bool parseYoloV8(
     // Apply NMS
     nms(raw_dets, NMS_IOU_THRESH);
 
-    // Convert to DeepStream format
+    // Convert to DeepStream format (pixel coords in network input space)
     for (const auto& d : raw_dets) {
         NvDsInferObjectDetectionInfo obj;
         obj.classId       = PERSON_CLASS;
         obj.detectionConfidence = d.conf;
-        // DeepStream expects left, top, width, height in [0,1] normalized coords
         obj.left   = d.x1;
         obj.top    = d.y1;
         obj.width  = d.x2 - d.x1;

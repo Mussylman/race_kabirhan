@@ -3,8 +3,8 @@ export_trt.py — Export YOLO and color classifier models to TensorRT FP16.
 
 Exports:
     1. YOLOv8n → yolov8n_trigger.engine (640px, FP16, batch=25)
-    2. YOLOv8s → yolov8s_analysis.engine (1280px, FP16, batch=8)
-    3. YOLOv8s → yolov8s_deepstream.engine (1280px, FP16, batch=25) — for DeepStream
+    2. YOLOv8s → yolov8s_analysis.engine (800px, FP16, batch=8)
+    3. YOLOv8s → yolov8s_deepstream.engine (800px, FP16, batch=25) — for DeepStream
     4. SimpleColorCNN → color_classifier.engine (64px, FP16, dynamic batch 1-128)
 
 Requirements:
@@ -71,7 +71,7 @@ def export_yolo_trigger():
 
 
 def export_yolo_analysis():
-    """Export YOLOv8s for analysis (1280px, batch=8)."""
+    """Export YOLOv8s for analysis (800px, batch=8)."""
     from ultralytics import YOLO
 
     pt_path = "yolov8s.pt"
@@ -80,12 +80,12 @@ def export_yolo_analysis():
     log.info("=== Exporting YOLOv8s analysis ===")
     log.info("  Source: %s", pt_path)
     log.info("  Target: %s", output)
-    log.info("  imgsz=1280, half=True, batch=8")
+    log.info("  imgsz=800, half=True, batch=8")
 
     model = YOLO(pt_path)
     model.export(
         format="engine",
-        imgsz=1280,
+        imgsz=800,
         half=True,
         batch=8,
         device=0,
@@ -99,7 +99,7 @@ def export_yolo_analysis():
 
 
 def export_yolo_deepstream():
-    """Export YOLOv8s for DeepStream (1280px, batch=25, FP16).
+    """Export YOLOv8s for DeepStream (800px, batch=25, FP16).
 
     This engine runs ALL 25 cameras simultaneously in the DeepStream C++
     pipeline. No trigger/analysis split needed — TRT FP16 is fast enough.
@@ -112,12 +112,12 @@ def export_yolo_deepstream():
     log.info("=== Exporting YOLOv8s for DeepStream ===")
     log.info("  Source: %s", pt_path)
     log.info("  Target: %s", output)
-    log.info("  imgsz=1280, half=True, batch=25")
+    log.info("  imgsz=800, half=True, batch=25")
 
     model = YOLO(pt_path)
     model.export(
         format="engine",
-        imgsz=1280,
+        imgsz=800,
         half=True,
         batch=25,
         device=0,

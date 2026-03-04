@@ -1,13 +1,13 @@
 #pragma once
 /**
- * analysis_pipeline.h — Heavy analysis pipeline (YOLOv8s @ 1280x1280).
+ * analysis_pipeline.h — Heavy analysis pipeline (YOLOv8s @ 800x800).
  *
  * All 25 cameras are connected at startup. A GStreamer "valve" element
  * per camera gates which frames reach inference. activate()/deactivate()
  * flip the valve instantly — no RTSP reconnection delay.
  *
  * Pipeline topology per camera:
- *   uridecodebin → valve(drop=TRUE) → nvstreammux 1280×1280
+ *   uridecodebin → valve(drop=TRUE) → nvstreammux 800×800
  *     → nvinfer YOLOv8s → inference_probe → fakesink
  */
 
@@ -27,8 +27,8 @@ struct AnalysisConfig {
     std::vector<CameraConfig> cameras;    // all cameras (indexed by cam_index)
     std::string nvinfer_config = "configs/nvinfer_yolov8s_analysis.txt";
     std::string color_engine_path;
-    int   mux_width   = 1280;
-    int   mux_height  = 1280;
+    int   mux_width   = 800;
+    int   mux_height  = 800;
     int   max_batch   = 8;
 };
 
@@ -106,7 +106,7 @@ private:
     static gboolean reconnect_cb(gpointer data);
 
     // Detection filtering (same thresholds as single pipeline)
-    static constexpr int   MIN_BBOX_HEIGHT   = 100;
+    static constexpr int   MIN_BBOX_HEIGHT   = 65;
     static constexpr float MIN_ASPECT_RATIO  = 1.2f;
     static constexpr int   EDGE_MARGIN       = 10;
     static constexpr int   MIN_CROP_PIXELS   = 400;

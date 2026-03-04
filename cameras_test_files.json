@@ -1,0 +1,156 @@
+{
+    "track_length": 2500,
+    "max_active": 8,
+    "analytics": [
+        {
+            "id": "cam-01",
+            "url": "file:///data/kamera_01_162028_END162507.mp4",
+            "track_start": 0,
+            "track_end": 110
+        },
+        {
+            "id": "cam-02",
+            "url": "file:///data/kamera_02_162028_END162507.mp4",
+            "track_start": 100,
+            "track_end": 210
+        },
+        {
+            "id": "cam-03",
+            "url": "file:///data/kamera_03_162029_END162507.mp4",
+            "track_start": 200,
+            "track_end": 310
+        },
+        {
+            "id": "cam-04",
+            "url": "file:///data/kamera_04_162029_END162507.mp4",
+            "track_start": 300,
+            "track_end": 410
+        },
+        {
+            "id": "cam-05",
+            "url": "file:///data/kamera_05_162030_END162507.mp4",
+            "track_start": 400,
+            "track_end": 510
+        },
+        {
+            "id": "cam-06",
+            "url": "file:///data/kamera_06_162030_END162507.mp4",
+            "track_start": 500,
+            "track_end": 610
+        },
+        {
+            "id": "cam-07",
+            "url": "file:///data/kamera_07_162031_END162507.mp4",
+            "track_start": 600,
+            "track_end": 710
+        },
+        {
+            "id": "cam-08",
+            "url": "file:///data/kamera_08_162031_END162507.mp4",
+            "track_start": 700,
+            "track_end": 810
+        },
+        {
+            "id": "cam-09",
+            "url": "file:///data/kamera_09_162032_END162507.mp4",
+            "track_start": 800,
+            "track_end": 910
+        },
+        {
+            "id": "cam-10",
+            "url": "file:///data/kamera_10_162032_END162507.mp4",
+            "track_start": 900,
+            "track_end": 1010
+        },
+        {
+            "id": "cam-11",
+            "url": "file:///data/kamera_11_162033_END162507.mp4",
+            "track_start": 1000,
+            "track_end": 1110
+        },
+        {
+            "id": "cam-12",
+            "url": "file:///data/kamera_12_162033_END162507.mp4",
+            "track_start": 1100,
+            "track_end": 1210
+        },
+        {
+            "id": "cam-13",
+            "url": "file:///data/kamera_13_162034_END162507.mp4",
+            "track_start": 1200,
+            "track_end": 1310
+        },
+        {
+            "id": "cam-14",
+            "url": "file:///data/kamera_14_162034_END162507.mp4",
+            "track_start": 1300,
+            "track_end": 1410
+        },
+        {
+            "id": "cam-15",
+            "url": "file:///data/kamera_15_162035_END162507.mp4",
+            "track_start": 1400,
+            "track_end": 1510
+        },
+        {
+            "id": "cam-16",
+            "url": "file:///data/kamera_16_162035_END162507.mp4",
+            "track_start": 1500,
+            "track_end": 1610
+        },
+        {
+            "id": "cam-17",
+            "url": "file:///data/kamera_17_162036_END162507.mp4",
+            "track_start": 1600,
+            "track_end": 1710
+        },
+        {
+            "id": "cam-18",
+            "url": "file:///data/kamera_18_162036_END162507.mp4",
+            "track_start": 1700,
+            "track_end": 1810
+        },
+        {
+            "id": "cam-19",
+            "url": "file:///data/kamera_19_162037_END162507.mp4",
+            "track_start": 1800,
+            "track_end": 1910
+        },
+        {
+            "id": "cam-20",
+            "url": "file:///data/kamera_20_162037_END162507.mp4",
+            "track_start": 1900,
+            "track_end": 2010
+        },
+        {
+            "id": "cam-21",
+            "url": "file:///data/kamera_21_162038_END162507.mp4",
+            "track_start": 2000,
+            "track_end": 2110
+        },
+        {
+            "id": "cam-22",
+            "url": "file:///data/kamera_22_162038_END162507.mp4",
+            "track_start": 2100,
+            "track_end": 2210
+        },
+        {
+            "id": "cam-23",
+            "url": "file:///data/kamera_23_162039_END162507.mp4",
+            "track_start": 2200,
+            "track_end": 2310
+        },
+        {
+            "id": "cam-24",
+            "url": "file:///data/kamera_24_162039_END162507.mp4",
+            "track_start": 2300,
+            "track_end": 2410
+        },
+        {
+            "id": "cam-25",
+            "url": "file:///data/kamera_25_162040_END162507.mp4",
+            "track_start": 2400,
+            "track_end": 2500
+        }
+    ]
+}

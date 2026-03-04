@@ -9,7 +9,7 @@ batch-size=8
 network-mode=2
 network-input-order=0
 
-infer-dims=3;1280;1280
+infer-dims=3;800;800
 
 num-detected-classes=80
 process-mode=1

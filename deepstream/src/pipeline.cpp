@@ -50,9 +50,12 @@ bool Pipeline::build(const PipelineConfig& config) {
         "width",                  config_.mux_width,
         "height",                 config_.mux_height,
         "batched-push-timeout",   config_.mux_batched_push_timeout,
-        "live-source",            TRUE,
+        "live-source",            config_.live_source ? TRUE : FALSE,
         "enable-padding",         TRUE,
         NULL);
+
+    fprintf(stderr, "[Pipeline] live-source=%s\n",
+            config_.live_source ? "TRUE" : "FALSE");
 
     gst_bin_add(GST_BIN(pipeline_), streammux_);
 
@@ -312,11 +315,17 @@ void Pipeline::on_pad_added(GstElement* src, GstPad* pad, gpointer data) {
 void Pipeline::on_child_added(GstChildProxy* proxy, GObject* object,
                               gchar* name, gpointer data) {
     // Configure RTSP source properties for low latency
+    // Only set on rtspsrc elements (not filesrc, etc.)
     if (g_str_has_prefix(name, "source")) {
-        g_object_set(object,
-            "drop-on-latency", TRUE,
-            "latency",         100,   // ms
-            NULL);
+        // Check if this element has the "drop-on-latency" property (rtspsrc-specific)
+        GParamSpec* pspec = g_object_class_find_property(
+            G_OBJECT_GET_CLASS(object), "drop-on-latency");
+        if (pspec) {
+            g_object_set(object,
+                "drop-on-latency", TRUE,
+                "latency",         100,   // ms
+                NULL);
+        }
     }
 }
 
@@ -467,12 +476,37 @@ GstPadProbeReturn Pipeline::inference_probe(GstPad* pad,
     }
 
     // Write all camera slots to shared memory
+    int total_dets = 0;
     for (const auto& cd : cam_dets_list) {
         self->shm_writer_.write_camera(cd.cam_index, cd.slot);
+        total_dets += cd.slot.num_detections;
     }
 
     // Commit (increment seq + signal semaphore)
     self->shm_writer_.commit();
+
+    // FPS counter + periodic logging
+    static int batch_counter = 0;
+    static int fps_frame_count = 0;
+    static auto fps_start = std::chrono::steady_clock::now();
+    static float current_fps = 0.0f;
+
+    batch_counter++;
+    fps_frame_count++;
+
+    auto now_tp = std::chrono::steady_clock::now();
+    double elapsed_sec = std::chrono::duration<double>(now_tp - fps_start).count();
+    if (elapsed_sec >= 2.0) {
+        current_fps = static_cast<float>(fps_frame_count / elapsed_sec);
+        fps_frame_count = 0;
+        fps_start = now_tp;
+    }
+
+    // Log every 100 batches or when detections found
+    if (total_dets > 0 || batch_counter % 100 == 0) {
+        fprintf(stderr, "[Pipeline] batch=%d  cameras=%zu  detections=%d  fps=%.1f\n",
+                batch_counter, cam_dets_list.size(), total_dets, current_fps);
+    }
 
     return GST_PAD_PROBE_OK;
 }
