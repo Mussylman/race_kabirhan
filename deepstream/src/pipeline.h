@@ -35,8 +35,8 @@ struct PipelineConfig {
     bool live_source     = true;   // false for file:// playback
     bool display         = false;  // --display: show video with OSD + tiler
     bool display_only    = false;  // --display-only: video grid without inference
-    int display_width    = 1920;
-    int display_height   = 1080;
+    int display_width    = 2560;
+    int display_height   = 1440;
 };
 
 class Pipeline {
@@ -73,12 +73,16 @@ public:
 private:
     GstElement*  pipeline_   = nullptr;
     GstElement*  streammux_  = nullptr;
+    GstElement*  tiler_      = nullptr;   // for show-source focus
     GMainLoop*   loop_       = nullptr;
     bool         running_    = false;
 
     PipelineConfig config_;
     ShmWriter      shm_writer_;
     ColorInfer     color_infer_;
+
+    // Focus tracking: which camera to show fullscreen (-1 = grid)
+    int focused_source_ = -1;
 
     // camera index → source element (for reconnect tracking)
     std::map<int, GstElement*> sources_;

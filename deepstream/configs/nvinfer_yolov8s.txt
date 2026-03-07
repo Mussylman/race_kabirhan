@@ -7,8 +7,8 @@
 gpu-id=0
 
 # Model paths
-onnx-file=/app/models/yolov8s.onnx
-model-engine-file=/app/models/yolov8s_deepstream.engine
+onnx-file=/app/models/jockey_yolov8s.onnx
+model-engine-file=/app/models/jockey_yolov8s.onnx_b25_gpu0_fp16.engine
 
 # Network parameters
 batch-size=25
@@ -21,9 +21,11 @@ network-input-order=0
 infer-dims=3;800;800
 
 # Detection parameters
-num-detected-classes=80
+num-detected-classes=1
 # 1=primary detector
 process-mode=1
+# Skip frames: inference every 2nd frame, tracker fills gaps
+interval=1
 
 # Preprocessing
 maintain-aspect-ratio=1

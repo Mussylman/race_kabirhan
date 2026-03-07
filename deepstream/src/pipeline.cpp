@@ -228,7 +228,9 @@ bool Pipeline::add_sink() {
             "columns", cols,
             "width",  config_.display_width,
             "height", config_.display_height,
+            "show-source", -1,
             NULL);
+        tiler_ = tiler;  // save for dynamic focus
 
         // Video converter
         GstElement* conv = gst_element_factory_make("nvvideoconvert", "display-conv");
@@ -660,34 +662,39 @@ GstPadProbeReturn Pipeline::inference_probe(GstPad* pad,
                     }
                 }
 
-                // Hide detections that didn't pass our filters (too small, bad aspect, edge, etc.)
-                if (color_id == COLOR_UNKNOWN) {
-                    obj_meta->rect_params.border_width = 0;
-                    if (obj_meta->text_params.display_text) {
-                        g_free(obj_meta->text_params.display_text);
-                        obj_meta->text_params.display_text = nullptr;
-                    }
-                    continue;
-                }
-
-                // Set bbox color
-                obj_meta->rect_params.border_color = {
-                    OSD_COLORS[color_id][0], OSD_COLORS[color_id][1],
-                    OSD_COLORS[color_id][2], OSD_COLORS[color_id][3]};
-                obj_meta->rect_params.border_width = 3;
-
-                // Set text label (include track ID from nvtracker)
-                const char* cname = COLOR_NAMES[color_id];
+                // Set bbox color and label
+                float r, g, b;
                 char label[64];
                 uint64_t tid = obj_meta->object_id;
-                if (tid > 0) {
-                    snprintf(label, sizeof(label), "%s %d%% #%lu", cname,
-                             static_cast<int>(color_conf * 100), (unsigned long)tid);
+                float det_conf_pct = obj_meta->confidence * 100.0f;
+
+                if (color_id != COLOR_UNKNOWN && color_id < NUM_COLORS) {
+                    // Classified: colored bbox
+                    r = OSD_COLORS[color_id][0];
+                    g = OSD_COLORS[color_id][1];
+                    b = OSD_COLORS[color_id][2];
+                    const char* cname = COLOR_NAMES[color_id];
+                    if (tid > 0) {
+                        snprintf(label, sizeof(label), "%s %d%% #%lu", cname,
+                                 static_cast<int>(color_conf * 100), (unsigned long)tid);
+                    } else {
+                        snprintf(label, sizeof(label), "%s %d%%", cname,
+                                 static_cast<int>(color_conf * 100));
+                    }
                 } else {
-                    snprintf(label, sizeof(label), "%s %d%%", cname, static_cast<int>(color_conf * 100));
+                    // Not classified: white bbox with YOLO conf
+                    r = 1.0f; g = 1.0f; b = 1.0f;
+                    if (tid > 0) {
+                        snprintf(label, sizeof(label), "YOLO %.0f%% #%lu",
+                                 det_conf_pct, (unsigned long)tid);
+                    } else {
+                        snprintf(label, sizeof(label), "YOLO %.0f%%", det_conf_pct);
+                    }
                 }
 
-                // NvDsTextParams needs g_malloc'd string
+                obj_meta->rect_params.border_color = {r, g, b, 1.0f};
+                obj_meta->rect_params.border_width = 3;
+
                 if (obj_meta->text_params.display_text)
                     g_free(obj_meta->text_params.display_text);
                 obj_meta->text_params.display_text = g_strdup(label);
@@ -697,18 +704,37 @@ GstPadProbeReturn Pipeline::inference_probe(GstPad* pad,
                 obj_meta->text_params.font_params.font_size = 12;
                 obj_meta->text_params.font_params.font_color = {1.0f, 1.0f, 1.0f, 1.0f};
                 obj_meta->text_params.set_bg_clr = 1;
-                obj_meta->text_params.text_bg_clr = {
-                    OSD_COLORS[color_id][0], OSD_COLORS[color_id][1],
-                    OSD_COLORS[color_id][2], 0.6f};
+                obj_meta->text_params.text_bg_clr = {r, g, b, 0.6f};
             }
         }
     }
 
     // Write all camera slots to shared memory
     int total_dets = 0;
+    int best_cam = -1;
+    int best_det_count = 0;
     for (const auto& cd : cam_dets_list) {
         self->shm_writer_.write_camera(cd.cam_index, cd.slot);
         total_dets += cd.slot.num_detections;
+        if (static_cast<int>(cd.slot.num_detections) > best_det_count) {
+            best_det_count = cd.slot.num_detections;
+            best_cam = cd.cam_index;
+        }
+    }
+
+    // Dynamic focus: show camera with most detections fullscreen
+    if (self->tiler_ && self->config_.display) {
+        int target = (best_det_count > 0) ? best_cam : -1;
+        if (target != self->focused_source_) {
+            g_object_set(G_OBJECT(self->tiler_), "show-source", target, NULL);
+            self->focused_source_ = target;
+            if (target >= 0) {
+                fprintf(stderr, "[Focus] Camera %s (%d detections)\n",
+                        self->config_.cameras[target].id.c_str(), best_det_count);
+            } else {
+                fprintf(stderr, "[Focus] Grid view (no detections)\n");
+            }
+        }
     }
 
     // Commit (increment seq + signal semaphore)

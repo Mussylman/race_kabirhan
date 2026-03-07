@@ -221,7 +221,7 @@ int main(int argc, char* argv[]) {
         // Balanced timeout: fast enough for good FPS, long enough for decoder startup
         // File mode needs longer timeout for 15 decoders to initialize
         if (file_mode) {
-            pipeline_config.mux_batched_push_timeout = 400000; // 400ms - balance between startup and FPS
+            pipeline_config.mux_batched_push_timeout = 1000000; // 1s for file decode startup
         } else {
             pipeline_config.mux_batched_push_timeout = 40000;  // 40ms for live RTSP
         }
