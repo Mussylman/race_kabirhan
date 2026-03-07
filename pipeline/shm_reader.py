@@ -57,7 +57,7 @@ SHM_TOTAL_SIZE    = SHM_HEADER_SIZE + (CAMERA_SLOT_SIZE * MAX_CAMERAS)
 
 # struct format strings
 # Detection: x1,y1,x2,y2,center_x,det_conf (6f), color_id (I), color_conf (f),
-#            color_probs[5] (5f), _pad (I)
+#            color_probs[5] (5f), track_id (I)
 DETECTION_FMT = "<6fIf5fI"
 assert struct.calcsize(DETECTION_FMT) == DETECTION_SIZE
 
@@ -239,7 +239,7 @@ class SharedMemoryReader:
                 (x1, y1, x2, y2, center_x, det_conf,
                  color_id, color_conf,
                  p0, p1, p2, p3, p4,
-                 _pad_det) = struct.unpack(DETECTION_FMT, det_data)
+                 track_id) = struct.unpack(DETECTION_FMT, det_data)
 
                 # Map color_id to color name
                 if color_id < NUM_COLORS:
@@ -261,6 +261,7 @@ class SharedMemoryReader:
                     'conf': float(color_conf),
                     'prob_dict': prob_dict,
                     'cam_id': cam_id,
+                    'track_id': int(track_id),
                 }
                 cam_result.add(det)
 

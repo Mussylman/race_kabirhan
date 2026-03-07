@@ -143,6 +143,10 @@ bool ColorInfer::load(const std::string& engine_path) {
     cudaMalloc(&d_input_,  input_bytes);
     cudaMalloc(&d_output_, output_bytes);
 
+    // TRT 10: set tensor addresses (required for enqueueV3)
+    context_->setTensorAddress("input", d_input_);
+    context_->setTensorAddress("output", d_output_);
+
     cudaStream_t s;
     cudaStreamCreate(&s);
     stream_ = s;
@@ -281,8 +285,7 @@ void ColorInfer::classify(const NvBufSurface* surface,
         context_->setInputShape("input",
             nvinfer1::Dims4{batch_size, 3, CROP_SIZE, CROP_SIZE});
 
-        // Run inference
-        void* bindings[2] = {d_input_, d_output_};
+        // Run inference (tensor addresses set in load())
         context_->enqueueV3(stream);
 
         // Parse results
@@ -315,8 +318,7 @@ void ColorInfer::classify_preprocessed(const float* crops, int num_crops,
         context_->setInputShape("input",
             nvinfer1::Dims4{batch_size, 3, CROP_SIZE, CROP_SIZE});
 
-        // Run inference
-        void* bindings[2] = {d_input_, d_output_};
+        // Run inference (tensor addresses set in load())
         context_->enqueueV3(stream);
 
         // Parse results

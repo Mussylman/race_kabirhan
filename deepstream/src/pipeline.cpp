@@ -9,6 +9,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <cmath>
 #include <chrono>
 #include <algorithm>
 
@@ -45,6 +46,7 @@ bool Pipeline::build(const PipelineConfig& config) {
         return false;
     }
 
+    // Optimized streammux settings for high FPS
     g_object_set(G_OBJECT(streammux_),
         "batch-size",             config_.batch_size,
         "width",                  config_.mux_width,
@@ -52,6 +54,8 @@ bool Pipeline::build(const PipelineConfig& config) {
         "batched-push-timeout",   config_.mux_batched_push_timeout,
         "live-source",            config_.live_source ? TRUE : FALSE,
         "enable-padding",         TRUE,
+        "num-surfaces-per-frame", 1,  // Reduce memory footprint
+        "attach-sys-ts",          TRUE,
         NULL);
 
     fprintf(stderr, "[Pipeline] live-source=%s\n",
@@ -59,25 +63,29 @@ bool Pipeline::build(const PipelineConfig& config) {
 
     gst_bin_add(GST_BIN(pipeline_), streammux_);
 
-    // Initialize shared memory
-    std::vector<std::string> cam_ids;
-    for (const auto& cam : config_.cameras) {
-        cam_ids.push_back(cam.id);
-    }
-    if (!shm_writer_.create(static_cast<uint32_t>(config_.cameras.size()), cam_ids)) {
-        fprintf(stderr, "[Pipeline] Failed to create shared memory\n");
-        return false;
-    }
+    if (!config_.display_only) {
+        // Initialize shared memory
+        std::vector<std::string> cam_ids;
+        for (const auto& cam : config_.cameras) {
+            cam_ids.push_back(cam.id);
+        }
+        if (!shm_writer_.create(static_cast<uint32_t>(config_.cameras.size()), cam_ids)) {
+            fprintf(stderr, "[Pipeline] Failed to create shared memory\n");
+            return false;
+        }
 
-    // Load color classifier
-    if (!config_.color_engine_path.empty()) {
-        if (!color_infer_.load(config_.color_engine_path)) {
-            fprintf(stderr, "[Pipeline] Warning: color classifier not loaded\n");
+        // Load color classifier
+        if (!config_.color_engine_path.empty()) {
+            if (!color_infer_.load(config_.color_engine_path)) {
+                fprintf(stderr, "[Pipeline] Warning: color classifier not loaded\n");
+            }
         }
     }
 
     if (!add_sources()) return false;
-    if (!add_inference()) return false;
+    if (!config_.display_only) {
+        if (!add_inference()) return false;
+    }
     if (!add_sink()) return false;
 
     // Bus watch
@@ -147,8 +155,33 @@ bool Pipeline::add_inference() {
         return false;
     }
 
-    // Add probe on nvinfer src pad (after inference, before sink)
-    GstPad* src_pad = gst_element_get_static_pad(nvinfer, "src");
+    // ── nvtracker (IOU tracker for persistent object IDs) ──
+    GstElement* tracker = gst_element_factory_make("nvtracker", "tracker");
+    if (!tracker) {
+        fprintf(stderr, "[Pipeline] Failed to create nvtracker\n");
+        return false;
+    }
+
+    g_object_set(G_OBJECT(tracker),
+        "tracker-width",  config_.mux_width,
+        "tracker-height", config_.mux_height,
+        "ll-lib-file",    "/opt/nvidia/deepstream/deepstream/lib/libnvds_nvmultiobjecttracker.so",
+        "ll-config-file", "configs/tracker_iou.yml",
+        NULL);
+
+    gst_bin_add(GST_BIN(pipeline_), tracker);
+
+    // Link nvinfer → nvtracker
+    if (!gst_element_link(nvinfer, tracker)) {
+        fprintf(stderr, "[Pipeline] Failed to link nvinfer → nvtracker\n");
+        return false;
+    }
+
+    fprintf(stderr, "[Pipeline] nvtracker added (IOU tracker, %dx%d)\n",
+            config_.mux_width, config_.mux_height);
+
+    // Add probe on nvtracker src pad (after tracking, so object_id is populated)
+    GstPad* src_pad = gst_element_get_static_pad(tracker, "src");
     if (src_pad) {
         gst_pad_add_probe(src_pad, GST_PAD_PROBE_TYPE_BUFFER,
                           inference_probe, this, nullptr);
@@ -159,22 +192,110 @@ bool Pipeline::add_inference() {
 }
 
 bool Pipeline::add_sink() {
-    GstElement* sink = gst_element_factory_make("fakesink", "fakesink");
-    if (!sink) {
-        fprintf(stderr, "[Pipeline] Failed to create fakesink\n");
-        return false;
+    // Source element to link from: nvinfer (normal) or streammux (display-only)
+    GstElement* link_from = nullptr;
+    if (config_.display_only) {
+        link_from = streammux_;
+        g_object_ref(link_from);  // balance unref below
+    } else {
+        // Link from nvtracker (last element before sink)
+        link_from = gst_bin_get_by_name(GST_BIN(pipeline_), "tracker");
+        if (!link_from) {
+            // Fallback to nvinfer if tracker not present
+            link_from = gst_bin_get_by_name(GST_BIN(pipeline_), "yolo-infer");
+        }
+        if (!link_from) {
+            fprintf(stderr, "[Pipeline] Cannot find tracker/nvinfer element\n");
+            return false;
+        }
     }
-    g_object_set(G_OBJECT(sink), "sync", FALSE, "async", FALSE, NULL);
-    gst_bin_add(GST_BIN(pipeline_), sink);
 
-    // Link last inference element → fakesink
-    // Find the nvinfer element
-    GstElement* nvinfer = gst_bin_get_by_name(GST_BIN(pipeline_), "yolo-infer");
-    if (nvinfer) {
-        gst_element_link(nvinfer, sink);
-        gst_object_unref(nvinfer);
+    if (config_.display || config_.display_only) {
+        // ── Display mode: link_from → [nvdsosd] → tiler → conv → sink ──
+
+        // Tiler: tile N cameras into one output
+        GstElement* tiler = gst_element_factory_make("nvmultistreamtiler", "tiler");
+        if (!tiler) {
+            fprintf(stderr, "[Pipeline] Failed to create nvmultistreamtiler\n");
+            gst_object_unref(link_from);
+            return false;
+        }
+        int n = static_cast<int>(config_.cameras.size());
+        int cols = static_cast<int>(std::ceil(std::sqrt(static_cast<double>(n))));
+        int rows = (n + cols - 1) / cols;
+        g_object_set(G_OBJECT(tiler),
+            "rows",   rows,
+            "columns", cols,
+            "width",  config_.display_width,
+            "height", config_.display_height,
+            NULL);
+
+        // Video converter
+        GstElement* conv = gst_element_factory_make("nvvideoconvert", "display-conv");
+        if (!conv) {
+            fprintf(stderr, "[Pipeline] Failed to create nvvideoconvert\n");
+            gst_object_unref(link_from);
+            return false;
+        }
+
+        // Display sink — try nv3dsink first, fallback to nveglglessink
+        GstElement* sink = gst_element_factory_make("nv3dsink", "display-sink");
+        if (!sink) {
+            sink = gst_element_factory_make("nveglglessink", "display-sink");
+        }
+        if (!sink) {
+            fprintf(stderr, "[Pipeline] Failed to create display sink\n");
+            gst_object_unref(link_from);
+            return false;
+        }
+        g_object_set(G_OBJECT(sink), "sync", FALSE, NULL);
+
+        if (config_.display && !config_.display_only) {
+            // Full display: link_from → osd → tiler → conv → sink
+            GstElement* osd = gst_element_factory_make("nvdsosd", "osd");
+            if (!osd) {
+                fprintf(stderr, "[Pipeline] Failed to create nvdsosd\n");
+                gst_object_unref(link_from);
+                return false;
+            }
+            g_object_set(G_OBJECT(osd),
+                "process-mode", 1,
+                "display-text", TRUE,
+                NULL);
+
+            gst_bin_add_many(GST_BIN(pipeline_), osd, tiler, conv, sink, NULL);
+            if (!gst_element_link_many(link_from, osd, tiler, conv, sink, NULL)) {
+                fprintf(stderr, "[Pipeline] Failed to link display pipeline\n");
+                gst_object_unref(link_from);
+                return false;
+            }
+        } else {
+            // Display-only: link_from → tiler → conv → sink (no OSD)
+            gst_bin_add_many(GST_BIN(pipeline_), tiler, conv, sink, NULL);
+            if (!gst_element_link_many(link_from, tiler, conv, sink, NULL)) {
+                fprintf(stderr, "[Pipeline] Failed to link display-only pipeline\n");
+                gst_object_unref(link_from);
+                return false;
+            }
+        }
+
+        fprintf(stderr, "[Pipeline] Display mode: %dx%d tiler (%dx%d grid)%s\n",
+                config_.display_width, config_.display_height, cols, rows,
+                config_.display_only ? " [VIDEO ONLY]" : " [+YOLO+OSD]");
+    } else {
+        // ── Headless mode: link_from → fakesink ──
+        GstElement* sink = gst_element_factory_make("fakesink", "fakesink");
+        if (!sink) {
+            fprintf(stderr, "[Pipeline] Failed to create fakesink\n");
+            gst_object_unref(link_from);
+            return false;
+        }
+        g_object_set(G_OBJECT(sink), "sync", FALSE, "async", FALSE, NULL);
+        gst_bin_add(GST_BIN(pipeline_), sink);
+        gst_element_link(link_from, sink);
     }
 
+    gst_object_unref(link_from);
     return true;
 }
 
@@ -314,8 +435,9 @@ void Pipeline::on_pad_added(GstElement* src, GstPad* pad, gpointer data) {
 
 void Pipeline::on_child_added(GstChildProxy* proxy, GObject* object,
                               gchar* name, gpointer data) {
+    auto* self = static_cast<Pipeline*>(data);
+
     // Configure RTSP source properties for low latency
-    // Only set on rtspsrc elements (not filesrc, etc.)
     if (g_str_has_prefix(name, "source")) {
         // Check if this element has the "drop-on-latency" property (rtspsrc-specific)
         GParamSpec* pspec = g_object_class_find_property(
@@ -325,6 +447,23 @@ void Pipeline::on_child_added(GstChildProxy* proxy, GObject* object,
                 "drop-on-latency", TRUE,
                 "latency",         100,   // ms
                 NULL);
+        }
+    }
+
+    // Optimize decoder (nvv4l2decoder) for throughput
+    if (g_strrstr(name, "dec")) {
+        GParamSpec* pspec = g_object_class_find_property(
+            G_OBJECT_GET_CLASS(object), "drop-frame-interval");
+        if (pspec && self->config_.live_source) {
+            // Drop every other frame for 2x speedup on file playback
+            g_object_set(object, "drop-frame-interval", 0, NULL);
+        }
+
+        // Enable low-latency mode if available
+        pspec = g_object_class_find_property(
+            G_OBJECT_GET_CLASS(object), "enable-max-performance");
+        if (pspec) {
+            g_object_set(object, "enable-max-performance", TRUE, NULL);
         }
     }
 }
@@ -440,6 +579,7 @@ GstPadProbeReturn Pipeline::inference_probe(GstPad* pad,
             det.y2       = y2;
             det.center_x = center_x;
             det.det_conf = det_conf;
+            det.track_id = static_cast<uint32_t>(obj_meta->object_id);
 
             // Queue for color classification
             all_rois.push_back(roi);
@@ -452,6 +592,8 @@ GstPadProbeReturn Pipeline::inference_probe(GstPad* pad,
     }
 
     // Batch color classification
+    // Store obj_meta pointers for OSD label setting
+    std::vector<NvDsObjectMeta*> classified_obj_metas;
     if (!all_rois.empty() && self->color_infer_.is_loaded() && surface) {
         std::vector<ColorResult> color_results;
         self->color_infer_.classify(surface, all_rois, color_results);
@@ -471,6 +613,93 @@ GstPadProbeReturn Pipeline::inference_probe(GstPad* pad,
                     std::memcpy(det.color_probs, cr.probs, sizeof(cr.probs));
                     break;
                 }
+            }
+        }
+    }
+
+    // Set OSD labels on obj_meta for display mode
+    if (self->config_.display) {
+        // Map color_id to OSD colors (R,G,B,A)
+        static const float OSD_COLORS[][4] = {
+            {0.0f, 0.4f, 1.0f, 1.0f},  // blue
+            {0.0f, 0.9f, 0.0f, 1.0f},  // green
+            {0.8f, 0.0f, 0.8f, 1.0f},  // purple
+            {1.0f, 0.0f, 0.0f, 1.0f},  // red
+            {1.0f, 0.9f, 0.0f, 1.0f},  // yellow
+        };
+
+        for (NvDsMetaList* l_frame = batch_meta->frame_meta_list;
+             l_frame; l_frame = l_frame->next) {
+            NvDsFrameMeta* frame_meta = static_cast<NvDsFrameMeta*>(l_frame->data);
+            int cam_index = frame_meta->source_id;
+
+            // Find our CamDets for this camera
+            CamDets* found_cd = nullptr;
+            for (auto& cd : cam_dets_list) {
+                if (cd.cam_index == cam_index) { found_cd = &cd; break; }
+            }
+
+            for (NvDsMetaList* l_obj = frame_meta->obj_meta_list;
+                 l_obj; l_obj = l_obj->next) {
+                NvDsObjectMeta* obj_meta = static_cast<NvDsObjectMeta*>(l_obj->data);
+                if (obj_meta->class_id != 0) continue;
+
+                // Find matching detection by bbox (only filtered detections are in cam_dets)
+                int color_id = COLOR_UNKNOWN;
+                float color_conf = 0.0f;
+                if (found_cd) {
+                    float ox1 = obj_meta->rect_params.left;
+                    float oy1 = obj_meta->rect_params.top;
+                    for (uint32_t di = 0; di < found_cd->slot.num_detections; ++di) {
+                        const auto& det = found_cd->slot.detections[di];
+                        if (std::abs(det.x1 - ox1) < 2.0f && std::abs(det.y1 - oy1) < 2.0f) {
+                            color_id = det.color_id;
+                            color_conf = det.color_conf;
+                            break;
+                        }
+                    }
+                }
+
+                // Hide detections that didn't pass our filters (too small, bad aspect, edge, etc.)
+                if (color_id == COLOR_UNKNOWN) {
+                    obj_meta->rect_params.border_width = 0;
+                    if (obj_meta->text_params.display_text) {
+                        g_free(obj_meta->text_params.display_text);
+                        obj_meta->text_params.display_text = nullptr;
+                    }
+                    continue;
+                }
+
+                // Set bbox color
+                obj_meta->rect_params.border_color = {
+                    OSD_COLORS[color_id][0], OSD_COLORS[color_id][1],
+                    OSD_COLORS[color_id][2], OSD_COLORS[color_id][3]};
+                obj_meta->rect_params.border_width = 3;
+
+                // Set text label (include track ID from nvtracker)
+                const char* cname = COLOR_NAMES[color_id];
+                char label[64];
+                uint64_t tid = obj_meta->object_id;
+                if (tid > 0) {
+                    snprintf(label, sizeof(label), "%s %d%% #%lu", cname,
+                             static_cast<int>(color_conf * 100), (unsigned long)tid);
+                } else {
+                    snprintf(label, sizeof(label), "%s %d%%", cname, static_cast<int>(color_conf * 100));
+                }
+
+                // NvDsTextParams needs g_malloc'd string
+                if (obj_meta->text_params.display_text)
+                    g_free(obj_meta->text_params.display_text);
+                obj_meta->text_params.display_text = g_strdup(label);
+                obj_meta->text_params.x_offset = static_cast<int>(obj_meta->rect_params.left);
+                obj_meta->text_params.y_offset = std::max(0, static_cast<int>(obj_meta->rect_params.top) - 10);
+                obj_meta->text_params.font_params.font_name = const_cast<char*>("Serif");
+                obj_meta->text_params.font_params.font_size = 12;
+                obj_meta->text_params.font_params.font_color = {1.0f, 1.0f, 1.0f, 1.0f};
+                obj_meta->text_params.set_bg_clr = 1;
+                obj_meta->text_params.text_bg_clr = {
+                    OSD_COLORS[color_id][0], OSD_COLORS[color_id][1],
+                    OSD_COLORS[color_id][2], 0.6f};
             }
         }
     }
@@ -502,10 +731,54 @@ GstPadProbeReturn Pipeline::inference_probe(GstPad* pad,
         fps_start = now_tp;
     }
 
-    // Log every 100 batches or when detections found
-    if (total_dets > 0 || batch_counter % 100 == 0) {
-        fprintf(stderr, "[Pipeline] batch=%d  cameras=%zu  detections=%d  fps=%.1f\n",
-                batch_counter, cam_dets_list.size(), total_dets, current_fps);
+    // ANSI color codes for terminal
+    const char* BOLD = "\033[1m";
+    const char* GREEN = "\033[32m";
+    const char* YELLOW = "\033[33m";
+    const char* CYAN = "\033[36m";
+    const char* MAGENTA = "\033[35m";
+    const char* RESET = "\033[0m";
+    const char* DIM = "\033[2m";
+
+    // Log every 50 batches or when detections found
+    if (total_dets > 0 || batch_counter % 50 == 0) {
+        fprintf(stderr, "\n%s━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%s\n", CYAN, RESET);
+        fprintf(stderr, "%s[BATCH #%d]%s  🎥 %zu cameras  |  🎯 %d detections  |  %s⚡ %.1f FPS%s\n",
+                BOLD, batch_counter, RESET,
+                cam_dets_list.size(), total_dets,
+                GREEN, current_fps, RESET);
+        fprintf(stderr, "%s━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%s\n", CYAN, RESET);
+    }
+
+    // Detailed per-camera log when detections found
+    if (total_dets > 0) {
+        fprintf(stderr, "\n%s📊 DETECTIONS:%s\n", YELLOW, RESET);
+        for (const auto& cd : cam_dets_list) {
+            if (cd.slot.num_detections == 0) continue;
+            fprintf(stderr, "%s├─ %s%s [%d objects]%s\n",
+                    DIM, BOLD, cd.slot.cam_id, cd.slot.num_detections, RESET);
+            for (uint32_t di = 0; di < cd.slot.num_detections; ++di) {
+                const auto& det = cd.slot.detections[di];
+                const char* color_name = (det.color_id < NUM_COLORS)
+                    ? COLOR_NAMES[det.color_id] : "???";
+
+                // Color-coded horse colors
+                const char* horse_color = RESET;
+                if (det.color_id == 0) horse_color = "\033[34m";      // blue
+                else if (det.color_id == 1) horse_color = "\033[32m"; // green
+                else if (det.color_id == 2) horse_color = "\033[35m"; // purple
+                else if (det.color_id == 3) horse_color = "\033[31m"; // red
+                else if (det.color_id == 4) horse_color = "\033[33m"; // yellow
+
+                fprintf(stderr, "%s│  %s[#%u]%s YOLO: %s%.0f%%%s → Color: %s%s (%.0f%%)%s  %sbbox=[%.0f,%.0f,%.0f,%.0f]%s\n",
+                        DIM,
+                        MAGENTA, det.track_id, RESET,
+                        GREEN, det.det_conf * 100.0f, RESET,
+                        horse_color, color_name, det.color_conf * 100.0f, RESET,
+                        DIM, det.x1, det.y1, det.x2, det.y2, RESET);
+            }
+        }
+        fprintf(stderr, "\n");
     }
 
     return GST_PAD_PROBE_OK;

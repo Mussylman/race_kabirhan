@@ -664,12 +664,14 @@ class DeepStreamSubprocess:
                  yolo_engine: str = "/app/models/yolov8s_deepstream.engine",
                  color_engine: str = "/app/models/color_classifier.engine",
                  binary: str = "/app/bin/race_vision_deepstream",
-                 file_mode: bool = False):
+                 file_mode: bool = False,
+                 display: bool = False):
         self.config_path = config_path
         self.yolo_engine = yolo_engine
         self.color_engine = color_engine
         self.binary = binary
         self.file_mode = file_mode
+        self.display = display
         self._proc: Optional[subprocess.Popen] = None
         self._monitor_thread: Optional[threading.Thread] = None
         self._running = False
@@ -683,6 +685,8 @@ class DeepStreamSubprocess:
         ]
         if self.file_mode:
             cmd.append("--file-mode")
+        if self.display:
+            cmd.append("--display")
         log.info("Starting DeepStream C++: %s", " ".join(cmd))
 
         env = os.environ.copy()
@@ -782,7 +786,7 @@ class DeepStreamPipeline:
         self.current_fps = 0.0
 
         # Live detection status: {cam_id: n_detections} — updated every SHM read
-        self.live_detections: dict[str, int] = {}
+        self.live_detections: dict[str, list] = {}  # {cam_id: [{color, conf}, ...]}
 
     def _get_vote_engine(self, cam_id: str):
         from pipeline.vote_engine import VoteEngine
@@ -835,11 +839,18 @@ class DeepStreamPipeline:
 
             self.cycles += 1
 
-            # Update live detection map (regardless of race_active)
+            # Update live detection map with colors (regardless of race_active)
             live = {}
             for cam_det in cam_results:
                 if cam_det.n_detections > 0:
-                    live[cam_det.cam_id] = cam_det.n_detections
+                    live[cam_det.cam_id] = [
+                        {
+                            "color": d.get("color", "?"),
+                            "conf": round(d.get("color_conf", 0) * 100),
+                            "track_id": d.get("track_id", 0),
+                        }
+                        for d in cam_det.detections
+                    ]
             self.live_detections = live
 
             if not state.race_active:
@@ -1619,6 +1630,8 @@ def main():
                         help="Path to color classifier TensorRT engine")
     parser.add_argument("--file-mode", action="store_true",
                         help="File playback mode (auto-detected if URLs start with file://)")
+    parser.add_argument("--display", action="store_true",
+                        help="Show video grid with OSD (requires X11 DISPLAY)")
     parser.add_argument("--go2rtc-url", default="http://localhost:1984",
                         help="go2rtc API URL for stream health monitoring")
     args = parser.parse_args()
@@ -1728,6 +1741,7 @@ def main():
                 color_engine=args.color_engine,
                 binary=args.ds_binary,
                 file_mode=file_mode,
+                display=args.display,
             )
             _deepstream_subprocess.start()
         else:

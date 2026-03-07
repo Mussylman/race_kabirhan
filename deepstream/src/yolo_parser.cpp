@@ -17,10 +17,8 @@
 
 namespace rv {
 
-// Person class index in COCO
-static constexpr int PERSON_CLASS = 0;
-// Number of COCO classes
-static constexpr int NUM_CLASSES = 80;
+// Target class index (person in COCO, jockey in custom — both class 0)
+static constexpr int TARGET_CLASS = 0;
 // Number of bbox params (cx, cy, w, h)
 static constexpr int BBOX_PARAMS = 4;
 // NMS IoU threshold
@@ -78,35 +76,37 @@ bool parseYoloV8(
     const float* data = static_cast<const float*>(layer.buffer);
     if (!data) return false;
 
-    // YOLOv8 output: [84, num_dets] (after batch dim is stripped by nvinfer)
-    // inferDims contains the post-batch shape
+    // YOLOv8 output: [num_features, num_dets] or [num_dets, num_features]
+    //   COCO:   num_features=84  (4 bbox + 80 classes)
+    //   Custom: num_features=5   (4 bbox + 1 class)
     int dim0 = layer.inferDims.d[0];
     int dim1 = layer.inferDims.d[1];
     int ndims = layer.inferDims.numDims;
 
-    // Determine which dim is features(84) and which is detections
+    // Auto-detect layout: features dim is the smaller one (>= 5)
     int num_features, num_dets;
     bool transposed = false;
-    if (dim0 == (BBOX_PARAMS + NUM_CLASSES)) {
-        // Normal: [84, num_dets]
+    if (dim0 >= BBOX_PARAMS + 1 && dim0 < dim1) {
+        // Normal: [features, num_dets] e.g. [84, 8400] or [5, 13125]
         num_features = dim0;
         num_dets = dim1;
-    } else if (dim1 == (BBOX_PARAMS + NUM_CLASSES)) {
-        // Transposed: [num_dets, 84]
+    } else if (dim1 >= BBOX_PARAMS + 1 && dim1 < dim0) {
+        // Transposed: [num_dets, features]
         num_features = dim1;
         num_dets = dim0;
         transposed = true;
     } else {
-        // Unknown layout — try to use dim0 as features
         num_features = dim0;
         num_dets = dim1;
     }
 
+    int num_classes = num_features - BBOX_PARAMS;
+
     // Debug logging (first call only)
     static bool debug_done = false;
     if (!debug_done) {
-        fprintf(stderr, "[YoloParser] ndims=%d dim0=%d dim1=%d => features=%d dets=%d transposed=%d\n",
-                ndims, dim0, dim1, num_features, num_dets, transposed);
+        fprintf(stderr, "[YoloParser] ndims=%d dim0=%d dim1=%d => features=%d dets=%d classes=%d transposed=%d\n",
+                ndims, dim0, dim1, num_features, num_dets, num_classes, transposed);
         debug_done = true;
     }
 
@@ -127,14 +127,14 @@ bool parseYoloV8(
             cy   = data[1 * num_dets + i];
             w    = data[2 * num_dets + i];
             h    = data[3 * num_dets + i];
-            conf = data[(BBOX_PARAMS + PERSON_CLASS) * num_dets + i];
+            conf = data[(BBOX_PARAMS + TARGET_CLASS) * num_dets + i];
         } else {
             // [num_dets, 84] layout
             cx   = data[i * num_features + 0];
             cy   = data[i * num_features + 1];
             w    = data[i * num_features + 2];
             h    = data[i * num_features + 3];
-            conf = data[i * num_features + BBOX_PARAMS + PERSON_CLASS];
+            conf = data[i * num_features + BBOX_PARAMS + TARGET_CLASS];
         }
 
         if (conf < conf_thresh) continue;
@@ -163,7 +163,7 @@ bool parseYoloV8(
     // Convert to DeepStream format (pixel coords in network input space)
     for (const auto& d : raw_dets) {
         NvDsInferObjectDetectionInfo obj;
-        obj.classId       = PERSON_CLASS;
+        obj.classId       = TARGET_CLASS;
         obj.detectionConfidence = d.conf;
         obj.left   = d.x1;
         obj.top    = d.y1;

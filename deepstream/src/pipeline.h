@@ -6,8 +6,9 @@
  *   N x uridecodebin (RTSP → NVDEC hw decode)
  *     → nvstreammux (batch all cameras)
  *       → nvinfer (YOLOv8s TRT FP16)
- *         → probe callback (filter + crop + color classify + SHM write)
- *           → fakesink
+ *         → nvtracker (IOU tracker for persistent object IDs)
+ *           → probe callback (filter + crop + color classify + SHM write)
+ *             → fakesink
  */
 
 #include "config.h"
@@ -32,6 +33,10 @@ struct PipelineConfig {
     float det_conf       = 0.35f;
     int mux_batched_push_timeout = 40000; // microseconds (40ms for RTSP, override for files)
     bool live_source     = true;   // false for file:// playback
+    bool display         = false;  // --display: show video with OSD + tiler
+    bool display_only    = false;  // --display-only: video grid without inference
+    int display_width    = 1920;
+    int display_height   = 1080;
 };
 
 class Pipeline {

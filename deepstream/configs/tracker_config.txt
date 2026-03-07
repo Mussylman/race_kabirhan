@@ -1,0 +1,11 @@
+# Race Vision — NvMultiObjectTracker config (IOU tracker)
+# Reference config — actual properties are set via g_object_set in pipeline.cpp
+# This file is kept for documentation / manual testing.
+
+[tracker]
+tracker-width=800
+tracker-height=800
+gpu-id=0
+ll-lib-file=/opt/nvidia/deepstream/deepstream/lib/libnvds_nvmultiobjecttracker.so
+ll-config-file=configs/tracker_iou.yml
+enable-batch-process=1

@@ -50,7 +50,7 @@ struct __attribute__((packed)) Detection {
     uint32_t color_id;             // ColorId enum
     float    color_conf;           // top-1 color confidence
     float    color_probs[NUM_COLORS]; // softmax probabilities [blue,green,purple,red,yellow]
-    uint32_t _pad;                 // padding to 56 bytes
+    uint32_t track_id;             // nvtracker persistent object ID (0 = untracked)
 };
 static_assert(sizeof(Detection) == 56, "Detection must be 56 bytes");
 

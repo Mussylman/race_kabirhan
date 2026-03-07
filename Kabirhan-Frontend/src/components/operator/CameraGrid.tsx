@@ -30,8 +30,9 @@ export const CameraGrid = () => {
                     });
                     const hasHorses = horsesNear.length > 0;
 
-                    // Live detection from DeepStream C++ (real-time)
-                    const detCount = liveDetections[camera.id] || 0;
+                    // Live detection from DeepStream C++ (real-time, with colors)
+                    const dets = liveDetections[camera.id] || [];
+                    const detCount = Array.isArray(dets) ? dets.length : 0;
                     const isActive = detCount > 0;
 
                     return (
@@ -87,12 +88,26 @@ export const CameraGrid = () => {
                                     </div>
                                 </div>
 
-                                {/* Detection info */}
-                                {isActive && (
-                                    <div className="mt-2 flex items-center gap-1">
-                                        <span className="text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full font-medium">
-                                            {detCount} person{detCount > 1 ? 's' : ''} detected
-                                        </span>
+                                {/* Detection info with colors */}
+                                {isActive && Array.isArray(dets) && (
+                                    <div className="mt-2 flex flex-wrap items-center gap-1">
+                                        {dets.map((d, i) => {
+                                            const colorMap: Record<string, string> = {
+                                                blue: 'bg-blue-500',
+                                                green: 'bg-green-500',
+                                                purple: 'bg-purple-500',
+                                                red: 'bg-red-500',
+                                                yellow: 'bg-yellow-400',
+                                            };
+                                            const bgClass = colorMap[d.color] || 'bg-gray-500';
+                                            return (
+                                                <span key={i} className={`text-xs text-white px-2 py-0.5 rounded-full font-medium flex items-center gap-1 ${bgClass}`}>
+                                                    <span className="capitalize">{d.color}</span>
+                                                    <span className="opacity-75">{d.conf}%</span>
+                                                    {d.track_id ? <span className="opacity-60">#{d.track_id}</span> : null}
+                                                </span>
+                                            );
+                                        })}
                                     </div>
                                 )}
                                 {!isActive && hasHorses && (

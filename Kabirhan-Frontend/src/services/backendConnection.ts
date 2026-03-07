@@ -238,11 +238,11 @@ const handleBackendMessage = (message: BackendMessage) => {
             break;
 
         case 'live_detections':
-            // Real-time detection status from DeepStream C++
+            // Real-time detection status from DeepStream C++ (with colors)
             if (message.cameras) {
                 const { setLiveDetections } = useCameraStore.getState();
                 if (typeof setLiveDetections === 'function') {
-                    setLiveDetections(message.cameras as unknown as Record<string, number>);
+                    setLiveDetections(message.cameras as unknown as Record<string, Array<{color: string, conf: number, track_id?: number}>>);
                 }
             }
             break;
