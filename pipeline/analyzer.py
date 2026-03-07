@@ -33,6 +33,12 @@ from .vote_engine import VoteEngine
 
 log = logging.getLogger("pipeline.analyzer")
 
+# Detection logger — model results visible on console
+try:
+    from .log_config import det_log
+except ImportError:
+    det_log = log
+
 
 # ── Parameters (same as test_race_count.py) ───────────────────────────
 
@@ -365,11 +371,11 @@ class AnalysisLoop(threading.Thread):
             self.detections_total += cam_result.n_detections
 
             if cam_result.n_detections > 0:
-                log.info("ANALYZE  %s  %d dets  colors=[%s]  vote_frames=%d  %.0fms",
-                         cam_id, cam_result.n_detections,
-                         ", ".join(cam_result.colors),
-                         engine.vote_frames,
-                         (time.monotonic() - t0) * 1000)
+                det_log.info("ANALYZE  %s  %d dets  colors=[%s]  votes=%d  %.0fms",
+                             cam_id, cam_result.n_detections,
+                             ", ".join(cam_result.colors),
+                             engine.vote_frames,
+                             (time.monotonic() - t0) * 1000)
 
             # Track first analysis time for this camera
             now = time.monotonic()
@@ -416,8 +422,8 @@ class AnalysisLoop(threading.Thread):
             if should_complete:
                 self._cam_completed.add(cam_id)
                 vote_result = engine.compute_result()
-                log.info("CAMERA COMPLETE  %s  order=[%s]  (%s, %d vote frames)",
-                         cam_id, " > ".join(vote_result), reason, engine.vote_frames)
+                det_log.info("COMPLETE  %s  order=[%s]  (%s, %d votes)",
+                             cam_id, " > ".join(vote_result), reason, engine.vote_frames)
                 self.camera_manager.mark_completed(cam_id)
 
                 # Deliver result to fusion ONCE

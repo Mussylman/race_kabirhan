@@ -29,6 +29,12 @@ from .camera_manager import CameraManager
 
 log = logging.getLogger("pipeline.trigger")
 
+# Detection logger — activation events visible on console
+try:
+    from .log_config import det_log
+except ImportError:
+    det_log = log
+
 
 # ── Detection filters (simpler than full analysis) ────────────────────
 
@@ -162,9 +168,9 @@ class TriggerLoop(threading.Thread):
             now = new_active.get(cam_id, False)
             count = trigger_results[cam_id]
             if now and not was:
-                log.info("ACTIVATE  %s  (%d detections)", cam_id, count)
+                det_log.info("ACTIVATE  %s  (%d detections)", cam_id, count)
             elif not now and was:
-                log.info("DEACTIVATE  %s  (cooldown expired)", cam_id)
+                det_log.info("DEACTIVATE  %s  (cooldown expired)", cam_id)
 
         activated = sum(1 for v in trigger_results.values() if v >= self.min_detections)
         if activated > 0:

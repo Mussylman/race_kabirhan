@@ -125,15 +125,16 @@ COLOR_TO_HORSE = {
 ALL_COLORS = list(COLOR_TO_HORSE.keys())
 
 # ============================================================
-# LOGGING
+# LOGGING (structured: system vs detection)
 # ============================================================
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    datefmt="%H:%M:%S",
-)
-log = logging.getLogger("race_server")
+from pipeline.log_config import setup_logging, sys_log, det_log, ds_log, setup_legacy_logging
+
+setup_logging(verbose=os.environ.get("RV_VERBOSE", "") == "1")
+setup_legacy_logging()
+
+# Alias for backward compatibility within this file
+log = sys_log
 
 # ============================================================
 # SHARED STATE (thread-safe)
@@ -704,13 +705,20 @@ class DeepStreamSubprocess:
         log.info("DeepStream C++ started (PID=%d)", self._proc.pid)
 
     def _monitor(self):
-        """Forward C++ stdout/stderr to Python log and detect crashes."""
+        """Forward C++ stdout/stderr to separate log streams."""
         for line in iter(self._proc.stdout.readline, b''):
             if not self._running:
                 break
             text = line.decode('utf-8', errors='replace').rstrip()
-            if text:
-                log.info("[DeepStream C++] %s", text)
+            if not text:
+                continue
+            # Detection data from C++ goes to detection log
+            if text.startswith("[Pipeline] batch=") and "detections=" in text:
+                det_log.debug("DS_CPP %s", text)
+            elif "ERROR" in text or "WARNING" in text or "Failed" in text:
+                ds_log.warning("%s", text)
+            else:
+                ds_log.info("%s", text)
 
         retcode = self._proc.wait()
         if self._running:
@@ -910,8 +918,8 @@ class DeepStreamPipeline:
                 if should_complete:
                     self._cam_completed.add(cam_id)
                     vote_result = engine.compute_result()
-                    log.info("CAMERA COMPLETE  %s  order=[%s]  (%s, %d vote frames)",
-                             cam_id, " > ".join(vote_result), reason, engine.vote_frames)
+                    det_log.info("COMPLETE  %s  order=[%s]  (%s, %d votes)",
+                                 cam_id, " > ".join(vote_result), reason, engine.vote_frames)
 
                     # Build single-camera CameraDetections and update fusion ONCE
                     voted = CameraDetections(cam_id, cam_det.frame_width, cam_det.frame_height)
@@ -1228,7 +1236,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     _pipeline.reset()
                 if _deepstream_pipeline:
                     _deepstream_pipeline.reset()
-                log.info("Race started (from operator)")
+                det_log.info("RACE STARTED (from operator)")
                 await broadcast({
                     "type": "race_start",
                     "race": {
@@ -1240,7 +1248,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
             elif msg.get("type") == "stop_race":
                 state.race_active = False
-                log.info("Race stopped (from operator)")
+                det_log.info("RACE STOPPED (from operator)")
                 await broadcast({"type": "race_stop"})
 
             elif msg.get("type") == "get_cameras":
@@ -1486,21 +1494,34 @@ async def ranking_broadcast_loop():
             })
             last_activation_broadcast = now
 
-        # Log every 5 seconds
+        # Periodic summary every 5 seconds
         if state.race_active and now - last_log_time > 5.0:
             rankings = state.get_rankings()
+            summary_parts = []
             if rankings:
                 names = [r.get("name", "?") for r in rankings[:3]]
-                log.info("Broadcasting %d horses to %d clients (top 3: %s)",
-                         len(rankings), len(ws_clients), names)
+                summary_parts.append(f"{len(rankings)} horses, top3={names}")
             if _pipeline:
                 stats = _pipeline.get_stats()
                 trigger = stats.get("trigger", {})
                 analyzer = stats.get("analyzer", {})
-                log.info("  Trigger: %d frames, Analysis: %d frames @ %.1f fps",
-                         trigger.get("frames_processed", 0),
-                         analyzer.get("frames_processed", 0),
-                         analyzer.get("current_fps", 0))
+                summary_parts.append(
+                    f"trig={trigger.get('frames_processed', 0)}f "
+                    f"anal={analyzer.get('frames_processed', 0)}f "
+                    f"@{analyzer.get('current_fps', 0):.1f}fps")
+            if _deepstream_pipeline:
+                stats = _deepstream_pipeline.get_stats()
+                ds = stats.get("deepstream", {})
+                summary_parts.append(
+                    f"ds: seq={ds.get('shm_seq', 0)} "
+                    f"{ds.get('frames_processed', 0)}f "
+                    f"@{ds.get('current_fps', 0):.1f}fps "
+                    f"{ds.get('last_cycle_ms', 0):.1f}ms")
+            if summary_parts:
+                det_log.info("SUMMARY  %s  clients=%d",
+                             " | ".join(summary_parts), len(ws_clients))
+            # Full details to system log
+            log.debug("Broadcast: rankings=%s", rankings)
             if _deepstream_pipeline:
                 stats = _deepstream_pipeline.get_stats()
                 ds = stats.get("deepstream", {})
@@ -1517,9 +1538,9 @@ async def startup():
     asyncio.create_task(ranking_broadcast_loop())
     if _go2rtc_monitor:
         _go2rtc_monitor.start()
-    log.info(f"Race Vision backend running on http://{SERVER_HOST}:{SERVER_PORT}")
-    log.info(f"  WebSocket: ws://localhost:{SERVER_PORT}/ws")
-    log.info(f"  MJPEG:     http://localhost:{SERVER_PORT}/stream/cam1")
+    det_log.info("Race Vision backend running on http://%s:%d", SERVER_HOST, SERVER_PORT)
+    log.info("  WebSocket: ws://localhost:%d/ws", SERVER_PORT)
+    log.info("  MJPEG:     http://localhost:%d/stream/cam1", SERVER_PORT)
     if _camera_manager:
         status = _camera_manager.get_status()
         log.info(f"  Cameras:   {status['total_analytics']} analytics, {status['total_display']} display")
@@ -1750,7 +1771,7 @@ def main():
 
     if args.auto_start:
         state.race_active = True
-        log.info("Race auto-started")
+        det_log.info("RACE AUTO-STARTED")
 
     # ── Run server ────────────────────────────────────────────────────
 

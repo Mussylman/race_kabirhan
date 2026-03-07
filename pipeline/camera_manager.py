@@ -28,6 +28,11 @@ from typing import Optional
 
 log = logging.getLogger("pipeline.camera_manager")
 
+try:
+    from .log_config import det_log
+except ImportError:
+    det_log = log
+
 
 @dataclass
 class CameraInfo:
@@ -133,7 +138,7 @@ class CameraManager:
             cam = self._cameras.get(cam_id)
             if cam:
                 cam.active = False
-            log.info("COMPLETED  %s  (result finalized)", cam_id)
+            det_log.info("FINALIZED  %s  (result locked)", cam_id)
 
     def is_completed(self, cam_id: str) -> bool:
         with self._lock:
