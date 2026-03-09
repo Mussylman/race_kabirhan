@@ -21,10 +21,10 @@ from typing import Optional
 
 # ── Default parameters (can be overridden in constructor) ──────────────
 
-DEFAULT_MIN_JOCKEYS_FOR_VOTE = 3
+DEFAULT_MIN_JOCKEYS_FOR_VOTE = 2
 DEFAULT_MIN_VOTES_PER_POS = 5
 DEFAULT_MIN_REASSIGN_CONF = 0.20
-DEFAULT_VOTE_WEIGHTS = {5: 5, 4: 2, 3: 1}
+DEFAULT_VOTE_WEIGHTS = {5: 5, 4: 4, 3: 3, 2: 1}
 
 
 class VoteEngine:

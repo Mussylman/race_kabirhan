@@ -1,4 +1,4 @@
-# nvinfer config for YOLOv8s — Race Vision DeepStream pipeline
+# nvinfer config for YOLOv11s — Race Vision DeepStream pipeline
 #
 # This config is loaded by the nvinfer GStreamer plugin.
 # It specifies the TensorRT engine, batch size, custom parser, etc.
@@ -7,8 +7,8 @@
 gpu-id=0
 
 # Model paths
-onnx-file=/app/models/jockey_yolov8s.onnx
-model-engine-file=/app/models/jockey_yolov8s.onnx_b25_gpu0_fp16.engine
+onnx-file=/app/models/jockey_yolov11s.onnx
+model-engine-file=/app/models/jockey_yolov11s.onnx_b25_gpu0_fp16.engine
 
 # Network parameters
 batch-size=25

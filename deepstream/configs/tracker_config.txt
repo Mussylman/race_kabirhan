@@ -7,5 +7,5 @@ tracker-width=800
 tracker-height=800
 gpu-id=0
 ll-lib-file=/opt/nvidia/deepstream/deepstream/lib/libnvds_nvmultiobjecttracker.so
-ll-config-file=configs/tracker_iou.yml
+ll-config-file=configs/tracker_bytetrack.yml
 enable-batch-process=1

@@ -36,6 +36,15 @@ class HorseState:
     last_camera: str = ""
     observation_count: int = 0
     rank: int = 0                   # 1-based position in race
+    missing_frames: int = 0         # consecutive frames without detection
+    track_confidence: float = 1.0   # decays when not seen
+
+
+# Temporal smoothing constants
+POSITION_JUMP_THRESHOLD = 100.0     # meters — ignore jumps larger than this
+MISSING_FRAMES_BEFORE_RESET = 8     # reset EMA after this many misses
+TRACK_CONFIDENCE_DECAY = 0.95       # per-frame decay when not seen
+MIN_TRACK_CONFIDENCE = 0.3          # below this → exclude from ranking
 
 
 class FusionEngine:
@@ -51,7 +60,7 @@ class FusionEngine:
         merge_distance_m: float = 15.0,
     ):
         self.topology = topology
-        self.colors = colors or ["blue", "green", "purple", "red", "yellow"]
+        self.colors = colors or ["green", "red", "yellow"]
         self.ema_alpha = ema_alpha
         self.stale_timeout = stale_timeout
         self.merge_distance_m = merge_distance_m
@@ -92,6 +101,11 @@ class FusionEngine:
                 horse = self._horses[color]
 
                 if not observations:
+                    # No detection this frame — decay confidence
+                    horse.missing_frames += 1
+                    horse.track_confidence *= TRACK_CONFIDENCE_DECAY
+                    if horse.missing_frames >= MISSING_FRAMES_BEFORE_RESET:
+                        horse.speed_mps *= 0.5  # slow down speed estimate
                     continue
 
                 # Merge observations (weighted by FOV position)
@@ -99,10 +113,19 @@ class FusionEngine:
                 if raw_pos is None:
                     continue
 
+                # Reject impossible jumps (likely misclassification)
+                if (horse.observation_count > 0 and
+                        abs(raw_pos - horse.position_m) > POSITION_JUMP_THRESHOLD):
+                    log.debug("Rejected jump for %s: %.1f -> %.1f",
+                              color, horse.position_m, raw_pos)
+                    continue
+
                 horse.raw_position_m = raw_pos
                 horse.last_seen_time = now
                 horse.last_camera = observations[-1][0]
                 horse.observation_count += 1
+                horse.missing_frames = 0
+                horse.track_confidence = 1.0
 
                 # EMA smoothing
                 if horse.observation_count <= 1:
@@ -118,7 +141,9 @@ class FusionEngine:
 
             # Compute ranking (higher position_m = further ahead = lower rank number)
             visible = [h for h in self._horses.values()
-                       if now - h.last_seen_time < self.stale_timeout or h.observation_count > 0]
+                       if (h.observation_count > 0 and
+                           h.track_confidence >= MIN_TRACK_CONFIDENCE and
+                           now - h.last_seen_time < self.stale_timeout)]
 
             visible.sort(key=lambda h: -h.position_m)
             for i, horse in enumerate(visible):
@@ -164,6 +189,8 @@ class FusionEngine:
                 horse.last_camera = ""
                 horse.observation_count = 0
                 horse.rank = 0
+                horse.missing_frames = 0
+                horse.track_confidence = 1.0
             self._ranking.clear()
             self._update_count = 0
 

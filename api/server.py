@@ -116,10 +116,8 @@ TRACK_LENGTH = 2500
 
 COLOR_TO_HORSE = {
     "red":    {"id": "horse-1", "number": 1, "name": "Red Runner",     "silkId": 1, "color": "#DC2626", "jockeyName": "Jockey 1"},
-    "blue":   {"id": "horse-2", "number": 2, "name": "Blue Storm",     "silkId": 2, "color": "#2563EB", "jockeyName": "Jockey 2"},
-    "green":  {"id": "horse-3", "number": 3, "name": "Green Flash",    "silkId": 3, "color": "#16A34A", "jockeyName": "Jockey 3"},
-    "yellow": {"id": "horse-4", "number": 4, "name": "Yellow Thunder", "silkId": 4, "color": "#FBBF24", "jockeyName": "Jockey 4"},
-    "purple": {"id": "horse-5", "number": 5, "name": "Purple Reign",   "silkId": 5, "color": "#9333EA", "jockeyName": "Jockey 5"},
+    "green":  {"id": "horse-2", "number": 2, "name": "Green Flash",    "silkId": 2, "color": "#16A34A", "jockeyName": "Jockey 2"},
+    "yellow": {"id": "horse-3", "number": 3, "name": "Yellow Thunder", "silkId": 3, "color": "#FBBF24", "jockeyName": "Jockey 3"},
 }
 
 ALL_COLORS = list(COLOR_TO_HORSE.keys())

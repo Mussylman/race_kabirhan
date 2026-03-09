@@ -53,8 +53,8 @@ MIN_REASSIGN_CONF = 0.20
 MIN_CROP_PIXELS = 400
 MAX_CROP_PIXELS = 15000
 
-# Colors
-ALL_COLORS = ["blue", "green", "purple", "red", "yellow"]
+# Colors (must match classifier training classes, sorted alphabetically)
+ALL_COLORS = ["green", "red", "yellow"]
 
 COLORS_BGR = {
     "blue": (255, 100, 0),
@@ -100,7 +100,7 @@ def draw_detections(frame: np.ndarray, detections: list[dict], cam_id: str = "",
                 (15, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
 
     unique_colors = set(d.get('color') for d in detections)
-    cv2.putText(annotated, f"Colors: {len(unique_colors)}/5  ({', '.join(sorted(unique_colors))})",
+    cv2.putText(annotated, f"Colors: {len(unique_colors)}/{len(ALL_COLORS)}  ({', '.join(sorted(unique_colors))})",
                 (15, 55), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
 
     # Vote result
@@ -171,12 +171,12 @@ class AnalysisLoop(threading.Thread):
         *,
         analysis_fps: float = 4.0,
         yolo_engine: Optional[str] = None,
-        yolo_fallback: str = "yolov8s.pt",
+        yolo_fallback: str = "yolo11s.pt",
         classifier_engine: Optional[str] = None,
-        classifier_fallback: str = "models/color_classifier.pt",
+        classifier_fallback: str = "models/color_classifier_v2.pt",
         imgsz: int = 800,
         det_conf: float = 0.35,
-        det_iou: float = 0.3,
+        det_iou: float = 0.5,
     ):
         super().__init__(daemon=True, name="AnalysisLoop")
         self.camera_manager = camera_manager
@@ -379,7 +379,7 @@ class AnalysisLoop(threading.Thread):
             # Track when all 5 colors become visible
             if weight > 0:
                 visible_colors = set(d['color'] for d in assigned)
-                if len(visible_colors) >= 5 and cam_id not in self._cam_all_visible_time:
+                if len(visible_colors) >= len(ALL_COLORS) and cam_id not in self._cam_all_visible_time:
                     self._cam_all_visible_time[cam_id] = now
 
             # Check completion conditions

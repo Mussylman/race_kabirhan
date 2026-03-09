@@ -22,7 +22,7 @@ namespace rv {
 // ImageNet normalization constants
 static __device__ __constant__ float MEAN[3] = {0.485f, 0.456f, 0.406f};
 static __device__ __constant__ float STD[3]  = {0.229f, 0.224f, 0.225f};
-static constexpr int CROP_SIZE = 64;
+static constexpr int CROP_SIZE = 128;
 
 /**
  * CUDA kernel: For each output pixel (in 64x64 crop), bilinear sample

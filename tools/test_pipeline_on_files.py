@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-Test full YOLO + ColorCNN pipeline on recorded video files.
-Scans all 25 cameras, finds frames with horses, classifies jockey colors.
+Test full YOLO + Color pipeline on recorded video files.
+Uses YOLOv11s (jockey detector) + EfficientNet-V2-S (color classifier).
+Scans all 25 cameras, finds jockeys, classifies colors.
 """
 
 import os
@@ -11,43 +12,34 @@ import time
 import cv2
 import torch
 import numpy as np
-from PIL import Image
-from torchvision import transforms
 import torch.nn as nn
 
-# ── Color classifier model ──────────────────────────────────────────
+# ── Detection filters ─────────────────────────────────────────────
 
-class SimpleColorCNN(nn.Module):
-    def __init__(self, num_classes=5):
-        super().__init__()
-        self.features = nn.Sequential(
-            nn.Conv2d(3, 32, 3, padding=1), nn.ReLU(), nn.MaxPool2d(2),
-            nn.Conv2d(32, 64, 3, padding=1), nn.ReLU(), nn.MaxPool2d(2),
-            nn.Conv2d(64, 128, 3, padding=1), nn.ReLU(), nn.MaxPool2d(2),
-            nn.AdaptiveAvgPool2d(4),
-        )
-        self.classifier = nn.Sequential(
-            nn.Flatten(),
-            nn.Linear(128 * 4 * 4, 256), nn.ReLU(), nn.Dropout(0.5),
-            nn.Linear(256, num_classes),
-        )
-    def forward(self, x):
-        return self.classifier(self.features(x))
-
-
-# ── Detection filters (same as C++ pipeline) ────────────────────────
-
-MIN_BBOX_HEIGHT = 40       # Lowered from 65 for testing
-MIN_ASPECT_RATIO = 1.0     # Lowered from 1.2 — riders may be wider
+MIN_BBOX_HEIGHT = 30
 EDGE_MARGIN = 10
 MIN_CROP_PIXELS = 200
 MAX_CROP_PIXELS = 15000
-PERSON_CLASS = 0
-HORSE_CLASS = 17
 CONF_THRESHOLD = 0.30
 
-# Only these 3 jockey colors are in the race
-ACTIVE_COLORS = {"green", "red", "yellow"}
+# Torso extraction
+TORSO_TOP = 0.10
+TORSO_BOTTOM = 0.40
+TORSO_LEFT = 0.20
+TORSO_RIGHT = 0.20
+
+
+def extract_torso(frame, bbox):
+    """Extract torso region from jockey bounding box."""
+    x1, y1, x2, y2 = map(int, bbox)
+    h, w = y2 - y1, x2 - x1
+    ty1 = max(0, y1 + int(h * TORSO_TOP))
+    ty2 = min(frame.shape[0], y1 + int(h * TORSO_BOTTOM))
+    tx1 = max(0, x1 + int(w * TORSO_LEFT))
+    tx2 = min(frame.shape[1], x2 - int(w * TORSO_RIGHT))
+    if ty2 - ty1 < 10 or tx2 - tx1 < 10:
+        return None
+    return frame[ty1:ty2, tx1:tx2]
 
 
 def main():
@@ -55,37 +47,49 @@ def main():
     rec_dir = args[0] if args else "/home/user/recordings/yaris_20260303_162028/"
 
     print(f"\n{'='*70}")
-    print(f"  PIPELINE TEST ON FILES: {os.path.basename(rec_dir)}")
+    print(f"  PIPELINE TEST: {os.path.basename(rec_dir)}")
+    print(f"  Models: YOLOv11s (jockey) + EfficientNet-V2-S (color)")
     print(f"{'='*70}\n")
 
-    # Load YOLO
+    # Load YOLO jockey detector
     from ultralytics import YOLO
-    yolo = YOLO("models/yolov8s.pt")
-    print(f"[OK] YOLOv8s loaded")
+    yolo = YOLO("models/jockey_yolov11s.pt")
+    print(f"[OK] YOLOv11s loaded (classes: {yolo.names})")
 
-    # Load color classifier
-    ckpt = torch.load("models/color_classifier.pt", map_location="cpu")
-    color_model = SimpleColorCNN(num_classes=5)
-    color_model.load_state_dict(ckpt["model_state_dict"])
-    color_model.eval().cuda()
+    # Load EfficientNet-V2-S color classifier
+    from torchvision import models
+    ckpt = torch.load("models/color_classifier_v2.pt", map_location="cpu", weights_only=False)
     COLOR_NAMES = ckpt["classes"]
-    print(f"[OK] ColorCNN loaded, classes: {COLOR_NAMES}")
+    img_size = ckpt.get("img_size", 128)
 
-    transform = transforms.Compose([
-        transforms.Resize((64, 64)),
-        transforms.ToTensor(),
-        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-    ])
+    model = models.efficientnet_v2_s(weights=None)
+    in_features = model.classifier[1].in_features
+    model.classifier = nn.Sequential(
+        nn.Dropout(p=0.3),
+        nn.Linear(in_features, len(COLOR_NAMES)),
+    )
+    model.load_state_dict(ckpt["model_state_dict"])
+    model.eval().cuda()
+    print(f"[OK] EfficientNet-V2-S loaded, classes: {COLOR_NAMES}, input: {img_size}x{img_size}")
+
+    MEAN = [0.485, 0.456, 0.406]
+    STD = [0.229, 0.224, 0.225]
+
+    def preprocess_crop(crop_bgr):
+        rgb = cv2.cvtColor(crop_bgr, cv2.COLOR_BGR2RGB)
+        rgb = cv2.resize(rgb, (img_size, img_size))
+        t = torch.from_numpy(rgb).float().permute(2, 0, 1) / 255.0
+        for c in range(3):
+            t[c] = (t[c] - MEAN[c]) / STD[c]
+        return t
 
     # Find all camera files
     all_files = sorted(glob.glob(os.path.join(rec_dir, "kamera_*.mp4")))
     print(f"[OK] Found {len(all_files)} camera recordings\n")
 
-    # Results storage
-    all_results = {}   # cam_num -> list of (frame_pos, time_sec, detections)
-
-    scan_step = 50     # Check every 50th frame (~2 sec at 25fps)
-    show_display = "--show" in sys.argv  # --show to display frames with detections
+    all_results = {}
+    scan_step = 50     # Every 50th frame (~2 sec at 25fps)
+    show_display = "--show" in sys.argv
 
     for fpath in all_files:
         fname = os.path.basename(fpath)
@@ -95,7 +99,6 @@ def main():
         cap = cv2.VideoCapture(fpath)
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
-        duration = total_frames / fps
 
         cam_results = []
         t0 = time.time()
@@ -106,104 +109,64 @@ def main():
             if not ret:
                 break
 
-            # YOLO inference
+            # YOLO jockey detection
             results = yolo(frame, imgsz=800, conf=CONF_THRESHOLD, verbose=False)
 
-            persons = []
-            horses = []
-            for b in results[0].boxes:
-                cls = int(b.cls)
-                if cls == PERSON_CLASS:
-                    persons.append(b)
-                elif cls == HORSE_CLASS:
-                    horses.append(b)
-
-            if not persons and not horses:
+            jockeys = results[0].boxes
+            if jockeys is None or len(jockeys) == 0:
                 continue
 
-            # Get horse bboxes for proximity filter
-            horse_bboxes = []
-            for b in horses:
-                hx1, hy1, hx2, hy2 = map(int, b.xyxy[0].tolist())
-                horse_bboxes.append((hx1, hy1, hx2, hy2))
-
-            # Filter and classify persons
             frame_detections = []
             fh, fw = frame.shape[:2]
 
-            for b in persons:
+            # Collect valid torso crops for batch classification
+            crops = []
+            crop_meta = []  # (bbox, det_conf)
+
+            for b in jockeys:
                 x1, y1, x2, y2 = map(int, b.xyxy[0].tolist())
                 bh = y2 - y1
                 bw = x2 - x1
                 det_conf = float(b.conf)
 
-                # Filters
                 if x1 <= EDGE_MARGIN or x2 >= fw - EDGE_MARGIN:
                     continue
                 if bh < MIN_BBOX_HEIGHT:
                     continue
 
-                # Must be near a horse — filters out spectators/staff
-                if horse_bboxes:
-                    px = (x1 + x2) / 2
-                    py = (y1 + y2) / 2
-                    margin = max(bh, 80)  # margin scales with person size
-                    near_horse = False
-                    for hx1, hy1, hx2, hy2 in horse_bboxes:
-                        if hx1 - margin < px < hx2 + margin and hy1 - margin < py < hy2 + margin:
-                            near_horse = True
-                            break
-                    if not near_horse:
-                        continue
-
-                # Torso crop (upper half)
-                torso_y2 = y1 + bh // 2
-                crop = frame[y1:torso_y2, x1:x2]
-                if crop.shape[0] < 5 or crop.shape[1] < 5:
+                torso = extract_torso(frame, (x1, y1, x2, y2))
+                if torso is None:
                     continue
 
-                crop_pixels = crop.shape[0] * crop.shape[1]
+                crop_pixels = torso.shape[0] * torso.shape[1]
                 if crop_pixels < MIN_CROP_PIXELS or crop_pixels > MAX_CROP_PIXELS:
                     continue
 
-                # Color classify
-                pil = Image.fromarray(cv2.cvtColor(crop, cv2.COLOR_BGR2RGB))
-                tensor = transform(pil).unsqueeze(0).cuda()
+                crops.append(torso)
+                crop_meta.append(((x1, y1, x2, y2), det_conf, f"{bw}x{bh}"))
+
+            # Batch classify
+            if crops:
+                tensors = torch.stack([preprocess_crop(c) for c in crops]).cuda()
                 with torch.no_grad():
-                    logits = color_model(tensor)
-                    probs = torch.softmax(logits, dim=1)[0]
-                    color_id = probs.argmax().item()
-                    color_conf = probs[color_id].item()
+                    logits = model(tensors)
+                    probs = torch.softmax(logits, dim=1)
 
-                color_name = COLOR_NAMES[color_id]
-                # Skip colors not in this race
-                if color_name not in ACTIVE_COLORS:
-                    continue
+                for i, ((bbox, det_conf, size), prob) in enumerate(zip(crop_meta, probs)):
+                    color_id = prob.argmax().item()
+                    color_conf = prob[color_id].item()
+                    color_name = COLOR_NAMES[color_id]
+                    x1, y1, x2, y2 = bbox
 
-                frame_detections.append({
-                    "type": "person",
-                    "bbox": (x1, y1, x2, y2),
-                    "det_conf": det_conf,
-                    "color": color_name,
-                    "color_conf": color_conf,
-                    "size": f"{bw}x{bh}",
-                    "center_x": (x1 + x2) / 2 / fw,  # normalized
-                })
-
-            # Also track horse detections (for awareness)
-            for b in horses:
-                x1, y1, x2, y2 = map(int, b.xyxy[0].tolist())
-                bh = y2 - y1
-                bw = x2 - x1
-                frame_detections.append({
-                    "type": "horse",
-                    "bbox": (x1, y1, x2, y2),
-                    "det_conf": float(b.conf),
-                    "color": "-",
-                    "color_conf": 0,
-                    "size": f"{bw}x{bh}",
-                    "center_x": (x1 + x2) / 2 / fw,
-                })
+                    frame_detections.append({
+                        "bbox": bbox,
+                        "det_conf": det_conf,
+                        "color": color_name,
+                        "color_conf": color_conf,
+                        "size": size,
+                        "center_x": (x1 + x2) / 2 / fw,
+                        "probs": {COLOR_NAMES[j]: f"{prob[j].item():.2%}" for j in range(len(COLOR_NAMES))},
+                    })
 
             if frame_detections:
                 cam_results.append({
@@ -212,7 +175,6 @@ def main():
                     "detections": frame_detections,
                 })
 
-                # Draw detections on frame and show
                 if show_display:
                     COLOR_BGR = {
                         "green": (0, 255, 0),
@@ -221,54 +183,45 @@ def main():
                     }
                     for d in frame_detections:
                         bx1, by1, bx2, by2 = d["bbox"]
-                        if d["type"] == "horse":
-                            cv2.rectangle(frame, (bx1, by1), (bx2, by2), (180, 130, 70), 1)
-                            cv2.putText(frame, "horse", (bx1, by2 + 15),
-                                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (180, 130, 70), 1)
-                        else:
-                            bgr = COLOR_BGR.get(d["color"], (255, 255, 255))
-                            cv2.rectangle(frame, (bx1, by1), (bx2, by2), bgr, 2)
-                            label = f"{d['color']} {d['color_conf']:.0%}"
-                            cv2.putText(frame, label, (bx1, by1 - 5),
-                                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, bgr, 2)
+                        bgr = COLOR_BGR.get(d["color"], (255, 255, 255))
+                        cv2.rectangle(frame, (bx1, by1), (bx2, by2), bgr, 2)
+                        label = f"{d['color']} {d['color_conf']:.0%} det={d['det_conf']:.0%}"
+                        cv2.putText(frame, label, (bx1, by1 - 5),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, bgr, 2)
+                        # Draw torso region
+                        h, w = by2 - by1, bx2 - bx1
+                        ty1 = by1 + int(h * TORSO_TOP)
+                        ty2 = by1 + int(h * TORSO_BOTTOM)
+                        tx1 = bx1 + int(w * TORSO_LEFT)
+                        tx2 = bx2 - int(w * TORSO_RIGHT)
+                        cv2.rectangle(frame, (tx1, ty1), (tx2, ty2), (0, 255, 255), 1)
                     title = f"{cam_id} frame={pos} t={pos/fps:.1f}s"
                     cv2.putText(frame, title, (10, 30),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
                     cv2.imshow("Race Vision Test", frame)
-                    key = cv2.waitKey(0)  # Press any key for next, 'q' to quit
+                    key = cv2.waitKey(0)
                     if key == ord('q'):
                         show_display = False
 
         elapsed = time.time() - t0
         cap.release()
-
         all_results[cam_num] = cam_results
 
-        # Print summary for this camera
-        n_frames_with_dets = len(cam_results)
-        total_persons = sum(
-            len([d for d in fr["detections"] if d["type"] == "person"])
-            for fr in cam_results
-        )
-        total_horses = sum(
-            len([d for d in fr["detections"] if d["type"] == "horse"])
-            for fr in cam_results
-        )
+        n_frames = len(cam_results)
+        total_jockeys = sum(len(fr["detections"]) for fr in cam_results)
 
-        if n_frames_with_dets > 0:
+        if n_frames > 0:
             first_t = cam_results[0]["time_sec"]
             last_t = cam_results[-1]["time_sec"]
 
-            # Color summary
             color_counts = {}
             for fr in cam_results:
                 for d in fr["detections"]:
-                    if d["type"] == "person" and d["color_conf"] > 0.5:
+                    if d["color_conf"] > 0.5:
                         color_counts[d["color"]] = color_counts.get(d["color"], 0) + 1
 
             colors_str = ", ".join(f"{c}:{n}" for c, n in sorted(color_counts.items()))
-            print(f"  {cam_id}: {n_frames_with_dets} frames, "
-                  f"persons={total_persons} horses={total_horses}, "
+            print(f"  {cam_id}: {n_frames} frames, jockeys={total_jockeys}, "
                   f"window={first_t:.1f}-{last_t:.1f}s, "
                   f"colors=[{colors_str}]  ({elapsed:.1f}s)")
         else:
@@ -276,7 +229,7 @@ def main():
 
     # ── Global timeline ──────────────────────────────────────────────
     print(f"\n{'='*70}")
-    print("  RACE TIMELINE (horse passage through cameras)")
+    print("  RACE TIMELINE (jockey passage through cameras)")
     print(f"{'='*70}\n")
 
     for cam_num in sorted(all_results.keys()):
@@ -288,21 +241,20 @@ def main():
         first_t = results[0]["time_sec"]
         last_t = results[-1]["time_sec"]
 
-        # Best frame (most detections)
         best = max(results, key=lambda r: len(r["detections"]))
         best_dets = best["detections"]
-        persons_str = " | ".join(
+        jockeys_str = " | ".join(
             f"{d['color']}({d['color_conf']:.0%})"
-            for d in best_dets if d["type"] == "person"
+            for d in best_dets
         )
 
         bar_start = int(first_t / 2)
         bar_end = int(last_t / 2)
-        bar = " " * bar_start + "█" * max(1, bar_end - bar_start)
+        bar = " " * bar_start + "\u2588" * max(1, bar_end - bar_start)
 
         print(f"  {cam_id} [{first_t:5.1f}s-{last_t:5.1f}s] {bar}")
-        if persons_str:
-            print(f"           best: {persons_str}")
+        if jockeys_str:
+            print(f"           best: {jockeys_str}")
 
     print(f"\n{'='*70}")
     print("  DONE")

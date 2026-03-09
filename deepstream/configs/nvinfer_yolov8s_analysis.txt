@@ -1,9 +1,10 @@
-# nvinfer config for YOLOv8s — Analysis pipeline (heavy, 3-8 active cameras)
+# nvinfer config for YOLOv11s — Analysis pipeline (heavy, 3-8 active cameras)
 
 [property]
 gpu-id=0
 
-model-engine-file=/app/models/yolov8s_deepstream.engine
+onnx-file=/app/models/jockey_yolov11s.onnx
+model-engine-file=/app/models/jockey_yolov11s_analysis.engine
 
 batch-size=8
 network-mode=2
@@ -11,7 +12,7 @@ network-input-order=0
 
 infer-dims=3;800;800
 
-num-detected-classes=80
+num-detected-classes=1
 process-mode=1
 
 maintain-aspect-ratio=1

@@ -2,8 +2,8 @@
 trt_inference.py — TensorRT inference wrapper with PyTorch fallback.
 
 Provides unified API for:
-    - YOLOv8 detection (trigger + analysis)
-    - SimpleColorCNN classification
+    - YOLO detection (trigger + analysis)
+    - Color classification (EfficientNet-V2-S or SimpleColorCNN)
 
 When TensorRT is available, loads .engine files for maximum throughput.
 Falls back to PyTorch (.pt) when TRT is not available (Windows dev, etc.).
@@ -11,16 +11,16 @@ Falls back to PyTorch (.pt) when TRT is not available (Windows dev, etc.).
 Usage:
     # Detection
     detector = YOLODetector(
-        engine_path="models/yolov8n_trigger.engine",
-        fallback_pt="yolov8n.pt",
-        imgsz=640,
+        engine_path="models/yolov11s_analysis.engine",
+        fallback_pt="yolo11s.pt",
+        imgsz=800,
     )
     results = detector.detect_batch(frames)  # list of np arrays
 
     # Classification
     classifier = ColorClassifierInfer(
-        engine_path="models/color_classifier.engine",
-        fallback_pt="models/color_classifier.pt",
+        engine_path="models/color_classifier_v2.engine",
+        fallback_pt="models/color_classifier_v2.pt",
     )
     colors, confs, prob_dicts = classifier.classify_batch(crops)
 """
@@ -78,10 +78,10 @@ class YOLODetector:
     def __init__(
         self,
         engine_path: Optional[str] = None,
-        fallback_pt: str = "yolov8s.pt",
-        imgsz: int = 1280,
+        fallback_pt: str = "yolo11s.pt",
+        imgsz: int = 800,
         conf: float = 0.35,
-        iou: float = 0.3,
+        iou: float = 0.5,
         device: str = "cuda:0",
         half: bool = True,
     ):
@@ -176,14 +176,14 @@ class ColorClassifierInfer:
     """Batch color classification using TensorRT or PyTorch fallback."""
 
     CLASSES = ["blue", "green", "purple", "red", "yellow"]
-    INPUT_SIZE = 64
+    INPUT_SIZE = 128
     MEAN = [0.485, 0.456, 0.406]
     STD = [0.229, 0.224, 0.225]
 
     def __init__(
         self,
         engine_path: Optional[str] = None,
-        fallback_pt: str = "models/color_classifier.pt",
+        fallback_pt: str = "models/color_classifier_v2.pt",
         device: str = "cuda:0",
     ):
         self.device = torch.device(device if torch.cuda.is_available() else "cpu")
@@ -203,7 +203,22 @@ class ColorClassifierInfer:
     def _load_pytorch(self, pt_path: str):
         ckpt = torch.load(pt_path, map_location=self.device, weights_only=False)
         self.classes = ckpt['classes']
-        self._model = SimpleColorCNN(num_classes=len(self.classes)).to(self.device)
+        arch = ckpt.get('architecture', 'simple_cnn')
+        img_size = ckpt.get('img_size', 128)
+        self.INPUT_SIZE = img_size
+
+        if arch == 'efficientnet_v2_s':
+            from torchvision import models
+            model = models.efficientnet_v2_s(weights=None)
+            in_features = model.classifier[1].in_features
+            model.classifier = nn.Sequential(
+                nn.Dropout(p=0.3),
+                nn.Linear(in_features, len(self.classes)),
+            )
+            self._model = model.to(self.device)
+        else:
+            self._model = SimpleColorCNN(num_classes=len(self.classes)).to(self.device)
+
         self._model.load_state_dict(ckpt['model_state_dict'])
         self._model.eval()
 
