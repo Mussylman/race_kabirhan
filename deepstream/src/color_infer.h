@@ -94,9 +94,19 @@ private:
     nvinfer1::IExecutionContext* context_ = nullptr;
 
     // GPU buffers
-    void* d_input_  = nullptr;   // float[max_batch][3][64][64]
-    void* d_output_ = nullptr;   // float[max_batch][5]
+    void* d_input_  = nullptr;   // float[max_batch][3][CROP_SIZE][CROP_SIZE]
+    void* d_output_ = nullptr;   // float[max_batch][model_num_classes_]
     int   max_batch_ = 128;
+
+    // Model outputs 3 classes (green=0, red=1, yellow=2)
+    // SHM uses 5 slots (blue=0, green=1, purple=2, red=3, yellow=4)
+    static constexpr int MODEL_NUM_CLASSES = 3;
+    // Mapping: model_class_index → SHM ColorId
+    static constexpr uint32_t MODEL_TO_SHM[MODEL_NUM_CLASSES] = {
+        COLOR_GREEN,   // model 0 → green (SHM 1)
+        COLOR_RED,     // model 1 → red   (SHM 3)
+        COLOR_YELLOW,  // model 2 → yellow(SHM 4)
+    };
 
     // CUDA stream for async ops
     void* stream_ = nullptr;     // cudaStream_t

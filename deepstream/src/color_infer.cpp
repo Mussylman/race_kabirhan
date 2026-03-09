@@ -137,9 +137,9 @@ bool ColorInfer::load(const std::string& engine_path) {
         return false;
     }
 
-    // Allocate GPU buffers
+    // Allocate GPU buffers (model outputs MODEL_NUM_CLASSES, not NUM_COLORS)
     size_t input_bytes  = max_batch_ * 3 * CROP_SIZE * CROP_SIZE * sizeof(float);
-    size_t output_bytes = max_batch_ * NUM_COLORS * sizeof(float);
+    size_t output_bytes = max_batch_ * MODEL_NUM_CLASSES * sizeof(float);
     cudaMalloc(&d_input_,  input_bytes);
     cudaMalloc(&d_output_, output_bytes);
 
@@ -151,8 +151,8 @@ bool ColorInfer::load(const std::string& engine_path) {
     cudaStreamCreate(&s);
     stream_ = s;
 
-    fprintf(stderr, "[ColorInfer] Loaded engine: %s (max_batch=%d)\n",
-            engine_path.c_str(), max_batch_);
+    fprintf(stderr, "[ColorInfer] Loaded engine: %s (max_batch=%d, classes=%d→%d)\n",
+            engine_path.c_str(), max_batch_, MODEL_NUM_CLASSES, NUM_COLORS);
     return true;
 }
 
@@ -222,39 +222,44 @@ void ColorInfer::preprocess_crops(const NvBufSurface* surface,
 }
 
 void ColorInfer::softmax_and_parse(int num_crops, std::vector<ColorResult>& results) {
-    // Copy output from GPU
-    std::vector<float> h_output(num_crops * NUM_COLORS);
+    // Copy output from GPU (model outputs MODEL_NUM_CLASSES per crop)
+    std::vector<float> h_output(num_crops * MODEL_NUM_CLASSES);
     cudaMemcpyAsync(h_output.data(), d_output_,
-                    num_crops * NUM_COLORS * sizeof(float),
+                    num_crops * MODEL_NUM_CLASSES * sizeof(float),
                     cudaMemcpyDeviceToHost,
                     static_cast<cudaStream_t>(stream_));
     cudaStreamSynchronize(static_cast<cudaStream_t>(stream_));
 
     results.resize(num_crops);
     for (int i = 0; i < num_crops; ++i) {
-        const float* logits = h_output.data() + i * NUM_COLORS;
+        const float* logits = h_output.data() + i * MODEL_NUM_CLASSES;
 
-        // Softmax
-        float max_val = *std::max_element(logits, logits + NUM_COLORS);
+        // Softmax over MODEL_NUM_CLASSES
+        float max_val = *std::max_element(logits, logits + MODEL_NUM_CLASSES);
         float sum = 0.0f;
-        float probs[NUM_COLORS];
-        for (int c = 0; c < NUM_COLORS; ++c) {
-            probs[c] = std::exp(logits[c] - max_val);
-            sum += probs[c];
+        float model_probs[MODEL_NUM_CLASSES];
+        for (int c = 0; c < MODEL_NUM_CLASSES; ++c) {
+            model_probs[c] = std::exp(logits[c] - max_val);
+            sum += model_probs[c];
         }
-        for (int c = 0; c < NUM_COLORS; ++c) {
-            probs[c] /= sum;
-        }
-
-        // Find best
-        int best = 0;
-        for (int c = 1; c < NUM_COLORS; ++c) {
-            if (probs[c] > probs[best]) best = c;
+        for (int c = 0; c < MODEL_NUM_CLASSES; ++c) {
+            model_probs[c] /= sum;
         }
 
-        results[i].color_id   = static_cast<uint32_t>(best);
-        results[i].confidence = probs[best];
-        std::memcpy(results[i].probs, probs, sizeof(probs));
+        // Find best model class
+        int best_model = 0;
+        for (int c = 1; c < MODEL_NUM_CLASSES; ++c) {
+            if (model_probs[c] > model_probs[best_model]) best_model = c;
+        }
+
+        // Map model classes → SHM 5-slot format
+        results[i].color_id   = MODEL_TO_SHM[best_model];
+        results[i].confidence = model_probs[best_model];
+        // Fill SHM probs: zero for unused slots (blue, purple)
+        std::memset(results[i].probs, 0, sizeof(results[i].probs));
+        for (int c = 0; c < MODEL_NUM_CLASSES; ++c) {
+            results[i].probs[MODEL_TO_SHM[c]] = model_probs[c];
+        }
     }
 }
 
