@@ -1,5 +1,164 @@
 # DeepStream — Архитектура системы Race Vision
 
+> **Про Python DeepStream SDK**: У NVIDIA есть `pyds` (Python bindings для DeepStream).
+> Тот же пайплайн можно написать на Python через `Gst.ElementFactory.make()` + `pyds.gst_buffer_get_nvds_batch_meta()`.
+> Но C++ даёт прямой доступ к CUDA-ядрам и TensorRT без обёрток — критично для кастомного
+> CUDA kernel кропа торса и прямого TensorRT inference.
+
+---
+
+## Как используется DeepStream C++ SDK (GStreamer API)
+
+DeepStream SDK — надстройка над **GStreamer**. Весь код написан на C++ и использует GStreamer C API + DeepStream плагины + NVIDIA-специфичные элементы.
+
+### Инициализация GStreamer
+
+```cpp
+// pipeline.cpp:33-36
+gst_init(nullptr, nullptr);                           // инициализация GStreamer
+loop_ = g_main_loop_new(nullptr, FALSE);              // event loop GLib
+pipeline_ = gst_pipeline_new("race-vision-pipeline"); // контейнер-пайплайн
+```
+
+`GMainLoop` крутится в `main()` через `g_main_loop_run(loop)` — обрабатывает все события.
+
+### Создание элементов — `gst_element_factory_make()`
+
+```cpp
+// DeepStream-элементы (NVIDIA):
+gst_element_factory_make("nvstreammux", "streammux");      // батчинг N камер
+gst_element_factory_make("nvinfer", "yolo-infer");         // TRT-инференс
+gst_element_factory_make("nvtracker", "tracker");          // IOU-трекинг
+gst_element_factory_make("nvmultistreamtiler", "tiler");   // мозаика камер
+gst_element_factory_make("nvdsosd", "osd");                // отрисовка bbox
+gst_element_factory_make("nvvideoconvert", "conv");        // конвертер
+gst_element_factory_make("nv3dsink", "sink");              // вывод на экран
+
+// Стандартные GStreamer-элементы:
+gst_element_factory_make("uridecodebin", "source-0");     // RTSP-источник
+gst_element_factory_make("fakesink", "fakesink");          // /dev/null
+```
+
+### Настройка свойств — `g_object_set()`
+
+```cpp
+// nvstreammux — батчит кадры со всех камер в один тензор
+g_object_set(G_OBJECT(streammux_),
+    "batch-size",  25,     "width",  800,     "height",  800,
+    "batched-push-timeout", 40000,
+    "live-source", TRUE,   "enable-padding", TRUE,   NULL);
+
+// nvinfer — TensorRT-инференс (YOLOv8)
+g_object_set(G_OBJECT(nvinfer),
+    "config-file-path", "configs/nvinfer_yolov8s.txt",
+    "unique-id", 1,   NULL);
+
+// nvtracker — IOU-трекер
+g_object_set(G_OBJECT(tracker),
+    "tracker-width", 800,  "tracker-height", 800,
+    "ll-lib-file", "/opt/nvidia/deepstream/deepstream/lib/libnvds_nvmultiobjecttracker.so",
+    "ll-config-file", "configs/tracker_iou.yml",   NULL);
+```
+
+### Сборка пайплайна — `gst_bin_add()` + `gst_element_link()`
+
+```cpp
+gst_bin_add(GST_BIN(pipeline_), streammux_);
+gst_bin_add(GST_BIN(pipeline_), nvinfer);
+gst_bin_add(GST_BIN(pipeline_), tracker);
+
+gst_element_link(streammux_, nvinfer);    // streammux → nvinfer
+gst_element_link(nvinfer, tracker);       // nvinfer → tracker
+// или одной строкой:
+gst_element_link_many(link_from, osd, tiler, conv, sink, NULL);
+```
+
+### Динамическая линковка (pad-added)
+
+`uridecodebin` создаёт pad'ы **после** подключения к RTSP. Линковка через callback:
+
+```cpp
+g_signal_connect(source, "pad-added", G_CALLBACK(on_pad_added), this);
+
+void Pipeline::on_pad_added(GstElement* src, GstPad* pad, gpointer data) {
+    // Только видео pad'ы
+    if (!g_str_has_prefix(name, "video/")) return;
+
+    // Запрашиваем sink-pad у muxer: "sink_0", "sink_1", ... "sink_24"
+    GstPad* mux_pad = gst_element_request_pad_simple(streammux_, "sink_0");
+    gst_pad_link(pad, mux_pad);  // uridecodebin:src → nvstreammux:sink_0
+}
+```
+
+### Probe — Сердце всей логики
+
+Callback на каждом буфере, проходящем через pad:
+
+```cpp
+GstPad* src_pad = gst_element_get_static_pad(tracker, "src");
+gst_pad_add_probe(src_pad, GST_PAD_PROBE_TYPE_BUFFER, inference_probe, this, nullptr);
+
+GstPadProbeReturn Pipeline::inference_probe(GstPad*, GstPadProbeInfo* info, gpointer data) {
+    GstBuffer* buf = GST_PAD_PROBE_INFO_BUFFER(info);
+
+    // 1. Batch-метаданные (все камеры)
+    NvDsBatchMeta* batch = gst_buffer_get_nvds_batch_meta(buf);
+
+    // 2. GPU-поверхность (для CUDA-кропов)
+    NvBufSurface* surface = ...;
+
+    // 3. Итерация по кадрам (frame = камера)
+    for (NvDsMetaList* l = batch->frame_meta_list; l; l = l->next) {
+        NvDsFrameMeta* frame = static_cast<NvDsFrameMeta*>(l->data);
+        int cam_idx = frame->source_id;
+
+        // 4. Итерация по детекциям
+        for (NvDsMetaList* lo = frame->obj_meta_list; lo; lo = lo->next) {
+            NvDsObjectMeta* obj = static_cast<NvDsObjectMeta*>(lo->data);
+            float x1   = obj->rect_params.left;
+            float conf = obj->confidence;
+            uint64_t track_id = obj->object_id;  // от nvtracker!
+        }
+    }
+    return GST_PAD_PROBE_OK;
+}
+```
+
+### Доступ к GPU-памяти (NvBufSurface) — Zero-Copy
+
+```cpp
+const auto& params = surface->surfaceList[cam_idx];
+const uint8_t* gpu_ptr = static_cast<const uint8_t*>(params.dataPtr);  // GPU!
+// CUDA-ядро читает ПРЯМО из буфера DeepStream:
+crop_resize_normalize_kernel<<<blocks, threads, 0, stream>>>(gpu_ptr, ...);
+```
+
+### Кастомный YOLO-парсер
+
+```cpp
+// Компилируется в libnvdsinfer_yolov8_parser.so
+extern "C" bool NvDsInferParseYoloV8(
+    const std::vector<NvDsInferLayerInfo>& outputLayers,
+    const NvDsInferNetworkInfo& networkInfo,
+    const NvDsInferParseDetectionParams& detectionParams,
+    std::vector<NvDsInferObjectDetectionInfo>& objectList);
+// Подключается через: custom-lib-path + parse-bbox-func-name в конфиге nvinfer
+```
+
+### Какие API используются
+
+| Слой | API | Для чего |
+|------|-----|----------|
+| **GStreamer** | `gst_element_factory_make`, `gst_bin_add`, `gst_element_link`, `gst_pad_add_probe` | Пайплайн |
+| **GLib** | `g_main_loop_run`, `g_object_set`, `g_signal_connect` | Event loop, свойства |
+| **DeepStream** | `gst_buffer_get_nvds_batch_meta`, `NvDsBatchMeta/FrameMeta/ObjectMeta` | Метаданные |
+| **NvBufSurface** | `surfaceList[i].dataPtr` | GPU-кадры |
+| **TensorRT** | `createInferRuntime`, `deserializeCudaEngine`, `enqueueV3` | Цвет-inference |
+| **CUDA** | `cudaMalloc`, kernel `<<<>>>` | Crop/resize/normalize |
+| **POSIX IPC** | `shm_open`, `mmap`, `sem_post` | Данные → Python |
+
+---
+
 ## Общая картина
 
 Система анализирует **25 камер** на скаковой дорожке в реальном времени.
