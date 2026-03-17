@@ -4,6 +4,206 @@
 
 ---
 
+## 2026-03-18 (сессия 2) — 1-камерный debug режим, EMA, torso-кроп, mux 1520
+
+### Что сделано
+1. **`cameras_1cam.json`** — новый конфиг для 1 камеры (cam-05, file mode)
+2. **`nvinfer_jockey_1cam.txt`** — batch=1, interval=0, threshold=0.30
+3. **`tracker_iou.yml`** — `probationAge: 3→1` (трек с первого кадра)
+4. **`pipeline.h`** — оптимизированы фильтры:
+   - `MIN_BBOX_HEIGHT`: 80→35 px
+   - `MIN_ASPECT_RATIO`: 0.3→0.25
+   - `MIN_CROP_PIXELS`: 400→200, `MAX_CROP_PIXELS`: 15000→20000
+   - `STATIC_HISTORY_FRAMES`: 8→0 (отключён — лошади проходят за <8 кадров)
+   - Добавлен `ColorSmoother` struct + `color_smooth_` map (EMA)
+   - `COLOR_EMA_ALPHA = 0.35f`
+5. **`pipeline.cpp`** — исправления:
+   - Баг: `STATIC_HISTORY_FRAMES=0` → `0 >= 0` всегда true → все детекции фильтровались. Фикс: `if (STATIC_HISTORY_FRAMES > 0)`
+   - Торсо-кроп через `ColorInfer::compute_torso_roi()` (10-40% высоты, 20% margins)
+   - EMA сглаживание цвета по track_id
+   - `MIN_COLOR_CONF=0.60` — ниже → COLOR_UNKNOWN
+   - OSD: `border_width 5→2`, `font_size 16→10`
+   - `sync=TRUE` на display sink
+6. **`main.cpp`** — `live_source = !file_mode || (cameras.size() > 7)` (FALSE для 1-cam file)
+
+### Ключевые выводы
+- **Почему все GREEN/UNKNOWN**: `color_classifier_v2` обучен только на 3 классах (green/red/yellow). Blue/purple жокеев нет в модели → всегда UNKNOWN или misclassified
+- **bbox размер** (24×49px) — физическое расстояние камеры от лошади, не зависит от качества модели
+- **mux 1520×1520** — торсо-кроп вырастает с ~14×15px до ~28×28px → лучше для классификатора
+
+### Рабочие команды (нативно, без Docker)
+```bash
+cd /home/user/race_vision
+
+# 1 камера, debug
+./deepstream/build/race_vision_deepstream \
+  --config cameras_1cam.json \
+  --yolo-engine deepstream/configs/nvinfer_jockey_1cam.txt \
+  --color-engine models/color_classifier_v2.engine \
+  --mux-width 1520 --mux-height 1520 \
+  --file-mode --display
+
+# 25 камер
+LD_LIBRARY_PATH=/opt/nvidia/deepstream/deepstream/lib:$LD_LIBRARY_PATH \
+./deepstream/build/race_vision_deepstream \
+  --config cameras_all_25.json \
+  --yolo-engine deepstream/configs/nvinfer_jockey.txt \
+  --color-engine models/color_classifier_v2.engine \
+  --file-mode --log-dir ds_results
+```
+
+### Что нужно завтра
+1. **Переобучить `color_classifier_v2`** на все 5 цветов (blue, green, purple, red, yellow)
+   - Извлечь кропы жокеев из записей через YOLO
+   - Текущий `dataset/` — проверить что есть
+2. Возможно поднять mux до 1520×1520 и для 25 камер — замерить FPS
+3. Протестировать 1-камерный режим с новым классификатором
+
+---
+
+## 2026-03-18 — Нативный DeepStream на хосте (без Docker)
+
+### Что сделано
+1. **Удалён Docker** — освободили ~57 GB (образы + кэш)
+2. **DeepStream 8.0 установлен на хост** (Ubuntu 24.04, неофициально — работает)
+3. **C++ binary собран нативно** под TRT 10.9 + CUDA 12.8
+   - `deepstream/build/race_vision_deepstream` (1.4 MB)
+   - `deepstream/build/libnvdsinfer_yolov8_parser.so`
+4. **CMakeLists.txt** — фикс JSON_INCLUDE_DIR после FetchContent
+5. **Engine пересобран** под TRT 10.9 (~7 мин через nvinfer auto-rebuild из ONNX)
+6. **Пути исправлены** с `/app/...` на хостовые в `nvinfer_jockey.txt` и `cameras_all_25.json`
+
+### Результаты
+- **38-40 FPS** на 25 камерах (лучше 35-36 в Docker)
+- cam-05 yellow(68%), cam-08 green(68%), cam-13 green(98%) — всего 3 детекции за 3.5 мин
+
+### Проблемы для завтра
+1. **Мало детекций** — снизить MIN_BBOX_HEIGHT 80→40, убрать interval=1→0
+2. **Unknown цвет** каждый 2-й батч — нужен carry-forward по track_id в pipeline.cpp
+3. Проверить середину записи где лошади точно видны
+
+### Команда запуска (нативная)
+```bash
+cd /home/user/race_vision
+LD_LIBRARY_PATH=/opt/nvidia/deepstream/deepstream/lib:$LD_LIBRARY_PATH \
+GST_PLUGIN_PATH=/opt/nvidia/deepstream/deepstream/lib/gst-plugins \
+./deepstream/build/race_vision_deepstream \
+  --config cameras_all_25.json \
+  --yolo-engine deepstream/configs/nvinfer_jockey.txt \
+  --color-engine models/color_classifier_v2.engine \
+  --file-mode --log-dir /home/user/race_vision/ds_results
+```
+
+---
+
+## 2026-03-13 (сессия 2) — False positive filtering (static objects)
+
+### Проблема
+На фото exp16 видны ложные детекции — YOLO ловит статические объекты (техника, столбы) как person.
+Track_id=2 на cam-05 сидел на месте 100+ батчей, координаты почти не менялись (dx ~5px/batch).
+Путаницы камер нет — код корректно матчит детекции к кадрам через `source_id`.
+
+### Исправления
+1. **`pipeline.h`** — `MIN_BBOX_HEIGHT` 60→80 (отсекает мелкие объекты)
+2. **`nvinfer_jockey.txt`** — `pre-cluster-threshold` 0.30→0.50 (YOLO отдаёт только уверенные детекции)
+3. **`pipeline.h/cpp`** — фильтр статических объектов:
+   - Хранит историю center_x для каждого (cam_index, track_id)
+   - После 8 кадров проверяет суммарное перемещение
+   - Если < 30px — скипает (стоячий объект, не лошадь на скаку)
+   - Очистка каждые 100 батчей для экономии памяти
+
+### Файлы изменены
+- `deepstream/src/pipeline.h` — MIN_BBOX_HEIGHT 60→80, добавлен TrackHistory + track_history_
+- `deepstream/src/pipeline.cpp` — static member definition, velocity filter в probe, periodic cleanup
+- `deepstream/configs/nvinfer_jockey.txt` — threshold 0.30→0.50
+
+### Статус
+Код изменён, не скомпилирован, не протестирован. Нужен Docker rebuild.
+
+---
+
+## 2026-03-13 — Fix 25-cam deadlock + diagnostic run
+
+### Проблема
+Pipeline зависал на 25 камерах из файлов (State: NULL → READY, дальше не шёл).
+На 5-7 камерах работало, на 8+ — deadlock.
+
+### Причина
+В `main.cpp` было `pipeline_config.live_source = !file_mode` → `FALSE` для файлов.
+`live-source=FALSE` заставляет nvstreammux ждать фреймы от ВСЕХ источников одновременно.
+NVDEC на RTX 3060 не может стартовать 25 декодеров разом → deadlock.
+
+### Исправление
+- `main.cpp`: `pipeline_config.live_source = true` — ВСЕГДА TRUE (как было в коммите 04626c4)
+- `pipeline.cpp`: вернули `attach-sys-ts=TRUE`, `num-surfaces-per-frame=1`
+
+### Рабочая команда запуска (25 камер, файлы)
+```bash
+docker run --rm --runtime=nvidia --gpus all \
+  -v cameras_all_25.json:/app/cameras_all_25.json:ro \
+  -v /home/user/recordings:/recordings:ro \
+  -v models:/app/models:ro \
+  -v deepstream/configs:/app/configs:ro \
+  -v /data:/data \
+  --network host \
+  --entrypoint /app/bin/race_vision_deepstream \
+  race-vision:latest \
+    --config /app/cameras_all_25.json \
+    --yolo-engine /app/configs/nvinfer_jockey.txt \
+    --color-engine /app/models/color_classifier_v2.engine \
+    --file-mode --log-dir /data/ds_results
+```
+
+### Результаты
+- **25 камер, 36-39 FPS**
+- Детекции: cam-05, cam-01 (начало записи — лошади далеко)
+- Диагностика (exp16): 117 строк CSV, 26 JPG снимков
+- Снимки не чёрные ✓ (NV12→RGB фикс работает)
+- **Проблема**: цвета нестабильны — green/yellow/red скачут на одном track_id
+
+---
+
+## 2026-03-12 — Fix black snapshots + false detection filtering
+
+### Проблема
+- Диагностические JPG снимки были **чёрные** с мелкими боксами
+- Ложные срабатывания на мелких объектах/шуме
+
+### Причина
+1. `diag_logger.cpp` читал surface как **RGBA** (4 байта/пиксель), но nvstreammux выдаёт **NV12**
+   - NV12 = Y plane (luminance) + UV plane (chroma, half resolution)
+   - При чтении как RGBA → чёрное изображение (Y значения размазаны по 4 каналам)
+2. `MIN_BBOX_HEIGHT = 25` — слишком маленький порог, YOLO ловит мелкий шум
+
+### Исправления
+1. **`diag_logger.cpp`** — определение формата surface (NV12 vs RGBA), скачивание Y+UV planes отдельно, конвертация NV12→RGB
+2. **`pipeline.h`** — `MIN_BBOX_HEIGHT` 25→60, `MIN_CROP_PIXELS` 200→400, добавлен фильтр aspect ratio (0.3–2.5)
+3. **`pipeline.cpp`** — фильтр по aspect ratio (отсекает тонкие полоски/артефакты)
+
+---
+
+## 2026-03-10 — Tracker-only fix + Full Pipeline Test
+
+### Изменения
+1. **Tracker-only objects скипаются полностью** — `pipeline.cpp`: `if (tracker_only) continue;` до записи детекции
+   - Убирает `?(0%)` спам от tracker-interpolated объектов (confidence < 0)
+   - Упрощённый маппинг цветов (1:1 correspondence ROI↔mapping)
+2. **nvinfer_jockey.txt** → YOLOv11s engine (вместо YOLOv8s)
+3. **Docker пересобран** с `--no-cache` для актуализации C++ бинарника
+
+### Результаты теста (25 камер, file mode)
+- **Модели**: YOLOv11s (jockey) + EfficientNet-V2-S (3 класса: green/red/yellow)
+- **FPS**: 36-37 на 25 камерах
+- **Детекции на 10/25 камерах**: cam-05:545, cam-08:63, cam-01:51, cam-13:36, cam-14:11, cam-12:9, cam-03:8, cam-04:4, cam-22:1, cam-02:1
+- **Python SHM reader**: РАБОТАЕТ — `CAMERA COMPLETE cam-05 order=[red > green > yellow]`
+- **Полный pipeline**: C++ → SHM → Python → Rankings ✓
+
+### Известные проблемы
+- `red(47%)` — стабильно 47% confidence, ограничение модели
+- GStreamer warnings при старте (безвредные)
+
+---
+
 ## 2026-03-04 (сессия 2) — Апгрейд DeepStream 8.0 + пересборка engine
 
 ### Что сделано

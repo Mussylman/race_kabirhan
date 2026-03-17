@@ -1,0 +1,12 @@
+{
+  "track_length": 2500,
+  "max_active": 1,
+  "analytics": [
+    {
+      "id": "cam-05",
+      "url": "file:///home/user/recordings/yaris_20260303_162028/kamera_05_162030_END162507.mp4",
+      "track_start": 360,
+      "track_end": 500
+    }
+  ]
+}

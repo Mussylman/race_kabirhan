@@ -48,8 +48,10 @@ if(NOT JSON_INCLUDE_DIR)
     message(STATUS "nlohmann/json not found, will download...")
     include(FetchContent)
     FetchContent_Declare(json
-        URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz)
+        URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
     FetchContent_MakeAvailable(json)
+    set(JSON_INCLUDE_DIR ${json_SOURCE_DIR}/include)
     set(JSON_TARGET nlohmann_json::nlohmann_json)
 endif()
 
@@ -82,6 +84,7 @@ set(SOURCES
     src/yolo_parser.cpp
     src/color_infer.cpp
     src/shm_writer.cpp
+    src/diag_logger.cpp
 )
 
 # color_infer.cpp contains CUDA kernels — compile as .cu
@@ -93,6 +96,8 @@ add_executable(race_vision_deepstream ${SOURCES})
 
 target_link_directories(race_vision_deepstream PRIVATE
     ${DEEPSTREAM_SDK}/lib
+    /usr/local/cuda/lib64/stubs
+    /usr/local/cuda/lib64
 )
 
 target_link_libraries(race_vision_deepstream PRIVATE
@@ -111,10 +116,14 @@ target_link_libraries(race_vision_deepstream PRIVATE
     ${TENSORRT_LIB}
     ${CUDA_LIBRARIES}
     cudart
+    cuda
 
     # POSIX shared memory
     rt
     pthread
+
+    # Filesystem (C++17)
+    stdc++fs
 )
 
 if(JSON_TARGET)

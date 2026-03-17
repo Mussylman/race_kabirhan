@@ -14,6 +14,7 @@
 #include "config.h"
 #include "shm_writer.h"
 #include "color_infer.h"
+#include "diag_logger.h"
 
 #include <string>
 #include <vector>
@@ -37,6 +38,8 @@ struct PipelineConfig {
     bool display_only    = false;  // --display-only: video grid without inference
     int display_width    = 2560;
     int display_height   = 1440;
+    std::string log_dir;           // --log-dir: diagnostic logging (CSV + JPG snapshots)
+    int snap_interval    = 10;     // save snapshot every N batches (0=every batch with dets)
 };
 
 class Pipeline {
@@ -80,6 +83,7 @@ private:
     PipelineConfig config_;
     ShmWriter      shm_writer_;
     ColorInfer     color_infer_;
+    DiagLogger     diag_logger_;
 
     // Focus tracking: which camera to show fullscreen (-1 = grid)
     int focused_source_ = -1;
@@ -126,12 +130,38 @@ private:
 
     // ── Detection filtering ────────────────────────────────────────
 
-    // Min bbox height in pixels, min aspect ratio, edge margin
-    static constexpr int   MIN_BBOX_HEIGHT   = 65;
-    static constexpr float MIN_ASPECT_RATIO  = 1.2f;
-    static constexpr int   EDGE_MARGIN       = 10;
-    static constexpr int   MIN_CROP_PIXELS   = 400;
-    static constexpr int   MAX_CROP_PIXELS   = 15000;
+    // Min bbox height in pixels, edge margin (0 = no edge filter)
+    static constexpr int   MIN_BBOX_HEIGHT   = 35;   // pixels at 800x800; filters distant noise
+    static constexpr float MIN_ASPECT_RATIO  = 0.25f; // width/height; reject very thin slivers
+    static constexpr float MAX_ASPECT_RATIO  = 2.5f; // reject very wide slivers
+    static constexpr int   EDGE_MARGIN       = 0;    // disabled — jockeys enter/exit at frame edges
+    static constexpr int   MIN_CROP_PIXELS   = 200;
+    static constexpr int   MAX_CROP_PIXELS   = 20000;
+
+    // ── Static object filter (reject non-moving false positives) ────
+    // Track center_x history per (cam_index, track_id). If an object
+    // has been tracked for N+ frames and moved less than MIN_TRAVEL_PX
+    // total, it's a static background object (pole, equipment, etc.)
+    static constexpr int   STATIC_HISTORY_FRAMES = 0;   // 0 = disabled (horses cross in <8 frames)
+    static constexpr float MIN_TRAVEL_PX         = 30.0f; // min total displacement
+
+    struct TrackHistory {
+        float first_cx = 0;
+        float last_cx  = 0;
+        int   frames   = 0;
+    };
+    // key: (cam_index << 16) | (track_id & 0xFFFF)
+    static std::map<uint32_t, TrackHistory> track_history_;
+
+    // ── Color smoothing per track (exponential moving average) ──────
+    // Smooths out per-frame classifier noise for stable color display
+    static constexpr float COLOR_EMA_ALPHA = 0.35f;  // weight of new observation (lower = smoother)
+    struct ColorSmoother {
+        float probs[NUM_COLORS] = {};  // smoothed probability per class
+        int   frames            = 0;   // how many frames accumulated
+    };
+    // key: same as track_history_ — (cam_index << 16) | (track_id & 0xFFFF)
+    static std::map<uint32_t, ColorSmoother> color_smooth_;
 };
 
 } // namespace rv

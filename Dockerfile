@@ -22,6 +22,7 @@ COPY deepstream/configs/ configs/
 RUN mkdir build && cd build && \
     cmake .. -DCMAKE_BUILD_TYPE=Release \
       -DDEEPSTREAM_SDK=/opt/nvidia/deepstream/deepstream \
+      -DCMAKE_EXE_LINKER_FLAGS="-L/usr/local/cuda/lib64/stubs" \
     && make -j$(nproc)
 
 # ── Runtime stage ─────────────────────────────────────────────

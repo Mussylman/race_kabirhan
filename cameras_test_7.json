@@ -1,0 +1,48 @@
+{
+  "track_length": 2500,
+  "max_active": 10,
+  "analytics": [
+    {
+      "id": "cam-01",
+      "url": "file:///recordings/yaris_20260303_162028/kamera_01_162028_END162507.mp4",
+      "track_start": 0,
+      "track_end": 100
+    },
+    {
+      "id": "cam-02",
+      "url": "file:///recordings/yaris_20260303_162028/kamera_02_162028_END162507.mp4",
+      "track_start": 90,
+      "track_end": 200
+    },
+    {
+      "id": "cam-03",
+      "url": "file:///recordings/yaris_20260303_162028/kamera_03_162029_END162507.mp4",
+      "track_start": 180,
+      "track_end": 300
+    },
+    {
+      "id": "cam-04",
+      "url": "file:///recordings/yaris_20260303_162028/kamera_04_162029_END162507.mp4",
+      "track_start": 270,
+      "track_end": 400
+    },
+    {
+      "id": "cam-05",
+      "url": "file:///recordings/yaris_20260303_162028/kamera_05_162030_END162507.mp4",
+      "track_start": 360,
+      "track_end": 500
+    },
+    {
+      "id": "cam-06",
+      "url": "file:///recordings/yaris_20260303_162028/kamera_06_162030_END162507.mp4",
+      "track_start": 450,
+      "track_end": 600
+    },
+    {
+      "id": "cam-07",
+      "url": "file:///recordings/yaris_20260303_162028/kamera_07_162031_END162507.mp4",
+      "track_start": 540,
+      "track_end": 700
+    }
+  ]
+}

@@ -19,6 +19,10 @@
 
 namespace rv {
 
+// Static member definitions
+std::map<uint32_t, Pipeline::TrackHistory>   Pipeline::track_history_;
+std::map<uint32_t, Pipeline::ColorSmoother>  Pipeline::color_smooth_;
+
 Pipeline::Pipeline() = default;
 
 Pipeline::~Pipeline() {
@@ -54,7 +58,7 @@ bool Pipeline::build(const PipelineConfig& config) {
         "batched-push-timeout",   config_.mux_batched_push_timeout,
         "live-source",            config_.live_source ? TRUE : FALSE,
         "enable-padding",         TRUE,
-        "num-surfaces-per-frame", 1,  // Reduce memory footprint
+        "num-surfaces-per-frame", 1,
         "attach-sys-ts",          TRUE,
         NULL);
 
@@ -79,6 +83,13 @@ bool Pipeline::build(const PipelineConfig& config) {
             if (!color_infer_.load(config_.color_engine_path)) {
                 fprintf(stderr, "[Pipeline] Warning: color classifier not loaded\n");
             }
+        }
+    }
+
+    // Initialize diagnostic logger
+    if (!config_.log_dir.empty()) {
+        if (!diag_logger_.init(config_.log_dir, config_.snap_interval)) {
+            fprintf(stderr, "[Pipeline] Warning: diagnostic logger init failed\n");
         }
     }
 
@@ -250,7 +261,7 @@ bool Pipeline::add_sink() {
             gst_object_unref(link_from);
             return false;
         }
-        g_object_set(G_OBJECT(sink), "sync", FALSE, NULL);
+        g_object_set(G_OBJECT(sink), "sync", TRUE, NULL);  // TRUE = real-time playback at source fps
 
         if (config_.display && !config_.display_only) {
             // Full display: link_from → osd → tiler → conv → sink
@@ -500,6 +511,7 @@ GstPadProbeReturn Pipeline::inference_probe(GstPad* pad,
         float x1, y1, x2, y2;
         float center_x;
         float det_conf;
+        bool tracker_only;
     };
     std::vector<RoiMapping> roi_mappings;
 
@@ -536,6 +548,7 @@ GstPadProbeReturn Pipeline::inference_probe(GstPad* pad,
         );
 
         int det_count = 0;
+        int raw_count = 0;
 
         // Iterate over detected objects
         for (NvDsMetaList* l_obj = frame_meta->obj_meta_list;
@@ -546,33 +559,60 @@ GstPadProbeReturn Pipeline::inference_probe(GstPad* pad,
 
             // Only person class
             if (obj_meta->class_id != 0) continue;
+            raw_count++;
 
             float x1 = obj_meta->rect_params.left;
             float y1 = obj_meta->rect_params.top;
             float x2 = x1 + obj_meta->rect_params.width;
             float y2 = y1 + obj_meta->rect_params.height;
+            // confidence < 0 means tracker-interpolated (no YOLO detection this frame)
+            // Use absolute value for display, still process for tracking continuity
             float det_conf = obj_meta->confidence;
+            bool tracker_only = (det_conf < 0.0f);
+            if (tracker_only) det_conf = 0.5f;  // assign moderate confidence for tracker objects
+
             float bw = x2 - x1;
             float bh = y2 - y1;
             float center_x = (x1 + x2) / 2.0f;
 
-            // Filter: edge margin
-            if (x1 <= EDGE_MARGIN || x2 >= fw - EDGE_MARGIN) continue;
+            // Filter: edge margin (skip if fully outside frame)
+            if (EDGE_MARGIN > 0 && (x1 <= EDGE_MARGIN || x2 >= fw - EDGE_MARGIN)) continue;
 
-            // Filter: min height
+            // Filter: min height (reject tiny distant objects / noise)
             if (bh < MIN_BBOX_HEIGHT) continue;
 
-            // Filter: aspect ratio (taller than wide)
-            if (bh / std::max(bw, 1.0f) < MIN_ASPECT_RATIO) continue;
+            // Filter: aspect ratio (reject thin slivers / edge artifacts)
+            float aspect = bw / std::max(bh, 1.0f);
+            if (aspect < MIN_ASPECT_RATIO || aspect > MAX_ASPECT_RATIO) continue;
 
-            // Compute torso ROI
-            TorsoROI roi = ColorInfer::compute_torso_roi(
-                x1, y1, x2, y2, fw, fh, det_count, cam_index);
+            // Filter: static object (not moving = not a racing horse)
+            // STATIC_HISTORY_FRAMES=0 disables this filter entirely
+            if (STATIC_HISTORY_FRAMES > 0) {
+                uint32_t tid = static_cast<uint32_t>(obj_meta->object_id);
+                uint32_t key = (static_cast<uint32_t>(cam_index) << 16) | (tid & 0xFFFF);
+                auto& th = track_history_[key];
+                if (th.frames == 0) {
+                    th.first_cx = center_x;
+                }
+                th.last_cx = center_x;
+                th.frames++;
+
+                if (th.frames >= STATIC_HISTORY_FRAMES) {
+                    float travel = std::abs(th.last_cx - th.first_cx);
+                    if (travel < MIN_TRAVEL_PX) {
+                        continue; // static object, skip
+                    }
+                }
+            }
+
+            // Crop ROI: torso only (10%..40% height, 20% side margins)
+            // Focuses on chest/torso where jockey color is most visible
+            TorsoROI roi = ColorInfer::compute_torso_roi(x1, y1, x2, y2, fw, fh, det_count, cam_index);
 
             int crop_pixels = (roi.x2 - roi.x1) * (roi.y2 - roi.y1);
             if (crop_pixels < MIN_CROP_PIXELS || crop_pixels > MAX_CROP_PIXELS) continue;
 
-            // Store detection (color will be filled after classification)
+            // Store detection (tracker-only objects kept for visual continuity)
             Detection& det = cam_dets.slot.detections[det_count];
             init_detection(det);
             det.x1       = x1;
@@ -583,9 +623,11 @@ GstPadProbeReturn Pipeline::inference_probe(GstPad* pad,
             det.det_conf = det_conf;
             det.track_id = static_cast<uint32_t>(obj_meta->object_id);
 
-            // Queue for color classification
-            all_rois.push_back(roi);
-            roi_mappings.push_back({cam_index, det_count, x1, y1, x2, y2, center_x, det_conf});
+            // Queue for color classification (skip tracker-only — no reliable crop)
+            if (!tracker_only) {
+                all_rois.push_back(roi);
+                roi_mappings.push_back({cam_index, det_count, x1, y1, x2, y2, center_x, det_conf, false});
+            }
             det_count++;
         }
 
@@ -593,28 +635,142 @@ GstPadProbeReturn Pipeline::inference_probe(GstPad* pad,
         cam_dets_list.push_back(std::move(cam_dets));
     }
 
-    // Batch color classification
-    // Store obj_meta pointers for OSD label setting
-    std::vector<NvDsObjectMeta*> classified_obj_metas;
+    // Batch color classification (only for YOLO-detected objects, not tracker-interpolated)
     if (!all_rois.empty() && self->color_infer_.is_loaded() && surface) {
         std::vector<ColorResult> color_results;
         self->color_infer_.classify(surface, all_rois, color_results);
 
-        // Write color results back into detection slots
-        for (size_t i = 0; i < color_results.size() && i < roi_mappings.size(); ++i) {
-            const auto& cr = color_results[i];
-            const auto& rm = roi_mappings[i];
-
-            // Find the matching CamDets entry
+        // Map color results back + apply EMA smoothing per track_id
+        for (size_t ri = 0; ri < roi_mappings.size() && ri < color_results.size(); ++ri) {
+            const auto& rm = roi_mappings[ri];
+            const auto& cr = color_results[ri];
             for (auto& cd : cam_dets_list) {
-                if (cd.cam_index == rm.cam_index &&
-                    rm.det_index < static_cast<int>(cd.slot.num_detections)) {
-                    Detection& det = cd.slot.detections[rm.det_index];
-                    det.color_id   = cr.color_id;
-                    det.color_conf = cr.confidence;
-                    std::memcpy(det.color_probs, cr.probs, sizeof(cr.probs));
-                    break;
+                if (cd.cam_index != rm.cam_index) continue;
+                if (rm.det_index >= static_cast<int>(cd.slot.num_detections)) continue;
+
+                Detection& det = cd.slot.detections[rm.det_index];
+
+                // EMA smoothing: blend raw probs with history
+                uint32_t key = (static_cast<uint32_t>(rm.cam_index) << 16)
+                             | (det.track_id & 0xFFFF);
+                auto& sm = color_smooth_[key];
+
+                if (sm.frames == 0) {
+                    // First observation: init with raw probs
+                    std::memcpy(sm.probs, cr.probs, NUM_COLORS * sizeof(float));
+                } else {
+                    // EMA: smooth[i] = alpha*raw[i] + (1-alpha)*smooth[i]
+                    for (int c = 0; c < NUM_COLORS; ++c) {
+                        sm.probs[c] = COLOR_EMA_ALPHA * cr.probs[c]
+                                    + (1.0f - COLOR_EMA_ALPHA) * sm.probs[c];
+                    }
                 }
+                sm.frames++;
+
+                // Pick best class from smoothed probs
+                uint32_t best_id   = COLOR_UNKNOWN;
+                float    best_prob = 0.0f;
+                for (int c = 0; c < NUM_COLORS; ++c) {
+                    if (sm.probs[c] > best_prob) {
+                        best_prob = sm.probs[c];
+                        best_id   = static_cast<uint32_t>(c);
+                    }
+                }
+
+                // Require minimum confidence — below threshold show as UNKNOWN
+                static constexpr float MIN_COLOR_CONF = 0.60f;
+                det.color_id   = (best_prob >= MIN_COLOR_CONF) ? best_id : COLOR_UNKNOWN;
+                det.color_conf = best_prob;
+                std::memcpy(det.color_probs, sm.probs, sizeof(sm.probs));
+                break;
+            }
+        }
+    }
+
+    // FPS counter (moved up for diag logger access)
+    static int batch_counter = 0;
+    batch_counter++;
+
+    // ── Diagnostic logging (CSV + JPG snapshots) ────────────────────
+    if (self->diag_logger_.is_enabled()) {
+        // Collect all detections for CSV
+        std::vector<DiagDetection> all_diag_dets;
+        for (const auto& cd : cam_dets_list) {
+            std::vector<DiagDetection> cam_diag_dets;
+            for (uint32_t di = 0; di < cd.slot.num_detections; ++di) {
+                const auto& det = cd.slot.detections[di];
+                DiagDetection dd;
+                dd.cam_id = cd.slot.cam_id;
+                dd.frame_w = cd.slot.frame_width;
+                dd.frame_h = cd.slot.frame_height;
+                dd.det_idx = static_cast<int>(di);
+                dd.x1 = det.x1; dd.y1 = det.y1;
+                dd.x2 = det.x2; dd.y2 = det.y2;
+                dd.center_x = det.center_x;
+                dd.det_conf = det.det_conf;
+                dd.color_id = det.color_id;
+                dd.color_conf = det.color_conf;
+                std::memcpy(dd.color_probs, det.color_probs, sizeof(dd.color_probs));
+                dd.track_id = det.track_id;
+                all_diag_dets.push_back(dd);
+                cam_diag_dets.push_back(dd);
+            }
+
+            // Save snapshot for cameras with detections
+            if (!cam_diag_dets.empty() && surface) {
+                // snap_interval check: save every N batches
+                int si = self->config_.snap_interval;
+                if (si <= 0 || (batch_counter % si == 0)) {
+                    self->diag_logger_.save_snapshot(
+                        batch_counter, surface,
+                        cd.cam_index, std::string(cd.slot.cam_id),
+                        cam_diag_dets);
+                }
+            }
+        }
+
+        // Log all detections to CSV (every batch)
+        if (!all_diag_dets.empty()) {
+            self->diag_logger_.log_detections(batch_counter, all_diag_dets);
+        }
+    }
+
+    // Periodic cleanup of stale track/color history (every 100 batches)
+    if (batch_counter % 100 == 0) {
+        track_history_.clear();
+        color_smooth_.clear();  // active tracks re-accumulate in a few frames
+    }
+
+    // Draw camera label on each frame
+    if (self->config_.display) {
+        for (NvDsMetaList* l_frame = batch_meta->frame_meta_list;
+             l_frame; l_frame = l_frame->next) {
+            NvDsFrameMeta* frame_meta = static_cast<NvDsFrameMeta*>(l_frame->data);
+            int cam_index = frame_meta->source_id;
+
+            NvDsDisplayMeta* dmeta = nvds_acquire_display_meta_from_pool(batch_meta);
+            if (dmeta) {
+                // Zero-init to avoid garbage fields causing crash
+                std::memset(dmeta->text_params, 0, sizeof(dmeta->text_params));
+                dmeta->num_labels = 0;
+                dmeta->num_rects = 0;
+                dmeta->num_lines = 0;
+                dmeta->num_arrows = 0;
+                dmeta->num_circles = 0;
+
+                NvOSD_TextParams& tp = dmeta->text_params[0];
+                char cam_label[32];
+                snprintf(cam_label, sizeof(cam_label), "CAM-%02d", cam_index + 1);
+                tp.display_text = g_strdup(cam_label);
+                tp.x_offset = 10;
+                tp.y_offset = 10;
+                tp.font_params.font_name = const_cast<char*>("Serif");
+                tp.font_params.font_size = 16;
+                tp.font_params.font_color = {1.0f, 1.0f, 0.0f, 1.0f};
+                tp.set_bg_clr = 1;
+                tp.text_bg_clr = {0.0f, 0.0f, 0.0f, 0.7f};
+                dmeta->num_labels = 1;
+                nvds_add_display_meta_to_frame(frame_meta, dmeta);
             }
         }
     }
@@ -693,18 +849,18 @@ GstPadProbeReturn Pipeline::inference_probe(GstPad* pad,
                 }
 
                 obj_meta->rect_params.border_color = {r, g, b, 1.0f};
-                obj_meta->rect_params.border_width = 3;
+                obj_meta->rect_params.border_width = 2;
 
                 if (obj_meta->text_params.display_text)
                     g_free(obj_meta->text_params.display_text);
                 obj_meta->text_params.display_text = g_strdup(label);
                 obj_meta->text_params.x_offset = static_cast<int>(obj_meta->rect_params.left);
-                obj_meta->text_params.y_offset = std::max(0, static_cast<int>(obj_meta->rect_params.top) - 10);
-                obj_meta->text_params.font_params.font_name = const_cast<char*>("Serif");
-                obj_meta->text_params.font_params.font_size = 12;
-                obj_meta->text_params.font_params.font_color = {1.0f, 1.0f, 1.0f, 1.0f};
+                obj_meta->text_params.y_offset = std::max(0, static_cast<int>(obj_meta->rect_params.top) - 14);
+                obj_meta->text_params.font_params.font_name = const_cast<char*>("Sans");
+                obj_meta->text_params.font_params.font_size = 10;
+                obj_meta->text_params.font_params.font_color = {0.0f, 0.0f, 0.0f, 1.0f};  // black text
                 obj_meta->text_params.set_bg_clr = 1;
-                obj_meta->text_params.text_bg_clr = {r, g, b, 0.6f};
+                obj_meta->text_params.text_bg_clr = {r, g, b, 0.85f};
             }
         }
     }
@@ -729,10 +885,8 @@ GstPadProbeReturn Pipeline::inference_probe(GstPad* pad,
             g_object_set(G_OBJECT(self->tiler_), "show-source", target, NULL);
             self->focused_source_ = target;
             if (target >= 0) {
-                fprintf(stderr, "[Focus] Camera %s (%d detections)\n",
+                fprintf(stderr, "[Focus] → %s (%d dets)\n",
                         self->config_.cameras[target].id.c_str(), best_det_count);
-            } else {
-                fprintf(stderr, "[Focus] Grid view (no detections)\n");
             }
         }
     }
@@ -741,12 +895,10 @@ GstPadProbeReturn Pipeline::inference_probe(GstPad* pad,
     self->shm_writer_.commit();
 
     // FPS counter + periodic logging
-    static int batch_counter = 0;
     static int fps_frame_count = 0;
     static auto fps_start = std::chrono::steady_clock::now();
     static float current_fps = 0.0f;
 
-    batch_counter++;
     fps_frame_count++;
 
     auto now_tp = std::chrono::steady_clock::now();
@@ -757,54 +909,39 @@ GstPadProbeReturn Pipeline::inference_probe(GstPad* pad,
         fps_start = now_tp;
     }
 
-    // ANSI color codes for terminal
-    const char* BOLD = "\033[1m";
-    const char* GREEN = "\033[32m";
-    const char* YELLOW = "\033[33m";
-    const char* CYAN = "\033[36m";
-    const char* MAGENTA = "\033[35m";
-    const char* RESET = "\033[0m";
-    const char* DIM = "\033[2m";
+    // Detailed log: one line per detection, FPS heartbeat every 100 batches
+    static const char* COLOR_LABEL[6] = {"BLUE","GREEN","PURPLE","RED","YELLOW","???"};
 
-    // Log every 50 batches or when detections found
-    if (total_dets > 0 || batch_counter % 50 == 0) {
-        fprintf(stderr, "\n%s━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%s\n", CYAN, RESET);
-        fprintf(stderr, "%s[BATCH #%d]%s  🎥 %zu cameras  |  🎯 %d detections  |  %s⚡ %.1f FPS%s\n",
-                BOLD, batch_counter, RESET,
-                cam_dets_list.size(), total_dets,
-                GREEN, current_fps, RESET);
-        fprintf(stderr, "%s━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%s\n", CYAN, RESET);
-    }
-
-    // Detailed per-camera log when detections found
     if (total_dets > 0) {
-        fprintf(stderr, "\n%s📊 DETECTIONS:%s\n", YELLOW, RESET);
         for (const auto& cd : cam_dets_list) {
-            if (cd.slot.num_detections == 0) continue;
-            fprintf(stderr, "%s├─ %s%s [%d objects]%s\n",
-                    DIM, BOLD, cd.slot.cam_id, cd.slot.num_detections, RESET);
             for (uint32_t di = 0; di < cd.slot.num_detections; ++di) {
                 const auto& det = cd.slot.detections[di];
-                const char* color_name = (det.color_id < NUM_COLORS)
-                    ? COLOR_NAMES[det.color_id] : "???";
-
-                // Color-coded horse colors
-                const char* horse_color = RESET;
-                if (det.color_id == 0) horse_color = "\033[34m";      // blue
-                else if (det.color_id == 1) horse_color = "\033[32m"; // green
-                else if (det.color_id == 2) horse_color = "\033[35m"; // purple
-                else if (det.color_id == 3) horse_color = "\033[31m"; // red
-                else if (det.color_id == 4) horse_color = "\033[33m"; // yellow
-
-                fprintf(stderr, "%s│  %s[#%u]%s YOLO: %s%.0f%%%s → Color: %s%s (%.0f%%)%s  %sbbox=[%.0f,%.0f,%.0f,%.0f]%s\n",
-                        DIM,
-                        MAGENTA, det.track_id, RESET,
-                        GREEN, det.det_conf * 100.0f, RESET,
-                        horse_color, color_name, det.color_conf * 100.0f, RESET,
-                        DIM, det.x1, det.y1, det.x2, det.y2, RESET);
+                const char* cname = (det.color_id < NUM_COLORS)
+                    ? COLOR_LABEL[det.color_id] : "UNKNWN";
+                float bw = det.x2 - det.x1;
+                float bh = det.y2 - det.y1;
+                // tracker_only flag: det_conf was forced to 0.5 if tracker-interpolated
+                bool is_tracker = (det.det_conf == 0.5f && det.color_conf == 0.0f);
+                fprintf(stderr,
+                    "[DET] frm=%-5d cam=%-6s trk=%-4u  "
+                    "yolo=%-4.2f  bbox=%4.0fx%-4.0f @(%4.0f,%4.0f)  "
+                    "class=%-6s conf=%-4.0f%%  fps=%.1f%s\n",
+                    batch_counter,
+                    cd.slot.cam_id,
+                    det.track_id,
+                    det.det_conf,
+                    bw, bh,
+                    det.x1, det.y1,
+                    cname,
+                    det.color_conf * 100.0f,
+                    current_fps,
+                    is_tracker ? "  [TRACKER]" : ""
+                );
             }
         }
-        fprintf(stderr, "\n");
+    } else if (batch_counter % 50 == 0) {
+        fprintf(stderr, "[FPS] frm=%-5d  fps=%.1f  0 dets\n",
+                batch_counter, current_fps);
     }
 
     return GST_PAD_PROBE_OK;

@@ -80,13 +80,16 @@ static void print_usage(const char* prog) {
     fprintf(stderr, "  --mux-width <int>      Streammux width (default: 1280)\n");
     fprintf(stderr, "  --mux-height <int>     Streammux height (default: 1280)\n");
     fprintf(stderr, "  --conf <float>         Detection confidence threshold (default: 0.35)\n");
-    fprintf(stderr, "  --file-mode            Use file:// URIs (sets live-source=FALSE)\n");
+    fprintf(stderr, "  --file-mode            Use file:// URIs (live-source always TRUE)\n");
     fprintf(stderr, "  --display              Show video grid with OSD (requires X11)\n");
     fprintf(stderr, "\nDual pipeline (trigger + analysis):\n");
     fprintf(stderr, "  --dual                 Enable dual-pipeline mode\n");
     fprintf(stderr, "  --trigger-conf <path>  Trigger nvinfer config (default: configs/nvinfer_yolov8n_trigger.txt)\n");
     fprintf(stderr, "  --cooldown <float>     Trigger cooldown seconds (default: 3.0)\n");
     fprintf(stderr, "  --max-active <int>     Max active analysis cameras (default: 8)\n");
+    fprintf(stderr, "\nDiagnostics:\n");
+    fprintf(stderr, "  --log-dir <path>       Save CSV + JPG snapshots (auto expN/ dirs)\n");
+    fprintf(stderr, "  --snap-interval <int>  Save JPG every N batches (default: 10, 0=all)\n");
     fprintf(stderr, "\n  --help                 Show this help\n");
 }
 
@@ -107,6 +110,10 @@ int main(int argc, char* argv[]) {
     std::string trigger_conf = "configs/nvinfer_yolov8n_trigger.txt";
     float cooldown = 3.0f;
     int max_active = 8;
+
+    // Diagnostic logging
+    std::string log_dir;        // --log-dir: save CSV + JPG to ds_results/expN/
+    int snap_interval = 10;     // --snap-interval: save JPG every N batches
 
     // Parse args
     for (int i = 1; i < argc; ++i) {
@@ -138,6 +145,10 @@ int main(int argc, char* argv[]) {
             cooldown = std::atof(argv[++i]);
         } else if (arg == "--max-active" && i + 1 < argc) {
             max_active = std::atoi(argv[++i]);
+        } else if (arg == "--log-dir" && i + 1 < argc) {
+            log_dir = argv[++i];
+        } else if (arg == "--snap-interval" && i + 1 < argc) {
+            snap_interval = std::atoi(argv[++i]);
         } else if (arg == "--help" || arg == "-h") {
             print_usage(argv[0]);
             return 0;
@@ -214,16 +225,17 @@ int main(int argc, char* argv[]) {
         pipeline_config.mux_width        = mux_width;
         pipeline_config.mux_height       = mux_height;
         pipeline_config.det_conf         = det_conf;
-        // Always TRUE — with 25 files, live-source=FALSE blocks waiting for all decoders
-        pipeline_config.live_source      = true;
+        // live-source=FALSE enables proper sync/clock for file playback
+        // live-source=TRUE required for >7 file sources (FALSE deadlocks waiting for all decoders)
+        pipeline_config.live_source      = !file_mode || (cameras.size() > 7);
         pipeline_config.display          = display_mode;
         pipeline_config.display_only     = display_only_mode;
-        // Balanced timeout: fast enough for good FPS, long enough for decoder startup
-        // File mode needs longer timeout for 15 decoders to initialize
+        pipeline_config.log_dir          = log_dir;
+        pipeline_config.snap_interval    = snap_interval;
         if (file_mode) {
-            pipeline_config.mux_batched_push_timeout = 1000000; // 1s for file decode startup
+            pipeline_config.mux_batched_push_timeout = 1000000;  // 1s for file decode
         } else {
-            pipeline_config.mux_batched_push_timeout = 40000;  // 40ms for live RTSP
+            pipeline_config.mux_batched_push_timeout = 40000;   // 40ms for live RTSP
         }
         pipeline_config.batch_size       = static_cast<int>(cameras.size());
         if (pipeline_config.batch_size > rv::MAX_CAMERAS) {

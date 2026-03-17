@@ -1,0 +1,50 @@
+# nvinfer config for YOLOv8s Jockey Detector — Race Vision
+#
+# Custom single-class model trained on horse race jockeys.
+# Output: [5, 13125] = 4 bbox + 1 class (jockey)
+
+[property]
+gpu-id=0
+
+# Model paths — Use pre-built TRT engine
+onnx-file=/home/user/race_vision/models/jockey_yolov11s.onnx
+model-engine-file=/home/user/race_vision/models/jockey_yolov11s.onnx_b25_gpu0_fp16.engine
+
+# Network parameters — OPTIMIZED
+batch-size=25
+# 0=FP32, 1=INT8, 2=FP16
+network-mode=2
+network-input-order=0
+
+# GPU optimization flags
+interval=1
+gpu-id=0
+output-tensor-meta=0
+
+# Input dimensions (must match TRT engine export: 800x800)
+infer-dims=3;800;800
+
+# 1 class: jockey
+num-detected-classes=1
+process-mode=1
+
+# Preprocessing (same as standard YOLOv8)
+maintain-aspect-ratio=1
+symmetric-padding=1
+net-scale-factor=0.00392157
+model-color-format=1
+
+# NMS
+cluster-mode=2
+
+# Custom YOLOv8 parser (handles both 80-class and 1-class)
+parse-bbox-func-name=NvDsInferParseYoloV8
+custom-lib-path=/home/user/race_vision/deepstream/build/libnvdsinfer_yolov8_parser.so
+
+output-blob-names=output0
+
+[class-attrs-all]
+pre-cluster-threshold=0.25
+
+[class-attrs-0]
+pre-cluster-threshold=0.25

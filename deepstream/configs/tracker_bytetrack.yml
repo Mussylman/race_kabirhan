@@ -1,0 +1,31 @@
+%YAML:1.0
+# Race Vision — ByteTrack-style tracker config
+# Hungarian matching + Kalman filter for stable tracking in crowded scenes
+
+BaseConfig:
+  minDetectorConfidence: 0.2
+  minTrackerConfidence: 0.4
+  minMatchingScore4Overall: 0.0
+  minTrailLengthForStreamRemoval: 5
+
+TargetManagement:
+  preserveStreamUpdateOrder: 0
+  maxTargetsPerStream: 15
+  minIouDiff4NewTarget: 0.2
+  maxShadowTrackingAge: 50
+  probationAge: 3
+  earlyTerminationAge: 1
+
+DataAssociator:
+  dataAssociatorType: 0
+  associationMatcherType: 1
+  checkClassMatch: 1
+  minMatchingScore4Overall: 0.0
+  minMatchingScore4SizeSimilarity: 0.3
+  minMatchingScore4Iou: 0.1
+  thresholdMahalanobis: 12.0
+  matchingScoreWeight4SizeSimilarity: 0.2
+  matchingScoreWeight4Iou: 0.8
+
+StateEstimator:
+  stateEstimatorType: 2

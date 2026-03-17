@@ -7,7 +7,7 @@ TargetManagement:
   maxTargetsPerStream: 30
   minIouDiff4NewTarget: 0.2
   maxShadowTrackingAge: 30
-  probationAge: 3
+  probationAge: 1
   earlyTerminationAge: 1
 
 DataAssociator:
