@@ -30,6 +30,7 @@ from .trt_inference import YOLODetector, ColorClassifierInfer
 from .camera_manager import CameraManager
 from .detections import CameraDetections
 from .vote_engine import VoteEngine
+from .jockey_reid import JockeyReID
 
 log = logging.getLogger("pipeline.analyzer")
 
@@ -200,6 +201,9 @@ class AnalysisLoop(threading.Thread):
         classifier_fallback: str = "models/color_classifier_v2.pt",
         use_clip: bool = False,
         clip_backend: str = "clip",
+        use_reid: bool = False,
+        reid_gallery: str = "gallery",
+        reid_backend: str = "clip",
         imgsz: int = 800,
         det_conf: float = 0.35,
         det_iou: float = 0.5,
@@ -225,12 +229,16 @@ class AnalysisLoop(threading.Thread):
         self._classifier_fallback = classifier_fallback
         self._use_clip = use_clip
         self._clip_backend = clip_backend
+        self._use_reid = use_reid
+        self._reid_gallery = reid_gallery
+        self._reid_backend = reid_backend
         self._imgsz = imgsz
         self._det_conf = det_conf
         self._det_iou = det_iou
 
         self._detector: Optional[YOLODetector] = None
         self._classifier: Optional[ColorClassifierInfer] = None
+        self._reid: Optional[JockeyReID] = None
 
         # Per-camera vote engines
         self._vote_engines: dict[str, VoteEngine] = {}
@@ -259,14 +267,31 @@ class AnalysisLoop(threading.Thread):
             conf=self._det_conf,
             iou=self._det_iou,
         )
-        self._classifier = ColorClassifierInfer(
-            engine_path=self._classifier_engine,
-            fallback_pt=self._classifier_fallback,
-            use_clip=self._use_clip,
-            clip_backend=self._clip_backend,
-            clip_colors=ALL_COLORS,
-        )
-        log.info("AnalysisLoop started (%.1f fps, imgsz=%d)", self.analysis_fps, self._imgsz)
+        if self._use_reid:
+            from pathlib import Path
+            gallery_path = Path(self._reid_gallery)
+            if gallery_path.exists():
+                self._reid = JockeyReID(
+                    gallery_dir=self._reid_gallery,
+                    backend=self._reid_backend,
+                )
+                log.info("ReID mode: identifying jockeys from gallery (%d jockeys)",
+                         len(self._reid.get_jockey_names()))
+            else:
+                log.warning("Gallery not found at %s, falling back to color classifier",
+                            self._reid_gallery)
+                self._use_reid = False
+
+        if not self._use_reid:
+            self._classifier = ColorClassifierInfer(
+                engine_path=self._classifier_engine,
+                fallback_pt=self._classifier_fallback,
+                use_clip=self._use_clip,
+                clip_backend=self._clip_backend,
+                clip_colors=ALL_COLORS,
+            )
+        log.info("AnalysisLoop started (%.1f fps, imgsz=%d, reid=%s)",
+                 self.analysis_fps, self._imgsz, self._use_reid)
 
         interval = 1.0 / max(self.analysis_fps, 0.1)
         fps_counter = 0
@@ -353,9 +378,14 @@ class AnalysisLoop(threading.Thread):
                 crops.append(torso)
                 valid_dets.append(det)
 
-            # Batch classify all torsos
+            # Batch classify/identify all torsos
             if crops:
-                classifications = self._classifier.classify_batch(crops)
+                if self._use_reid and self._reid is not None:
+                    # ReID mode: identify jockeys by visual matching
+                    classifications = self._reid.identify_batch(crops)
+                else:
+                    # Color mode: classify by color
+                    classifications = self._classifier.classify_batch(crops)
             else:
                 classifications = []
 
@@ -373,7 +403,7 @@ class AnalysisLoop(threading.Thread):
                     'bbox': det['bbox'],
                     'center_x': det['center_x'],
                     'det_conf': det['conf'],
-                    'color': color,
+                    'color': color,  # jockey name in ReID mode
                     'conf': conf,
                     'prob_dict': prob_dict,
                     'hsv_guess': hsv_guess,
