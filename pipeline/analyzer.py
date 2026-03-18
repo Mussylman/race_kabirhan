@@ -48,9 +48,11 @@ MIN_BBOX_HEIGHT = 65
 EDGE_MARGIN = 10
 
 # Classifier thresholds
-MIN_COLOR_CONF = 0.60
-MIN_REASSIGN_CONF = 0.20
-MIN_CROP_PIXELS = 400
+# Lowered from 0.60 — CLIP/SigLIP models give calibrated probs,
+# and even EfficientNet avg was only ~0.35 at 0.60 threshold
+MIN_COLOR_CONF = 0.40
+MIN_REASSIGN_CONF = 0.15
+MIN_CROP_PIXELS = 200  # lowered to accept more far-camera crops
 MAX_CROP_PIXELS = 15000
 
 # Colors (must match classifier training classes, sorted alphabetically)
@@ -119,14 +121,36 @@ def draw_detections(frame: np.ndarray, detections: list[dict], cam_id: str = "",
     return annotated
 
 
-def extract_torso(frame: np.ndarray, bbox: tuple) -> Optional[np.ndarray]:
-    """Extract torso region from person bounding box."""
+def extract_torso(frame: np.ndarray, bbox: tuple, adaptive: bool = True) -> Optional[np.ndarray]:
+    """Extract torso region from person bounding box.
+
+    When adaptive=True, adjusts crop based on bbox size:
+      - Large bboxes (close camera): tighter crop on upper torso
+      - Small bboxes (far camera): wider crop to capture more color pixels
+    """
     x1, y1, x2, y2 = map(int, bbox)
     h, w = y2 - y1, x2 - x1
-    ty1 = max(0, y1 + int(h * TORSO_TOP))
-    ty2 = min(frame.shape[0], y1 + int(h * TORSO_BOTTOM))
-    tx1 = max(0, x1 + int(w * TORSO_LEFT))
-    tx2 = min(frame.shape[1], x2 - int(w * TORSO_RIGHT))
+
+    if adaptive and h > 0:
+        # Adaptive margins based on bbox height
+        # Small detections (far cameras) -> wider crop to get more pixels
+        # Large detections (close cameras) -> tighter crop, more precise
+        if h < 100:
+            # Far camera: wider crop
+            top, bottom, left, right = 0.05, 0.50, 0.10, 0.10
+        elif h < 200:
+            # Medium distance: standard crop
+            top, bottom, left, right = TORSO_TOP, TORSO_BOTTOM, TORSO_LEFT, TORSO_RIGHT
+        else:
+            # Close camera: tighter crop on uniform area
+            top, bottom, left, right = 0.15, 0.35, 0.25, 0.25
+    else:
+        top, bottom, left, right = TORSO_TOP, TORSO_BOTTOM, TORSO_LEFT, TORSO_RIGHT
+
+    ty1 = max(0, y1 + int(h * top))
+    ty2 = min(frame.shape[0], y1 + int(h * bottom))
+    tx1 = max(0, x1 + int(w * left))
+    tx2 = min(frame.shape[1], x2 - int(w * right))
     if ty2 - ty1 < 10 or tx2 - tx1 < 10:
         return None
     return frame[ty1:ty2, tx1:tx2]
@@ -174,6 +198,8 @@ class AnalysisLoop(threading.Thread):
         yolo_fallback: str = "yolo11s.pt",
         classifier_engine: Optional[str] = None,
         classifier_fallback: str = "models/color_classifier_v2.pt",
+        use_clip: bool = False,
+        clip_backend: str = "clip",
         imgsz: int = 800,
         det_conf: float = 0.35,
         det_iou: float = 0.5,
@@ -197,6 +223,8 @@ class AnalysisLoop(threading.Thread):
         self._yolo_fallback = yolo_fallback
         self._classifier_engine = classifier_engine
         self._classifier_fallback = classifier_fallback
+        self._use_clip = use_clip
+        self._clip_backend = clip_backend
         self._imgsz = imgsz
         self._det_conf = det_conf
         self._det_iou = det_iou
@@ -234,6 +262,9 @@ class AnalysisLoop(threading.Thread):
         self._classifier = ColorClassifierInfer(
             engine_path=self._classifier_engine,
             fallback_pt=self._classifier_fallback,
+            use_clip=self._use_clip,
+            clip_backend=self._clip_backend,
+            clip_colors=ALL_COLORS,
         )
         log.info("AnalysisLoop started (%.1f fps, imgsz=%d)", self.analysis_fps, self._imgsz)
 

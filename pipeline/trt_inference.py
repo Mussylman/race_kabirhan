@@ -173,7 +173,13 @@ class YOLODetector:
 # ── Color Classifier ─────────────────────────────────────────────────
 
 class ColorClassifierInfer:
-    """Batch color classification using TensorRT or PyTorch fallback."""
+    """Batch color classification using TensorRT, PyTorch, or CLIP fallback.
+
+    Priority order:
+      1. TensorRT engine (fastest, production)
+      2. PyTorch checkpoint (medium speed, needs trained model)
+      3. CLIP zero-shot (no training needed, best for cold start)
+    """
 
     CLASSES = ["blue", "green", "purple", "red", "yellow"]
     INPUT_SIZE = 128
@@ -185,20 +191,41 @@ class ColorClassifierInfer:
         engine_path: Optional[str] = None,
         fallback_pt: str = "models/color_classifier_v2.pt",
         device: str = "cuda:0",
+        use_clip: bool = False,
+        clip_backend: str = "clip",
+        clip_colors: Optional[list[str]] = None,
     ):
         self.device = torch.device(device if torch.cuda.is_available() else "cpu")
         self._trt_engine = None
         self._model = None
+        self._clip_classifier = None
         self.classes = list(self.CLASSES)
 
         engine = Path(engine_path) if engine_path else None
+        pt_file = Path(fallback_pt)
 
         if engine and engine.exists() and _TRT_AVAILABLE:
             log.info("Loading TRT color classifier: %s", engine)
             self._load_trt(str(engine))
-        else:
+        elif not use_clip and pt_file.exists():
             log.info("Loading PyTorch color classifier: %s", fallback_pt)
             self._load_pytorch(fallback_pt)
+        else:
+            # CLIP zero-shot fallback — works without any training data
+            colors = clip_colors or ["green", "red", "yellow"]
+            log.info("No trained model found, using CLIP zero-shot for colors: %s", colors)
+            try:
+                from .clip_color_classifier import CLIPColorClassifier
+                self._clip_classifier = CLIPColorClassifier(
+                    colors=colors,
+                    backend=clip_backend,
+                    device=device,
+                )
+                self.classes = colors
+            except (ImportError, Exception) as e:
+                log.warning("CLIP not available (%s), falling back to PyTorch: %s", e, fallback_pt)
+                if pt_file.exists():
+                    self._load_pytorch(fallback_pt)
 
     def _load_pytorch(self, pt_path: str):
         ckpt = torch.load(pt_path, map_location=self.device, weights_only=False)
@@ -257,7 +284,9 @@ class ColorClassifierInfer:
         if not crops:
             return []
 
-        if self._model is not None:
+        if self._clip_classifier is not None:
+            return self._clip_classifier.classify_batch(crops)
+        elif self._model is not None:
             return self._classify_batch_pytorch(crops)
         else:
             return self._classify_batch_trt(crops)

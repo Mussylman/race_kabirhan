@@ -49,24 +49,33 @@ dataset/color_v2/
 
 ## ЭТАП 2: Новый Color Classifier
 
-### Вариант A: Улучшенная SimpleColorCNN (быстро)
-- Увеличить input до 128×128 (сейчас 64×64)
-- Добавить BatchNorm после каждого Conv
-- Добавить 4-й conv слой
-- Data augmentation: ColorJitter, RandomErasing, RandomRotation(10)
-- **Focal Loss** вместо CrossEntropy (борьба с дисбалансом)
+### Вариант A: CLIP/SigLIP Zero-Shot (НОВЫЙ, рекомендуется как первый шаг)
+- **Не требует обучающих данных** — работает из коробки
+- Используем text prompts: "a horse jockey wearing {color} clothing"
+- Модели: CLIP ViT-B/32 (151M) или SigLIP 2 ViT-B (86M)
+- Устойчив к изменениям освещения (pretrained на 400M+ пар)
+- Реализовано: `pipeline/clip_color_classifier.py`
+- Включение: `use_clip=True` в AnalysisLoop или auto-fallback если нет .pt модели
+- **Ансамбль CLIP + HSV** для максимальной надёжности
 
-### Вариант B: MobileNetV3-Small (рекомендуется)
-- Pretrained ImageNet → fine-tune на наши 5 классов
-- ~2.5M параметров (сейчас ~0.6M) — ещё влезает в RTX 3060
+### Вариант B: CLIP Fine-tuned Linear Probe
+- Замораживаем CLIP backbone, обучаем только линейный классификатор сверху
+- Нужно всего 50-100 кропов на класс (vs 200+ для CNN)
+- Скрипт: `tools/train_clip_classifier.py`
+- **Лучший вариант когда данные собраны** (~20 эпох, <5 мин GPU)
+
+### Вариант C: MobileNetV3-Small
+- Pretrained ImageNet → fine-tune на наши 3 класса
+- ~2.5M параметров — ещё влезает в RTX 3060
 - TRT FP16 inference ~0.3ms per crop
-- Лучше обобщает при малом датасете (transfer learning)
+- Нужно 200+ кропов на класс
 
-### Вариант C: EfficientNet-B0
-- Ещё точнее, но тяжелее (~5M параметров)
-- Использовать если MobileNet не даст нужную точность
+### Вариант D: EfficientNet-V2-S (текущий)
+- 21M параметров — избыточен для 3 цветов
+- Переобучается при малом датасете
+- Оставить как fallback
 
-**Рекомендация: Вариант B (MobileNetV3-Small)**
+**Рекомендация: Вариант A (CLIP zero-shot) сейчас → Вариант B (fine-tuned) когда данные собраны**
 
 ### Метрики для валидации:
 - Per-class accuracy ≥ 95% (для каждого из 3 классов)
