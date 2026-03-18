@@ -38,8 +38,8 @@ def main():
                         help="Camera numbers (1-based) to replace with horse videos")
     parser.add_argument("--horse-videos", nargs="*", default=[],
                         help="Horse video files to use for replacement")
-    parser.add_argument("--output", default="cameras_test.json",
-                        help="Output config file (default: cameras_test.json)")
+    parser.add_argument("--output", default="configs/cameras_test.json",
+                        help="Output config file (default: configs/cameras_test.json)")
     args = parser.parse_args()
 
     # Collect video files

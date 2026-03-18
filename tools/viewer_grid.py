@@ -103,7 +103,7 @@ def classify_colors(color_model, frame_bgr, boxes):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config", default="cameras_test_10.json")
+    parser.add_argument("--config", default="configs/cameras_test_10.json")
     parser.add_argument("--data", default="/home/user/recordings/yaris_20260303_162028")
     parser.add_argument("--yolo", default="yolov8s.pt")
     parser.add_argument("--colors", default="models/color_classifier.pt")

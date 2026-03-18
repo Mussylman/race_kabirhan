@@ -24,6 +24,18 @@ results/
 reid_crops/
 runs/
 
+# Test artifacts (images, snapshots)
+test_artifacts/
+
+# Build artifacts
+deepstream/build/
+
+# Environment secrets
+*.env
+
+# Recordings
+recordings/
+
 # IDE
 .vscode/
 .idea/

@@ -8,7 +8,7 @@ services:
     restart: unless-stopped
     network_mode: host
     volumes:
-      - ./go2rtc.yaml:/config/go2rtc.yaml:ro
+      - ./configs/go2rtc.yaml:/config/go2rtc.yaml:ro
 
   # ==========================================================
   # Backend — Python API + DeepStream C++ subprocess (GPU)
@@ -25,7 +25,7 @@ services:
     runtime: nvidia
     network_mode: host
     volumes:
-      - ./cameras_example.json:/app/cameras_example.json:ro
+      - ./configs/cameras_example.json:/app/cameras_example.json:ro
       - ./models:/app/models:ro
     environment:
       - NVIDIA_VISIBLE_DEVICES=all

@@ -8,7 +8,7 @@ Reads detections from shared memory and generates detailed metrics:
 - Ground truth comparison for 3 jockeys: Red/Pink, Yellow, Green
 
 Usage:
-    python tools/evaluate_models.py --config cameras_test_15.json --duration 60
+    python tools/evaluate_models.py --config configs/cameras_test_15.json --duration 60
     python tools/evaluate_models.py --ground-truth ground_truth.json --output results/
 """
 
