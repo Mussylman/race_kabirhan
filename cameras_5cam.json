@@ -1,0 +1,9 @@
+{
+  "analytics": [
+    {"id": "cam-01", "url": "file:///home/user/recordings/yaris_20260303_162028/kamera_01_162028_END162507.mp4", "track_start": 0, "track_end": 110},
+    {"id": "cam-03", "url": "file:///home/user/recordings/yaris_20260303_162028/kamera_03_162029_END162507.mp4", "track_start": 200, "track_end": 310},
+    {"id": "cam-05", "url": "file:///home/user/recordings/yaris_20260303_162028/kamera_05_162030_END162507.mp4", "track_start": 400, "track_end": 510},
+    {"id": "cam-08", "url": "file:///home/user/recordings/yaris_20260303_162028/kamera_08_162031_END162507.mp4", "track_start": 700, "track_end": 810},
+    {"id": "cam-12", "url": "file:///home/user/recordings/yaris_20260303_162028/kamera_12_162033_END162507.mp4", "track_start": 1100, "track_end": 1210}
+  ]
+}

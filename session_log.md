@@ -4,6 +4,325 @@
 
 ---
 
+## 2026-03-24 — v3 classifier + NV12→RGBA fix + mux coord fix
+
+### Что сделано
+1. **color_classifier_v3.pt** — SimpleCNN 64×64, 5 классов, обучена на 725 чистых кропах из data/color_dataset/
+2. **NV12→RGBA fix** — добавлен nvvideoconvert + capsfilter(RGBA) перед probe в pipeline.cpp. CUDA kernel читал RGBA, а surface был NV12 → мусорная классификация. **Корневая причина плохой работы в DeepStream.**
+3. **Mux coord fix** — bbox в mux-пространстве (2880×1620), а crop clamping был к source_frame (1280×720). Объекты с x>1280 получали отрицательный crop → фильтровались. Исправлено: fw/fh = config.mux_width/height.
+4. **TRT engine version fix** — venv TRT=10.16, system TRT=10.9. C++ builder `/tmp/build_engine` линкуется с системной libnvinfer.
+5. **ONNX export** — PyTorch 2.9 dynamo exporter несовместим с TRT 10.9, использован legacy exporter (opset 17).
+6. **Классификация для tracker-only** — убрана проверка `if (!tracker_only)`, классифицируются все объекты.
+7. **Чистый лог** — [STAT] каждые 50 кадров: fps, dets(yolo/trk), classify time, active cams.
+
+### Результаты (cam-05, 1 камера, mux 2880×1620)
+```
+fps=25.0 стабильно
+GREEN=100%, RED=100%, YELLOW=100%, BLUE=99%
+classify: 55-73ms на 50-163 кропа за 50 кадров
+```
+
+### Файлы изменены
+- `deepstream/src/pipeline.cpp` — nvvideoconvert RGBA, mux coords, classify all, summary log
+- `deepstream/src/color_infer.cpp` — CROP_SIZE=64
+- `deepstream/configs/nvinfer_jockey_1cam.txt` — threshold 0.30→0.15
+- `models/color_classifier_v3.pt/.engine` — новая модель 5 классов
+- `tools/train_color_v3.py`, `tools/build_dataset.py`, `tools/test_color_video.py`
+
+### Результаты 25 камер (mux 1920×1080, exp4)
+```
+FPS: 31-36 (было 38-40 без nvvideoconvert)
+classify: 900-1000ms на 150 кропов за 50 кадров (было 55-73ms на 1 камере)
+cams: детекции на cam-05 и cam-01
+interval=1 → yolo/trk = 50/50
+```
+
+**Проблемы:**
+1. **classify 900ms** — nvvideoconvert конвертирует ВСЕ 25 surfaces NV12→RGBA каждый кадр, даже если детекций 0 на 24/25 камер. Главный bottleneck.
+2. **Много UNK на 25 камерах** — mux 1920×1080 → кропы мельче чем 2880×1620 → v3 менее уверена (40-59% вместо 100%)
+3. FPS упал с 38 до 31 из-за nvvideoconvert overhead
+
+**Решения:**
+- Переписать CUDA kernel на NV12 (убрать nvvideoconvert совсем) — 0 overhead, максимальный FPS
+- Или снизить mux для восстановления FPS, но кропы будут ещё мельче
+
+### NV12 CUDA kernel (убран nvvideoconvert)
+Переписан CUDA kernel в color_infer.cpp — читает NV12 напрямую (Y plane + UV plane), конвертирует в RGB только маленький кроп жокея. Формула BT.601 из diag_logger.cpp. RGBA kernel оставлен как fallback.
+
+**Результаты 25 камер после NV12 kernel (mux 1920×1080):**
+```
+FPS: 35-38 (было 31-36 с nvvideoconvert) ← улучшение
+FPS без детекций: 38.0-38.2 (потолок)
+classify: 800-900ms на 150 кропов за 50 кадров (было 900-1000ms)
+0 dets: classify=5ms (был 6ms)
+```
+
+**Оставшиеся проблемы:**
+1. **classify 800ms** — cudaMalloc/cudaFree на каждый crop в цикле. Нужен pre-allocated буфер.
+2. **--display лагает** на 25 камерах — тайлер рисует все 25 потоков, тяжело для GPU. Без display = 38fps.
+3. **Мало детекций** — cams=1/25 активна, остальные 0 dets (лошади видны на 3-5 камерах за запись)
+
+### Файлы изменены (NV12)
+- `deepstream/src/color_infer.cpp` — NV12 kernel + RGBA fallback, авто-определение формата surface
+- `deepstream/src/pipeline.cpp` — убран nvvideoconvert/capsfilter, probe на tracker src pad
+
+### Pre-allocate + batch kernel (убрана cudaMalloc per-call)
+- d_rois_ выделяется один раз в load() вместо cudaMalloc/cudaFree на каждый кроп
+- Кропы с одной камеры батчатся в один kernel launch
+
+**Результаты 25 камер (mux 1920×1080, без display):**
+```
+FPS: 38.6-39.9 (было 35-38)
+classify 150 crops: 340-370ms (было 800-900ms) — 2.7x ускорение
+classify 0 crops: 0.4ms (было 5ms)
+```
+
+### Camera activation + display analysis (25 марта)
+
+**Valve approach (failed):** Добавили valve элементы на каждый источник — active=3/25 работало, но fps упал до 1.0. nvstreammux с live-source=TRUE ждёт кадры от закрытых valve → stall. Откатили.
+
+**Skip-classify approach (works):** Classify только для камер с недавними детекциями (3 сек cooldown). YOLO batch=25 работает на всех (быстро), classify — только на 1-3 активных. classify_active=1/25.
+
+**Display lag deep analysis:**
+```
+per-frame avg: work=1.4ms  classify=1.4ms  display=0.0ms  | budget=40ms
+GPU: 75%, VRAM: 4.4/12GB, CPU: 11%
+```
+Pipeline использует 3.5% бюджета, 97% времени спит. Display pipeline = 0ms в нашем коде. Лаг = **X11/EGL рендер** внутри nveglglessink при 25 NV12 surfaces от mux. Не исправить.
+
+**Вывод:** DeepStream display для 25 камер непригоден. Production = headless + go2rtc WebRTC + Frontend. Display = только для отладки 1 камеры.
+
+### Файлы изменены (25 марта)
+- `deepstream/src/pipeline.h` — cam_last_det_, CAM_DEACTIVATE_FRAMES, update_camera_activation
+- `deepstream/src/pipeline.cpp` — skip-classify для неактивных камер, детальный timing лог, queue для display, throttle 25fps, suppress drop warnings, show-source=0
+- `deepstream/src/color_infer.h` — d_rois_ pre-allocated
+- `deepstream/src/color_infer.cpp` — NV12 kernel, RGBA fallback, batch kernel launch, pre-alloc
+- `deepstream/configs/nvinfer_jockey.txt` — threshold 0.25→0.15
+
+### 5-камерный тест + surface debug (25 марта вечер)
+
+**Конфиг:** cameras_5cam.json (cam-01, 03, 05, 08, 12), nvinfer_jockey_1cam.txt (batch=1, interval=0, threshold=0.15)
+
+**Surface params идентичны 1cam vs 5cam:**
+```
+2880x1620, pitch=3072, fmt=6 (NV12_709_ER), numPlanes=2
+plane[0] (Y):  offset=0, pitch=3072, 2880×1620
+plane[1] (UV): offset=4976640, pitch=3072, 1440×810
+NV12 kernel UV offset: src + 1620*3072 = src + 4976640 ✓
+```
+
+**Результат:**
+```
+1cam cam-05: GREEN=99%, classify=21ms
+5cam cam-05: GREEN=82%→61%, classify=23ms, UNK=55%
+```
+
+**4 камеры (01, 03, 08, 12) = 0 детекций** — лошади слишком далеко/быстро на этих камерах.
+
+**Причина деградации 99%→82% (ОШИБОЧНАЯ ГИПОТЕЗА, см. ниже):** предполагали FP16 микроразницы. На самом деле баг был в surface index.
+
+### КРИТИЧЕСКИЙ БАГ: source_id != batch_id (25 марта, найден через crop comparison)
+
+**Симптом:** 1 камера = GREEN 100%, 5+ камер = UNK 55-70%. Bbox координаты идентичны, surface params идентичны. Но crop images **совершенно разные** (mean_diff=61-86 из 255).
+
+**Диагностика:** Сохранили кропы из 1cam и 5cam. На 1cam = жокей в зелёной куртке. На 5cam = **пустое поле с забором** при тех же bbox координатах. CUDA kernel читал пиксели из **чужой камеры**.
+
+**Корневая причина:** `frame_meta->source_id` (номер камеры, постоянный 0-24) использовался как индекс в `surfaceList[]`. Но nvstreammux складывает кадры в batch **в произвольном порядке**. Правильный индекс = `frame_meta->batch_id`.
+
+Пример: cam-05 (source_id=2) лежит в surfaceList[3], но код читал surfaceList[2] = cam-12 → кроп = пустое поле → UNK.
+
+**Фикс:**
+1. Добавлен `surface_index` в `TorsoROI` struct
+2. `roi.surface_index = frame_meta->batch_id` в pipeline.cpp
+3. `surfaceList[surf_idx]` вместо `surfaceList[cam_idx]` в color_infer.cpp
+
+**Также исправлено:** NV12 UV offset теперь через `planeParams.offset[1]` вместо `height * pitch` (правильнее, хотя на практике совпадало).
+
+**Результат:** 5 камер — классификация работает корректно, жокеи определяются правильно.
+
+### Файлы изменены (batch_id fix)
+- `deepstream/src/color_infer.h` — добавлен `surface_index` в TorsoROI
+- `deepstream/src/color_infer.cpp` — `surfaceList[surf_idx]`, planeParams.offset/pitch
+- `deepstream/src/pipeline.cpp` — `roi.surface_index = frame_meta->batch_id`
+
+### Следующий шаг
+- Тест 25 камер с фиксом
+- Track voting (накопление цвета по track_id)
+- Python SHM reader + fusion
+- Тест на живых RTSP камерах
+
+---
+
+## 2026-03-21 — Full bbox + mux 1920, DINOv2 финальная проверка
+
+### Что изменено
+1. **color_infer.h** — торсо-кроп убран, передаётся весь bbox:
+   - `TORSO_TOP=0.0, TORSO_BOTTOM=1.0, TORSO_LEFT=0.0, TORSO_RIGHT=0.0`
+2. **diag_logger.cpp** — добавлено:
+   - Сохранение отдельных кропов в `crops/` (JPG, имя = `b{batch}_{cam}_t{track}_{color}_{w}x{h}.jpg`)
+   - Колонки `crop_w, crop_h, crop_pixels` в CSV
+   - Статистика размеров кропов при завершении (min/avg/max)
+   - Размер кропа подписан под bbox на фрейме
+3. **mux** поднят до 1920×1080 (CLI `--mux-width 1920 --mux-height 1080`)
+
+### Результаты прогона (cam-05, file mode, mux 1920×1080, full bbox)
+```
+Total detections: 1859
+Crop width:  min=29  avg=59  max=121
+Crop height: min=75  avg=117  max=205
+Avg crop area: 6903 px
+FPS: 324.6 (1 cam, file mode)
+```
+Кропы теперь чёткие — жокеи различимы визуально (цвет одежды, лошадь, посадка).
+
+### DINOv2 ReID на новых кропах — ПРОВАЛ
+Прогнали DINOv2 (dinov2_vits14) по 1859 кропам из ds_results/exp2/crops/:
+```
+Identified: 329/1859 (17.7%)  ← ХУЖЕ чем раньше
+Unknown:    1530/1859 (82.3%)
+
+Per-jockey: blue=167(9%), yellow=160(8.6%), red=1, green=1
+Avg score unknown: 0.346 (порог 0.50)
+
+Large crops (>8000px): только 33.2% identified
+```
+Сравнение:
+- Старые торсо-кропы (28×28, mux 1520): 24% identified
+- Новые full bbox (~59×117, mux 1920): 17.7% identified
+
+**Вывод: DINOv2 ReID НЕ ПОДХОДИТ для этой задачи.** Проблема не в размере кропа — модель не может сопоставить IP-камерные кадры с галереей. Визуальное сходство (embedding distance) не работает при таком различии ракурсов/освещения/масштаба.
+
+### Файлы результатов
+- `ds_results/exp2/detections.csv` — CSV с crop_w, crop_h, crop_pixels
+- `ds_results/exp2/frames/` — 965 аннотированных фреймов
+- `ds_results/exp2/crops/` — 1859 отдельных кропов
+- `tools/test_dinov2_crops.py` — скрипт проверки DINOv2
+
+### Тест color_classifier_v1 (SimpleColorCNN, 5 классов, 64×64)
+- `color_classifier.engine` (3.1M, SimpleColorCNN 3 conv, 64×64 input, 5 классов)
+- **96% identified** (только 4% unknown), но **всё = YELLOW (87.9%)**
+- t0 (green) → YELLOW ❌, t1 (red) → YELLOW ❌, t2 (yellow) → YELLOW ✅
+- Модель слабая, обучена на плохих данных — не различает цвета
+
+### Тест HSV классификатора (3 метода: histogram, pixel_vote, dominant_hue)
+Пробовали разные варианты:
+1. **Базовые HSV диапазоны** — 18.5% accuracy. Green жокей (H~96 teal) попадал в blue
+2. **Расширенный green до H=110** — green жокей ловится, но штаны красного жокея (blue H=101-110) тоже = green
+3. **Green до H=100, торсо 5-30%** — green ✅ 100%, yellow ✅ 100%, **red ❌** (зелёный фон/трек доминирует на мелких кропах)
+4. **Главная проблема**: трекер нестабилен (t0 = сначала green, потом yellow), кропы 50-100px мелкие для HSV торсо-анализа
+
+**Вывод: HSV не решает задачу.** Работает для yellow и green по-отдельности, но red путает с green из-за:
+- Маленькие кропы → торсо-область = 30×44px, в ней мало пикселей куртки
+- Зелёный фон трека и синие штаны доминируют над красной курткой
+- Камерный white balance сдвигает зелёный в teal (H=81-100), что перекрывается с blue
+
+### Выводы и направление
+**Что НЕ работает:**
+- ❌ DINOv2 ReID — не сопоставляет камерные кропы с галереей (17.7%)
+- ❌ color_classifier_v2 (EfficientNet, 3 класса) — не знает blue/purple, путает yellow↔green
+- ❌ color_classifier_v1 (SimpleCNN, 5 классов) — всё = yellow (87.9%)
+- ❌ HSV histogram — шумно на мелких кропах, red неотличим от green фона
+
+### Тест BoT-SORT-ReID (YOLOv12-BoT-SORT-ReID с HuggingFace)
+- Repo: `wish44165/YOLOv12-BoT-SORT-ReID` → `/tmp/YOLOv12-BoT-SORT-ReID/`
+- ReID модель: SBS_S50 (ResNeSt-50x, 2048-dim, MOT20), 411MB
+- Трекер: BoT-SORT с appearance features
+- Наш YOLO jockey_yolov11s + BoT-SORT-ReID на cam-05 (2000 кадров)
+
+**Результат: 65 track ID** на ~3 жокеев (хуже нашего IOU: 10 ID)
+- Основные треки: ID1=green(287), ID2=red(140), ID3=yellow(330), ID6=red(313), ID31/32/34=длинные
+- ReID обучен на пешеходах (MOT20) — не подходит для жокеев на лошадях
+- **Плюс**: кропы из оригинального видео 1280×720 чёткие, жокеи хорошо различимы
+- Установленные пакеты: yacs, termcolor, tabulate, scikit-learn, faiss-cpu, tensorboard, lap, filterpy, cython_bbox, gdown
+
+**Что нужно:**
+Переобучить EfficientNet (v2 архитектура) на 5 классов используя реальные кропы с камер (1859 штук в ds_results/exp2/crops/).
+Или обучить на более крупном датасете с аугментацией.
+
+---
+
+## 2026-03-20 — ReID тест на видео + архитектурное решение
+
+### Что запускали
+1. **test_deepstream_reid.py** — DeepStream (YOLO jockey_yolov11s) + DINOv2 ReID на cam-05 (file mode)
+2. Добавлены: `--display`, `--log`, `--save-crops`, CSV, per-track stability, crop size distribution
+
+### Результаты ReID (DINOv2, cam-05, 1295 кадров)
+- **76% unknown** (2130/2796), только 24% получили ID
+- Yellow — лучший: 506 детекций, avg 0.587
+- Blue: 76, Green: 24, Purple: 58, Red: 2
+- **97% кропов = "small" (500-2000px)** — торсо ~30x25px
+- Трекер нестабилен: 11 track_id на ~5 лошадей, track_1 содержит 5 разных "жокеев"
+
+### Диагноз по кропам (визуальный)
+- Track 0 (98% unknown) = **человек в красной куртке у ограждения**, не жокей
+- Много ложных детекций: люди, техника — YOLO ловит всех как person
+- Реальные жокеи видны (yellow, blue), но кропы 30-70px — DINOv2 бесполезен на таком размере
+- Галерея (data/reid/) из IP-камерных кропов 80-170px, runtime кропы в 3-5x мельче
+
+### Архитектурное решение: HSV вместо ReID
+**ReID — неправильный инструмент.** Задача = определить цвет 5 жокеев в ярких контрастных цветах, не re-identify людей. DINOv2/CLIP overkill, не работает на 30px.
+
+**Новая архитектура (с нуля):**
+```
+YOLO detect → ROI filter → Velocity filter → HSV color → Track voting → SHM
+```
+
+1. **ROI маска** — полигон трека для каждой камеры, детекции вне трека = мусор (убьёт 90% FP)
+2. **Velocity filter** — движение > 15px за 3 кадра (отсечёт стоящих людей)
+3. **HSV цвет** — торсо-кроп → HSV гистограмма → доминантный Hue → один из 5 цветов
+   - Red: H=0-10/170-180, Yellow: H=20-35, Green: H=35-85, Blue: H=100-130, Purple: H=130-170
+   - Работает на ЛЮБОМ разрешении, не нужно обучение, не нужен GPU
+4. **Track-level voting** — не per-frame, а аккумулятор по track_id, вердикт при >60% и >5 голосов
+5. **CNN** — только second opinion когда HSV неуверен
+
+**Не нужно:**
+- ❌ DINOv2/CLIP/ReID
+- ❌ Телефонные фото
+- ❌ Per-frame решения
+- ❌ Phase 2 перечитывание видео
+
+### Файлы изменены
+- `tools/test_deepstream_reid.py` — добавлены `--display`, `--log`, `--save-crops`, CSV, детальная диагностика
+- `pipeline/jockey_reid.py` — незакоммиченный фикс last_hidden_state (от 18 марта)
+
+### Файлы результатов
+- `ds_results/reid.log` — полный лог детекций
+- `ds_results/reid.csv` — CSV с top-3 similarity, crop sizes
+- `ds_results/reid_output.mp4` — аннотированное видео
+- `ds_results/crops/` — 500 кропов для визуальной проверки
+
+### Следующие шаги (завтра)
+1. Написать HSV классификатор, прогнать по 500 кропам из ds_results/crops/
+2. ROI маска для cam-05
+3. Velocity filter — включить, подобрать порог
+4. Track voting аккумулятор
+5. Интегрировать в C++ pipeline
+
+---
+
+## 2026-03-18 — ReID gallery build + test
+
+### Контекст
+Прошлая сессия (до отключения света): нарезаны кропы жокеев в `data/reid/` (5 цветов, 137 файлов), но `gallery_embeddings.pkl` не был построен.
+
+### Что сделано
+1. **CLIP gallery** — cross-similarity 0.80–0.94 между жокеями → слишком высокая, непригоден
+2. **DINOv2 gallery** — cross-similarity 0.63–0.88, лучше. Red отличается лучше всего (0.63–0.79)
+3. **Тест accuracy** на 25 кропах из галереи: **92% (23/25)**
+   - 2 ошибки = `unknown` (score < 0.50), НЕ перепутанные цвета
+   - blue: 5/5, green: 3/5, purple: 5/5, red: 5/5, yellow: 5/5
+4. Размер кропов: 75-164px — мелкие, с IP-камер (не телефонные фото)
+
+### Файлы
+- `data/reid/gallery_embeddings.pkl` — DINOv2 эмбеддинги, 137 штук, 384-dim
+- Backend: dinov2 (ViT-S/14)
+
+### Статус
+Галерея готова. Следующий шаг — интеграция в пайплайн или тест на независимых кропах (не из галереи).
+
+---
+
 ## 2026-03-18 (сессия 2) — 1-камерный debug режим, EMA, torso-кроп, mux 1520
 
 ### Что сделано

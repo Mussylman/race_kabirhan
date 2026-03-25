@@ -36,8 +36,8 @@ struct PipelineConfig {
     bool live_source     = true;   // false for file:// playback
     bool display         = false;  // --display: show video with OSD + tiler
     bool display_only    = false;  // --display-only: video grid without inference
-    int display_width    = 2560;
-    int display_height   = 1440;
+    int display_width    = 1280;
+    int display_height   = 720;
     std::string log_dir;           // --log-dir: diagnostic logging (CSV + JPG snapshots)
     int snap_interval    = 10;     // save snapshot every N batches (0=every batch with dets)
 };
@@ -90,6 +90,12 @@ private:
 
     // camera index → source element (for reconnect tracking)
     std::map<int, GstElement*> sources_;
+
+    // ── Camera activation (only process cameras with recent detections) ──
+    std::map<int, GstElement*> valves_;          // cam_index → valve element
+    static std::map<int, int>  cam_last_det_;    // cam_index → last frame with detection
+    static constexpr int CAM_DEACTIVATE_FRAMES = 75;  // ~3 sec at 25fps
+    void update_camera_activation(int current_frame);
 
     // ── RTSP reconnection state ─────────────────────────────────────
     struct ReconnectInfo {

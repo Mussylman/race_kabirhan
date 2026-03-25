@@ -23,6 +23,18 @@ namespace fs = std::filesystem;
 namespace rv {
 
 DiagLogger::~DiagLogger() {
+    if (enabled_ && total_dets_ > 0) {
+        fprintf(stderr, "\n[DiagLogger] ═══ CROP SIZE STATISTICS ═══\n");
+        fprintf(stderr, "[DiagLogger] Total detections: %d\n", total_dets_);
+        fprintf(stderr, "[DiagLogger] Crop width:  min=%d  avg=%lld  max=%d\n",
+                min_crop_w_, sum_crop_w_ / total_dets_, max_crop_w_);
+        fprintf(stderr, "[DiagLogger] Crop height: min=%d  avg=%lld  max=%d\n",
+                min_crop_h_, sum_crop_h_ / total_dets_, max_crop_h_);
+        fprintf(stderr, "[DiagLogger] Avg crop area: %lld px\n",
+                (sum_crop_w_ / total_dets_) * (sum_crop_h_ / total_dets_));
+        fprintf(stderr, "[DiagLogger] Log dir: %s\n", exp_dir_.c_str());
+        fprintf(stderr, "[DiagLogger] ═════════════════════════════\n\n");
+    }
     if (csv_file_) {
         fclose(csv_file_);
         csv_file_ = nullptr;
@@ -65,6 +77,7 @@ bool DiagLogger::init(const std::string& base_dir, int snap_interval) {
     fprintf(csv_file_,
         "batch,cam_id,frame_w,frame_h,det_idx,"
         "x1,y1,x2,y2,center_x,"
+        "crop_w,crop_h,crop_pixels,"
         "det_conf,color,color_conf,"
         "prob_blue,prob_green,prob_purple,prob_red,prob_yellow,"
         "track_id\n");
@@ -86,14 +99,29 @@ void DiagLogger::log_detections(int batch_num,
         const char* color_name = (d.color_id < NUM_COLORS)
             ? COLOR_NAMES[d.color_id] : "unknown";
 
+        int crop_w = static_cast<int>(d.x2 - d.x1);
+        int crop_h = static_cast<int>(d.y2 - d.y1);
+        int crop_px = crop_w * crop_h;
+
+        // Accumulate crop size stats
+        total_dets_++;
+        sum_crop_w_ += crop_w;
+        sum_crop_h_ += crop_h;
+        if (crop_w < min_crop_w_) min_crop_w_ = crop_w;
+        if (crop_h < min_crop_h_) min_crop_h_ = crop_h;
+        if (crop_w > max_crop_w_) max_crop_w_ = crop_w;
+        if (crop_h > max_crop_h_) max_crop_h_ = crop_h;
+
         fprintf(csv_file_,
             "%d,%s,%d,%d,%d,"
             "%.1f,%.1f,%.1f,%.1f,%.1f,"
+            "%d,%d,%d,"
             "%.4f,%s,%.4f,"
             "%.4f,%.4f,%.4f,%.4f,%.4f,"
             "%u\n",
             batch_num, d.cam_id.c_str(), d.frame_w, d.frame_h, d.det_idx,
             d.x1, d.y1, d.x2, d.y2, d.center_x,
+            crop_w, crop_h, crop_px,
             d.det_conf, color_name, d.color_conf,
             d.color_probs[COLOR_BLUE], d.color_probs[COLOR_GREEN],
             d.color_probs[COLOR_PURPLE], d.color_probs[COLOR_RED],
@@ -397,15 +425,48 @@ void DiagLogger::save_snapshot(int batch_num, const NvBufSurface* surface,
                    static_cast<int>(d.x1), std::max(0, static_cast<int>(d.y1) - 18),
                    label, br, bg, bb, 2);
 
-        // Draw torso region (thin rectangle)
-        float bw = d.x2 - d.x1;
-        float bh = d.y2 - d.y1;
-        int tx1 = static_cast<int>(d.x1 + bw * 0.20f);
-        int ty1 = static_cast<int>(d.y1 + bh * 0.10f);
-        int tx2 = static_cast<int>(d.x2 - bw * 0.20f);
-        int ty2 = static_cast<int>(d.y1 + bh * 0.40f);
-        draw_rect(rgb.data(), fw, fh, 3, tx1, ty1, tx2, ty2,
-                   255, 255, 0, 1); // yellow thin torso box
+        // Crop region = full bbox now (no torso sub-crop)
+        // Draw crop size label below bbox
+        int crop_w = static_cast<int>(d.x2 - d.x1);
+        int crop_h = static_cast<int>(d.y2 - d.y1);
+        char size_label[32];
+        snprintf(size_label, sizeof(size_label), "%dx%d", crop_w, crop_h);
+        draw_text(rgb.data(), fw, fh, 3,
+                   static_cast<int>(d.x1), static_cast<int>(d.y2) + 2,
+                   size_label, 255, 255, 0, 1);
+    }
+
+    // Save individual crop images (before drawing labels on full frame)
+    {
+        static bool crops_dir_created = false;
+        if (!crops_dir_created) {
+            fs::create_directories(exp_dir_ + "/crops");
+            crops_dir_created = true;
+        }
+        for (const auto& d : cam_dets) {
+            int cx1 = std::max(0, static_cast<int>(d.x1));
+            int cy1 = std::max(0, static_cast<int>(d.y1));
+            int cx2 = std::min(fw, static_cast<int>(d.x2));
+            int cy2 = std::min(fh, static_cast<int>(d.y2));
+            int cw = cx2 - cx1;
+            int ch = cy2 - cy1;
+            if (cw > 2 && ch > 2) {
+                std::vector<uint8_t> crop_rgb(cw * ch * 3);
+                for (int row = 0; row < ch; ++row) {
+                    memcpy(crop_rgb.data() + row * cw * 3,
+                           rgb.data() + ((cy1 + row) * fw + cx1) * 3,
+                           cw * 3);
+                }
+                const char* cname = (d.color_id < NUM_COLORS)
+                    ? COLOR_NAMES[d.color_id] : "unk";
+                char crop_fn[256];
+                snprintf(crop_fn, sizeof(crop_fn),
+                         "%s/crops/b%05d_%s_t%u_%s_%dx%d.jpg",
+                         exp_dir_.c_str(), batch_num, cam_id.c_str(),
+                         d.track_id, cname, cw, ch);
+                stbi_write_jpg(crop_fn, cw, ch, 3, crop_rgb.data(), 95);
+            }
+        }
     }
 
     // Draw camera label

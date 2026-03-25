@@ -44,7 +44,7 @@ custom-lib-path=/home/user/race_vision/deepstream/build/libnvdsinfer_yolov8_pars
 output-blob-names=output0
 
 [class-attrs-all]
-pre-cluster-threshold=0.30
+pre-cluster-threshold=0.15
 
 [class-attrs-0]
-pre-cluster-threshold=0.30
+pre-cluster-threshold=0.15

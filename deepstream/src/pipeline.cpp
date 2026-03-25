@@ -11,6 +11,7 @@
 #include <cstring>
 #include <cmath>
 #include <chrono>
+#include <thread>
 #include <algorithm>
 
 #include <gst/gst.h>
@@ -22,6 +23,45 @@ namespace rv {
 // Static member definitions
 std::map<uint32_t, Pipeline::TrackHistory>   Pipeline::track_history_;
 std::map<uint32_t, Pipeline::ColorSmoother>  Pipeline::color_smooth_;
+std::map<int, int>                           Pipeline::cam_last_det_;
+
+void Pipeline::update_camera_activation(int current_frame) {
+    if (valves_.empty()) return;
+
+    int n_cams = static_cast<int>(config_.cameras.size());
+    int active = 0, deactivated = 0;
+
+    for (int i = 0; i < n_cams; ++i) {
+        auto it = valves_.find(i);
+        if (it == valves_.end()) continue;
+
+        int last_det = (cam_last_det_.count(i)) ? cam_last_det_[i] : 0;
+        bool has_recent = (current_frame - last_det) < CAM_DEACTIVATE_FRAMES;
+
+        // Also activate neighbors of active cameras
+        bool neighbor_active = false;
+        if (i > 0 && cam_last_det_.count(i - 1) && (current_frame - cam_last_det_[i - 1]) < CAM_DEACTIVATE_FRAMES)
+            neighbor_active = true;
+        if (i < n_cams - 1 && cam_last_det_.count(i + 1) && (current_frame - cam_last_det_[i + 1]) < CAM_DEACTIVATE_FRAMES)
+            neighbor_active = true;
+
+        bool should_be_active = has_recent || neighbor_active;
+
+        // First 150 frames (6 sec) — all active (waiting for race start)
+        if (current_frame < 150) should_be_active = true;
+
+        g_object_set(G_OBJECT(it->second), "drop", should_be_active ? FALSE : TRUE, NULL);
+
+        if (should_be_active) active++;
+        else deactivated++;
+    }
+
+    static int last_log_frame = 0;
+    if (current_frame - last_log_frame >= 50) {
+        fprintf(stderr, "[CAMS] frm=%-5d active=%d/%d\n", current_frame, active, n_cams);
+        last_log_frame = current_frame;
+    }
+}
 
 Pipeline::Pipeline() = default;
 
@@ -191,7 +231,7 @@ bool Pipeline::add_inference() {
     fprintf(stderr, "[Pipeline] nvtracker added (IOU tracker, %dx%d)\n",
             config_.mux_width, config_.mux_height);
 
-    // Add probe on nvtracker src pad (after tracking, so object_id is populated)
+    // Add probe on nvtracker src pad (color kernel handles NV12 directly)
     GstPad* src_pad = gst_element_get_static_pad(tracker, "src");
     if (src_pad) {
         gst_pad_add_probe(src_pad, GST_PAD_PROBE_TYPE_BUFFER,
@@ -212,7 +252,6 @@ bool Pipeline::add_sink() {
         // Link from nvtracker (last element before sink)
         link_from = gst_bin_get_by_name(GST_BIN(pipeline_), "tracker");
         if (!link_from) {
-            // Fallback to nvinfer if tracker not present
             link_from = gst_bin_get_by_name(GST_BIN(pipeline_), "yolo-infer");
         }
         if (!link_from) {
@@ -239,7 +278,8 @@ bool Pipeline::add_sink() {
             "columns", cols,
             "width",  config_.display_width,
             "height", config_.display_height,
-            "show-source", -1,
+            "show-source", 0,           // start with cam-01, switch on detections
+            "gpu-id", 0,
             NULL);
         tiler_ = tiler;  // save for dynamic focus
 
@@ -263,8 +303,18 @@ bool Pipeline::add_sink() {
         }
         g_object_set(G_OBJECT(sink), "sync", TRUE, NULL);  // TRUE = real-time playback at source fps
 
+        // Queue decouples inference from display — display runs at source fps,
+        // inference runs as fast as it can. Leaky=2 (downstream) drops old frames.
+        GstElement* disp_queue = gst_element_factory_make("queue", "display-queue");
+        if (disp_queue) {
+            g_object_set(G_OBJECT(disp_queue),
+                "max-size-buffers", 2,
+                "leaky", 2,        // downstream: drop oldest if full
+                NULL);
+        }
+
         if (config_.display && !config_.display_only) {
-            // Full display: link_from → osd → tiler → conv → sink
+            // Full display: link_from → queue → osd → tiler → conv → sink
             GstElement* osd = gst_element_factory_make("nvdsosd", "osd");
             if (!osd) {
                 fprintf(stderr, "[Pipeline] Failed to create nvdsosd\n");
@@ -276,19 +326,37 @@ bool Pipeline::add_sink() {
                 "display-text", TRUE,
                 NULL);
 
-            gst_bin_add_many(GST_BIN(pipeline_), osd, tiler, conv, sink, NULL);
-            if (!gst_element_link_many(link_from, osd, tiler, conv, sink, NULL)) {
-                fprintf(stderr, "[Pipeline] Failed to link display pipeline\n");
-                gst_object_unref(link_from);
-                return false;
+            if (disp_queue) {
+                gst_bin_add_many(GST_BIN(pipeline_), disp_queue, osd, tiler, conv, sink, NULL);
+                if (!gst_element_link_many(link_from, disp_queue, osd, tiler, conv, sink, NULL)) {
+                    fprintf(stderr, "[Pipeline] Failed to link display pipeline\n");
+                    gst_object_unref(link_from);
+                    return false;
+                }
+            } else {
+                gst_bin_add_many(GST_BIN(pipeline_), osd, tiler, conv, sink, NULL);
+                if (!gst_element_link_many(link_from, osd, tiler, conv, sink, NULL)) {
+                    fprintf(stderr, "[Pipeline] Failed to link display pipeline\n");
+                    gst_object_unref(link_from);
+                    return false;
+                }
             }
         } else {
-            // Display-only: link_from → tiler → conv → sink (no OSD)
-            gst_bin_add_many(GST_BIN(pipeline_), tiler, conv, sink, NULL);
-            if (!gst_element_link_many(link_from, tiler, conv, sink, NULL)) {
-                fprintf(stderr, "[Pipeline] Failed to link display-only pipeline\n");
-                gst_object_unref(link_from);
-                return false;
+            // Display-only: link_from → queue → tiler → conv → sink (no OSD)
+            if (disp_queue) {
+                gst_bin_add_many(GST_BIN(pipeline_), disp_queue, tiler, conv, sink, NULL);
+                if (!gst_element_link_many(link_from, disp_queue, tiler, conv, sink, NULL)) {
+                    fprintf(stderr, "[Pipeline] Failed to link display-only pipeline\n");
+                    gst_object_unref(link_from);
+                    return false;
+                }
+            } else {
+                gst_bin_add_many(GST_BIN(pipeline_), tiler, conv, sink, NULL);
+                if (!gst_element_link_many(link_from, tiler, conv, sink, NULL)) {
+                    fprintf(stderr, "[Pipeline] Failed to link display-only pipeline\n");
+                    gst_object_unref(link_from);
+                    return false;
+                }
             }
         }
 
@@ -303,7 +371,7 @@ bool Pipeline::add_sink() {
             gst_object_unref(link_from);
             return false;
         }
-        g_object_set(G_OBJECT(sink), "sync", FALSE, "async", FALSE, NULL);
+        g_object_set(G_OBJECT(sink), "sync", TRUE, "async", FALSE, NULL);
         gst_bin_add(GST_BIN(pipeline_), sink);
         gst_element_link(link_from, sink);
     }
@@ -487,6 +555,32 @@ GstPadProbeReturn Pipeline::inference_probe(GstPad* pad,
                                             GstPadProbeInfo* info,
                                             gpointer data) {
     auto* self = static_cast<Pipeline*>(data);
+
+    auto t_probe_start = std::chrono::steady_clock::now();
+
+    // Measure time BETWEEN probes (= display pipeline time)
+    static auto last_probe_exit = std::chrono::steady_clock::now();
+    float between_probes_ms = std::chrono::duration<float, std::milli>(t_probe_start - last_probe_exit).count();
+    static float sum_between_ms = 0;
+    sum_between_ms += between_probes_ms;
+
+    static int batch_counter = 0;
+    batch_counter++;
+
+    // Throttle to ~25fps for stable display (live-source=TRUE runs uncapped)
+    static auto last_frame_time = std::chrono::steady_clock::now();
+    auto now = std::chrono::steady_clock::now();
+    auto elapsed_us = std::chrono::duration_cast<std::chrono::microseconds>(now - last_frame_time).count();
+    constexpr long TARGET_FRAME_US = 40000;  // 40ms = 25fps
+    long sleep_us = 0;
+    if (elapsed_us < TARGET_FRAME_US) {
+        sleep_us = TARGET_FRAME_US - elapsed_us;
+        std::this_thread::sleep_for(std::chrono::microseconds(sleep_us));
+    }
+    last_frame_time = std::chrono::steady_clock::now();
+
+    auto t_after_throttle = std::chrono::steady_clock::now();
+
     GstBuffer* buf = GST_PAD_PROBE_INFO_BUFFER(info);
     if (!buf) return GST_PAD_PROBE_OK;
 
@@ -500,6 +594,23 @@ GstPadProbeReturn Pipeline::inference_probe(GstPad* pad,
     if (gst_buffer_map(buf, &map_info, GST_MAP_READ)) {
         surface = reinterpret_cast<NvBufSurface*>(map_info.data);
         gst_buffer_unmap(buf, &map_info);
+    }
+
+    // Debug: log surface params once
+    static bool surface_logged = false;
+    if (!surface_logged && surface && surface->numFilled > 0) {
+        fprintf(stderr, "[SURFACE] numFilled=%d batchSize=%d\n", surface->numFilled, surface->batchSize);
+        for (uint32_t si = 0; si < surface->numFilled && si < 5; ++si) {
+            auto& p = surface->surfaceList[si];
+            fprintf(stderr, "  [%d] %dx%d pitch=%d fmt=%d dataPtr=%p dataSize=%d numPlanes=%d\n",
+                    si, p.width, p.height, p.pitch, p.colorFormat, p.dataPtr, p.dataSize, p.planeParams.num_planes);
+            for (uint32_t pi = 0; pi < p.planeParams.num_planes && pi < 4; ++pi) {
+                fprintf(stderr, "    plane[%d]: w=%d h=%d pitch=%d offset=%d psize=%d\n",
+                        pi, p.planeParams.width[pi], p.planeParams.height[pi],
+                        p.planeParams.pitch[pi], p.planeParams.offset[pi], p.planeParams.psize[pi]);
+            }
+        }
+        surface_logged = true;
     }
 
     // Collect torso ROIs across all cameras
@@ -533,8 +644,9 @@ GstPadProbeReturn Pipeline::inference_probe(GstPad* pad,
             continue;
 
         const auto& cam_config = self->config_.cameras[cam_index];
-        int fw = frame_meta->source_frame_width;
-        int fh = frame_meta->source_frame_height;
+        // Use mux dimensions for bbox coordinates (nvinfer outputs in mux space)
+        int fw = self->config_.mux_width;
+        int fh = self->config_.mux_height;
 
         CamDets cam_dets;
         cam_dets.cam_index = cam_index;
@@ -549,6 +661,11 @@ GstPadProbeReturn Pipeline::inference_probe(GstPad* pad,
 
         int det_count = 0;
         int raw_count = 0;
+        int filt_class = 0, filt_edge = 0, filt_height = 0, filt_aspect = 0, filt_tracker = 0;
+
+        // Count total objects in frame
+        int total_objs = 0;
+        for (NvDsMetaList* tmp = frame_meta->obj_meta_list; tmp; tmp = tmp->next) total_objs++;
 
         // Iterate over detected objects
         for (NvDsMetaList* l_obj = frame_meta->obj_meta_list;
@@ -558,7 +675,7 @@ GstPadProbeReturn Pipeline::inference_probe(GstPad* pad,
             NvDsObjectMeta* obj_meta = static_cast<NvDsObjectMeta*>(l_obj->data);
 
             // Only person class
-            if (obj_meta->class_id != 0) continue;
+            if (obj_meta->class_id != 0) { filt_class++; continue; }
             raw_count++;
 
             float x1 = obj_meta->rect_params.left;
@@ -576,14 +693,14 @@ GstPadProbeReturn Pipeline::inference_probe(GstPad* pad,
             float center_x = (x1 + x2) / 2.0f;
 
             // Filter: edge margin (skip if fully outside frame)
-            if (EDGE_MARGIN > 0 && (x1 <= EDGE_MARGIN || x2 >= fw - EDGE_MARGIN)) continue;
+            if (EDGE_MARGIN > 0 && (x1 <= EDGE_MARGIN || x2 >= fw - EDGE_MARGIN)) { filt_edge++; continue; }
 
             // Filter: min height (reject tiny distant objects / noise)
-            if (bh < MIN_BBOX_HEIGHT) continue;
+            if (bh < MIN_BBOX_HEIGHT) { filt_height++; continue; }
 
             // Filter: aspect ratio (reject thin slivers / edge artifacts)
             float aspect = bw / std::max(bh, 1.0f);
-            if (aspect < MIN_ASPECT_RATIO || aspect > MAX_ASPECT_RATIO) continue;
+            if (aspect < MIN_ASPECT_RATIO || aspect > MAX_ASPECT_RATIO) { filt_aspect++; continue; }
 
             // Filter: static object (not moving = not a racing horse)
             // STATIC_HISTORY_FRAMES=0 disables this filter entirely
@@ -608,9 +725,12 @@ GstPadProbeReturn Pipeline::inference_probe(GstPad* pad,
             // Crop ROI: torso only (10%..40% height, 20% side margins)
             // Focuses on chest/torso where jockey color is most visible
             TorsoROI roi = ColorInfer::compute_torso_roi(x1, y1, x2, y2, fw, fh, det_count, cam_index);
+            roi.surface_index = frame_meta->batch_id;
 
             int crop_pixels = (roi.x2 - roi.x1) * (roi.y2 - roi.y1);
             if (crop_pixels < MIN_CROP_PIXELS || crop_pixels > MAX_CROP_PIXELS) continue;
+
+            // (debug logging removed — see summary every 50 frames)
 
             // Store detection (tracker-only objects kept for visual continuity)
             Detection& det = cam_dets.slot.detections[det_count];
@@ -623,10 +743,30 @@ GstPadProbeReturn Pipeline::inference_probe(GstPad* pad,
             det.det_conf = det_conf;
             det.track_id = static_cast<uint32_t>(obj_meta->object_id);
 
-            // Queue for color classification (skip tracker-only — no reliable crop)
-            if (!tracker_only) {
+            // Queue for color classification only on active cameras
+            // (cameras with recent detections or neighbors of active cameras)
+            bool cam_active = true;
+            if (cam_last_det_.count(cam_index)) {
+                int frames_since = batch_counter - cam_last_det_[cam_index];
+                cam_active = (frames_since < CAM_DEACTIVATE_FRAMES);
+            }
+            // Also active if neighbor has recent detections
+            if (!cam_active) {
+                for (int delta : {-1, 1}) {
+                    int nb = cam_index + delta;
+                    if (nb >= 0 && nb < static_cast<int>(self->config_.cameras.size()) &&
+                        cam_last_det_.count(nb) && (batch_counter - cam_last_det_[nb]) < CAM_DEACTIVATE_FRAMES) {
+                        cam_active = true;
+                        break;
+                    }
+                }
+            }
+            // First 150 frames = all active (waiting for race start)
+            if (batch_counter < 150) cam_active = true;
+
+            if (cam_active) {
                 all_rois.push_back(roi);
-                roi_mappings.push_back({cam_index, det_count, x1, y1, x2, y2, center_x, det_conf, false});
+                roi_mappings.push_back({cam_index, det_count, x1, y1, x2, y2, center_x, det_conf, tracker_only});
             }
             det_count++;
         }
@@ -635,8 +775,13 @@ GstPadProbeReturn Pipeline::inference_probe(GstPad* pad,
         cam_dets_list.push_back(std::move(cam_dets));
     }
 
-    // Batch color classification (only for YOLO-detected objects, not tracker-interpolated)
+    auto t_after_filter = std::chrono::steady_clock::now();
+
+    // Batch color classification (all objects including tracker-only)
+    auto t_classify_start = std::chrono::steady_clock::now();
+    int n_classified = 0;
     if (!all_rois.empty() && self->color_infer_.is_loaded() && surface) {
+        n_classified = static_cast<int>(all_rois.size());
         std::vector<ColorResult> color_results;
         self->color_infer_.classify(surface, all_rois, color_results);
 
@@ -687,9 +832,7 @@ GstPadProbeReturn Pipeline::inference_probe(GstPad* pad,
         }
     }
 
-    // FPS counter (moved up for diag logger access)
-    static int batch_counter = 0;
-    batch_counter++;
+    // FPS counter (batch_counter declared at top of probe)
 
     // ── Diagnostic logging (CSV + JPG snapshots) ────────────────────
     if (self->diag_logger_.is_enabled()) {
@@ -865,22 +1008,40 @@ GstPadProbeReturn Pipeline::inference_probe(GstPad* pad,
         }
     }
 
-    // Write all camera slots to shared memory
+    // Write all camera slots to shared memory + track last detection frame
     int total_dets = 0;
     int best_cam = -1;
     int best_det_count = 0;
     for (const auto& cd : cam_dets_list) {
         self->shm_writer_.write_camera(cd.cam_index, cd.slot);
         total_dets += cd.slot.num_detections;
+        if (cd.slot.num_detections > 0) {
+            cam_last_det_[cd.cam_index] = batch_counter;
+        }
         if (static_cast<int>(cd.slot.num_detections) > best_det_count) {
             best_det_count = cd.slot.num_detections;
             best_cam = cd.cam_index;
         }
     }
 
+    // Log active cameras
+    {
+        int n_active = 0;
+        int n_cams = static_cast<int>(self->config_.cameras.size());
+        for (int i = 0; i < n_cams; ++i) {
+            if (cam_last_det_.count(i) && (batch_counter - cam_last_det_[i]) < CAM_DEACTIVATE_FRAMES)
+                n_active++;
+        }
+        if (batch_counter % 50 == 0 && batch_counter > 0)
+            fprintf(stderr, "[CAMS] frm=%-5d classify_active=%d/%d\n", batch_counter, n_active, n_cams);
+    }
+
     // Dynamic focus: show camera with most detections fullscreen
     if (self->tiler_ && self->config_.display) {
-        int target = (best_det_count > 0) ? best_cam : -1;
+        // Always show single camera (full grid = too heavy for 25 cams)
+        // When no dets, keep showing last active camera (or cam 0)
+        int target = (best_det_count > 0) ? best_cam : self->focused_source_;
+        if (target < 0) target = 0;  // default to cam-01
         if (target != self->focused_source_) {
             g_object_set(G_OBJECT(self->tiler_), "show-source", target, NULL);
             self->focused_source_ = target;
@@ -909,41 +1070,78 @@ GstPadProbeReturn Pipeline::inference_probe(GstPad* pad,
         fps_start = now_tp;
     }
 
-    // Detailed log: one line per detection, FPS heartbeat every 100 batches
+    // Timing: color classification
+    auto t_classify_end = std::chrono::steady_clock::now();
+    float classify_ms = std::chrono::duration<float, std::milli>(t_classify_end - t_classify_start).count();
+
+    // Accumulate stats
+    static int sum_dets = 0, sum_yolo = 0, sum_tracker = 0, sum_classified = 0;
+    static float sum_classify_ms = 0;
+    static int active_cams = 0;
     static const char* COLOR_LABEL[6] = {"BLUE","GREEN","PURPLE","RED","YELLOW","???"};
 
-    if (total_dets > 0) {
+    int frame_yolo = 0, frame_tracker = 0;
+    active_cams = 0;
+    for (const auto& cd : cam_dets_list) {
+        if (cd.slot.num_detections > 0) active_cams++;
+        for (uint32_t di = 0; di < cd.slot.num_detections; ++di) {
+            if (cd.slot.detections[di].det_conf == 0.5f)
+                frame_tracker++;
+            else
+                frame_yolo++;
+        }
+    }
+    sum_dets += total_dets;
+    sum_yolo += frame_yolo;
+    sum_tracker += frame_tracker;
+    sum_classified += n_classified;
+    sum_classify_ms += classify_ms;
+
+    // Timing for this frame
+    auto t_probe_end = std::chrono::steady_clock::now();
+    float probe_total_ms = std::chrono::duration<float, std::milli>(t_probe_end - t_probe_start).count();
+    float throttle_ms = std::chrono::duration<float, std::milli>(t_after_throttle - t_probe_start).count();
+    float filter_ms = std::chrono::duration<float, std::milli>(t_after_filter - t_after_throttle).count();
+
+    static float sum_probe_ms = 0, sum_throttle_ms = 0, sum_filter_ms = 0;
+    sum_probe_ms += probe_total_ms;
+    sum_throttle_ms += throttle_ms;
+    sum_filter_ms += filter_ms;
+
+    // Summary every 50 frames
+    if (batch_counter % 50 == 0) {
+        fprintf(stderr, "[STAT] frm=%-5d fps=%.1f | dets=%d (yolo=%d trk=%d) | classify=%d %.1fms | cams=%d/%zu\n",
+                batch_counter, current_fps,
+                sum_dets, sum_yolo, sum_tracker,
+                sum_classified, sum_classify_ms,
+                active_cams, self->config_.cameras.size());
+        float work_ms = sum_probe_ms - sum_throttle_ms;
+        float display_ms = sum_between_ms;
+        float total_ms = sum_probe_ms + sum_between_ms;
+        fprintf(stderr, "  timing per 50frm: total=%.0fms | probe=%.0fms (throttle=%.0fms work=%.0fms) | display_pipe=%.0fms\n",
+                total_ms, sum_probe_ms, sum_throttle_ms, work_ms, display_ms);
+        fprintf(stderr, "  per-frame avg: probe=%.1fms (throttle=%.1f work=%.1f classify=%.1f) display=%.1fms | budget=40ms\n",
+                sum_probe_ms/50, sum_throttle_ms/50, work_ms/50, sum_classify_ms/50, display_ms/50);
+
+        // Per-camera color summary
         for (const auto& cd : cam_dets_list) {
+            if (cd.slot.num_detections == 0) continue;
+            fprintf(stderr, "  %s:", cd.slot.cam_id);
             for (uint32_t di = 0; di < cd.slot.num_detections; ++di) {
                 const auto& det = cd.slot.detections[di];
-                const char* cname = (det.color_id < NUM_COLORS)
-                    ? COLOR_LABEL[det.color_id] : "UNKNWN";
-                float bw = det.x2 - det.x1;
-                float bh = det.y2 - det.y1;
-                // tracker_only flag: det_conf was forced to 0.5 if tracker-interpolated
-                bool is_tracker = (det.det_conf == 0.5f && det.color_conf == 0.0f);
-                fprintf(stderr,
-                    "[DET] frm=%-5d cam=%-6s trk=%-4u  "
-                    "yolo=%-4.2f  bbox=%4.0fx%-4.0f @(%4.0f,%4.0f)  "
-                    "class=%-6s conf=%-4.0f%%  fps=%.1f%s\n",
-                    batch_counter,
-                    cd.slot.cam_id,
-                    det.track_id,
-                    det.det_conf,
-                    bw, bh,
-                    det.x1, det.y1,
-                    cname,
-                    det.color_conf * 100.0f,
-                    current_fps,
-                    is_tracker ? "  [TRACKER]" : ""
-                );
+                const char* cname = (det.color_id < NUM_COLORS) ? COLOR_LABEL[det.color_id] : "UNK";
+                fprintf(stderr, " t%u=%s(%.0f%%)", det.track_id, cname, det.color_conf * 100);
             }
+            fprintf(stderr, "\n");
         }
-    } else if (batch_counter % 50 == 0) {
-        fprintf(stderr, "[FPS] frm=%-5d  fps=%.1f  0 dets\n",
-                batch_counter, current_fps);
+
+        sum_dets = sum_yolo = sum_tracker = sum_classified = 0;
+        sum_classify_ms = 0;
+        sum_probe_ms = sum_throttle_ms = sum_filter_ms = 0;
+        sum_between_ms = 0;
     }
 
+    last_probe_exit = std::chrono::steady_clock::now();
     return GST_PAD_PROBE_OK;
 }
 
@@ -989,8 +1187,11 @@ gboolean Pipeline::bus_call(GstBus* bus, GstMessage* msg, gpointer data) {
         gchar* debug = nullptr;
         GError* error = nullptr;
         gst_message_parse_warning(msg, &error, &debug);
-        fprintf(stderr, "[Pipeline] WARNING from %s: %s\n",
-                GST_OBJECT_NAME(msg->src), error->message);
+        // Suppress "buffers are being dropped" from display queue (expected with 25 cams)
+        if (error && strstr(error->message, "drop") == nullptr) {
+            fprintf(stderr, "[Pipeline] WARNING from %s: %s\n",
+                    GST_OBJECT_NAME(msg->src), error->message);
+        }
         if (debug) g_free(debug);
         g_error_free(error);
         break;

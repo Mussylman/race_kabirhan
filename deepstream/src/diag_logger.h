@@ -78,6 +78,12 @@ private:
     std::mutex mutex_;
     int snap_interval_ = 10;
     int snap_counter_ = 0;
+
+    // Crop size statistics
+    int total_dets_ = 0;
+    long long sum_crop_w_ = 0, sum_crop_h_ = 0;
+    int min_crop_w_ = 99999, min_crop_h_ = 99999;
+    int max_crop_w_ = 0, max_crop_h_ = 0;
 };
 
 } // namespace rv

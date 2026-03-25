@@ -35,7 +35,8 @@ struct ColorResult {
 struct TorsoROI {
     int x1, y1, x2, y2;       // crop region in frame
     int det_index;             // index into detection array (for writing back)
-    int cam_index;             // which camera
+    int cam_index;             // which camera (source_id)
+    int surface_index;         // index into surfaceList (batch_id)
 };
 
 class ColorInfer {
@@ -72,11 +73,11 @@ public:
 
     bool is_loaded() const { return engine_ != nullptr; }
 
-    // Torso extraction parameters (same as Python analyzer.py)
-    static constexpr float TORSO_TOP    = 0.10f;
-    static constexpr float TORSO_BOTTOM = 0.40f;
-    static constexpr float TORSO_LEFT   = 0.20f;
-    static constexpr float TORSO_RIGHT  = 0.20f;
+    // Crop extraction parameters: full bbox (no torso sub-crop)
+    static constexpr float TORSO_TOP    = 0.0f;
+    static constexpr float TORSO_BOTTOM = 1.0f;
+    static constexpr float TORSO_LEFT   = 0.0f;
+    static constexpr float TORSO_RIGHT  = 0.0f;
 
     /**
      * Compute torso ROI from person bounding box.
@@ -93,19 +94,20 @@ private:
     nvinfer1::ICudaEngine*      engine_  = nullptr;
     nvinfer1::IExecutionContext* context_ = nullptr;
 
-    // GPU buffers
+    // GPU buffers (pre-allocated once in load())
     void* d_input_  = nullptr;   // float[max_batch][3][CROP_SIZE][CROP_SIZE]
     void* d_output_ = nullptr;   // float[max_batch][model_num_classes_]
+    int*  d_rois_   = nullptr;   // int[max_batch][4] — pre-allocated ROI buffer
     int   max_batch_ = 128;
 
-    // Model outputs 3 classes (green=0, red=1, yellow=2)
-    // SHM uses 5 slots (blue=0, green=1, purple=2, red=3, yellow=4)
-    static constexpr int MODEL_NUM_CLASSES = 3;
-    // Mapping: model_class_index → SHM ColorId
+    // v1: 5 classes (blue=0, green=1, purple=2, red=3, yellow=4) — matches SHM directly
+    static constexpr int MODEL_NUM_CLASSES = 5;
     static constexpr uint32_t MODEL_TO_SHM[MODEL_NUM_CLASSES] = {
-        COLOR_GREEN,   // model 0 → green (SHM 1)
-        COLOR_RED,     // model 1 → red   (SHM 3)
-        COLOR_YELLOW,  // model 2 → yellow(SHM 4)
+        COLOR_BLUE,    // model 0 → blue   (SHM 0)
+        COLOR_GREEN,   // model 1 → green  (SHM 1)
+        COLOR_PURPLE,  // model 2 → purple (SHM 2)
+        COLOR_RED,     // model 3 → red    (SHM 3)
+        COLOR_YELLOW,  // model 4 → yellow (SHM 4)
     };
 
     // CUDA stream for async ops
