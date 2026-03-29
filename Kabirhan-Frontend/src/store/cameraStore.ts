@@ -15,7 +15,11 @@ interface CameraState {
     ptzCameras: PTZCameraState[];
     analyticsCameras: AnalyticsCameraState[];
     activePTZCameraId: string;
-    liveDetections: Record<string, Array<{color: string, conf: number, track_id?: number}>>;  // cam_id → detections with colors
+    liveDetections: Record<string, {
+        frame_w: number;
+        frame_h: number;
+        detections: Array<{color: string, conf: number, track_id?: number, bbox?: [number, number, number, number]}>;
+    }>;  // cam_id → frame info + detections with bbox
 
     // Actions
     setActivePTZCamera: (cameraId: string) => void;
@@ -23,7 +27,11 @@ interface CameraState {
     updateCameraStatus: (cameraId: string, status: 'online' | 'offline') => void;
     updateAnalyticsCameraHorses: (cameraId: string, horseIds: string[]) => void;
     updateCameraActivation: (cameras: Record<string, boolean>) => void;
-    setLiveDetections: (cameras: Record<string, Array<{color: string, conf: number, track_id?: number}>>) => void;
+    setLiveDetections: (cameras: Record<string, {
+        frame_w: number;
+        frame_h: number;
+        detections: Array<{color: string, conf: number, track_id?: number, bbox?: [number, number, number, number]}>;
+    }>) => void;
     initializeCameras: () => void;
     syncFromStorage: () => void;
 }

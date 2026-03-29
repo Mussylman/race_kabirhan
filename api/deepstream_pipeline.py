@@ -1,0 +1,471 @@
+"""
+Race Vision — DeepStream C++ subprocess and SHM-based pipeline.
+
+Imports ONLY from api.shared (no other api.* modules).
+"""
+
+import os
+import time
+import subprocess
+import threading
+from typing import Optional
+
+from api.shared import (
+    state, log,
+    CameraManager, TrackTopology, CameraDetections,
+    FusionEngine, SharedMemoryReader,
+    COLOR_TO_HORSE, ALL_COLORS, TRACK_LENGTH,
+)
+
+# ============================================================
+# DEEPSTREAM C++ SUBPROCESS MANAGER
+# ============================================================
+
+class DeepStreamSubprocess:
+    """Manages the C++ DeepStream process as a subprocess."""
+
+    def __init__(self, config_path: str,
+                 yolo_engine: str = "/app/models/yolov8s_deepstream.engine",
+                 color_engine: str = "/app/models/color_classifier.engine",
+                 binary: str = "/app/bin/race_vision_deepstream",
+                 file_mode: bool = False,
+                 display: bool = False):
+        self.config_path = config_path
+        self.yolo_engine = yolo_engine
+        self.color_engine = color_engine
+        self.binary = binary
+        self.file_mode = file_mode
+        self.display = display
+        self._proc: Optional[subprocess.Popen] = None
+        self._monitor_thread: Optional[threading.Thread] = None
+        self._running = False
+
+    def start(self):
+        cmd = [
+            self.binary,
+            "--config", self.config_path,
+            "--yolo-engine", self.yolo_engine,
+            "--color-engine", self.color_engine,
+        ]
+        if self.file_mode:
+            cmd.append("--file-mode")
+        if self.display:
+            cmd.append("--display")
+        log.info("Starting DeepStream C++: %s", " ".join(cmd))
+
+        env = os.environ.copy()
+        env["LD_LIBRARY_PATH"] = (
+            "/opt/nvidia/deepstream/deepstream/lib:"
+            "/app/lib:"
+            + env.get("LD_LIBRARY_PATH", "")
+        )
+
+        self._proc = subprocess.Popen(
+            cmd, env=env,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        )
+        self._running = True
+
+        self._monitor_thread = threading.Thread(
+            target=self._monitor, daemon=True, name="DeepStreamMonitor")
+        self._monitor_thread.start()
+        log.info("DeepStream C++ started (PID=%d)", self._proc.pid)
+
+    def _monitor(self):
+        """Forward C++ stdout/stderr to Python log and detect crashes."""
+        for line in iter(self._proc.stdout.readline, b''):
+            if not self._running:
+                break
+            text = line.decode('utf-8', errors='replace').rstrip()
+            if text:
+                log.info("[DeepStream C++] %s", text)
+
+        retcode = self._proc.wait()
+        if self._running:
+            log.error("DeepStream C++ exited unexpectedly (code=%d)", retcode)
+
+    def stop(self):
+        self._running = False
+        if self._proc and self._proc.poll() is None:
+            log.info("Stopping DeepStream C++ (PID=%d)...", self._proc.pid)
+            self._proc.terminate()
+            try:
+                self._proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                log.warning("DeepStream C++ did not stop, killing...")
+                self._proc.kill()
+                self._proc.wait()
+            log.info("DeepStream C++ stopped")
+
+    @property
+    def is_running(self) -> bool:
+        return self._proc is not None and self._proc.poll() is None
+
+    @property
+    def pid(self) -> Optional[int]:
+        return self._proc.pid if self._proc else None
+
+
+# ============================================================
+# DETECTION BUFFER — lock-free bridge between SHM Reader and Inference
+# ============================================================
+
+class DetectionBuffer:
+    """Thread-safe single-slot buffer: SHM Reader writes, Inference reads.
+
+    Stores only the latest frame of detections per camera.
+    Reader overwrites, consumer reads a copy. No queue, no backpressure.
+    """
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._cam_detections: list = []   # latest list[CameraDetections]
+        self._frame_id: int = 0
+        self._live: dict = {}             # latest live_detections for broadcast
+
+    def update(self, cam_results: list, live: dict):
+        """Called by SHM Reader thread at ~1000hz."""
+        with self._lock:
+            self._cam_detections = cam_results
+            self._frame_id += 1
+            self._live = live
+
+    def get(self) -> tuple:
+        """Called by Inference thread. Returns (cam_results, frame_id, live)."""
+        with self._lock:
+            return self._cam_detections, self._frame_id, self._live
+
+
+# ============================================================
+# DEEPSTREAM PIPELINE (replaces MultiCameraPipeline when --deepstream)
+# ============================================================
+
+class DeepStreamPipeline:
+    """Reads detections from DeepStream C++ via shared memory.
+
+    Architecture: 3 independent threads/loops, 1 buffer
+      SHM Reader (Thread, ~1000hz) → DetectionBuffer → Inference (Thread, ~4fps effective)
+                                           ↓
+                                   ranking_broadcast_loop (async, 10hz)
+
+    Replaces TriggerLoop + AnalysisLoop with a single SharedMemoryReader
+    that receives pre-computed detections (YOLO + color) from the C++ pipeline.
+    Keeps VoteEngine per camera and FusionEngine for ranking.
+    """
+
+    def __init__(self, camera_manager: CameraManager, topology: TrackTopology):
+        self.camera_manager = camera_manager
+        self.topology = topology
+        self.fusion = FusionEngine(topology, colors=ALL_COLORS)
+
+        self._reader = SharedMemoryReader(timeout_ms=200)
+        self._shm_thread: Optional[threading.Thread] = None
+        self._inference_thread: Optional[threading.Thread] = None
+        self._running = False
+
+        # Buffer between SHM Reader and Inference
+        self._detection_buffer = DetectionBuffer()
+
+        # Per-camera vote engines
+        from pipeline.vote_engine import VoteEngine
+        self._vote_engines: dict[str, VoteEngine] = {}
+
+        # Frame skip: ~25fps from DeepStream → ~4fps effective
+        self._cam_frame_count: dict[str, int] = {}
+        self.frame_skip: int = 6
+
+        # One-result-per-camera state
+        self._cam_first_analysis: dict[str, float] = {}
+        self._cam_all_visible_time: dict[str, float] = {}
+        self._cam_completed: set[str] = set()
+        self._pending_camera_results: list[dict] = []
+        self.max_analysis_sec: float = 8.0
+        self.grace_period_sec: float = 2.0
+
+        # Stats
+        self.frames_processed = 0
+        self.cycles = 0
+        self.last_cycle_time = 0.0
+        self.current_fps = 0.0
+        self.shm_fps = 0.0  # SHM reader speed
+
+        # Live detection status — updated by SHM Reader, read by broadcast
+        self.live_detections: dict[str, list] = {}
+
+    def _get_vote_engine(self, cam_id: str):
+        from pipeline.vote_engine import VoteEngine
+        if cam_id not in self._vote_engines:
+            self._vote_engines[cam_id] = VoteEngine(ALL_COLORS)
+        return self._vote_engines[cam_id]
+
+    def start(self):
+        self._running = True
+
+        # Thread 1: SHM Reader — reads at max speed, writes to DetectionBuffer
+        self._shm_thread = threading.Thread(
+            target=self._shm_reader_loop, daemon=True, name="SHMReader"
+        )
+        self._shm_thread.start()
+
+        # Thread 2: Inference — reads DetectionBuffer, does voting/fusion
+        self._inference_thread = threading.Thread(
+            target=self._inference_loop, daemon=True, name="InferenceWorker"
+        )
+        self._inference_thread.start()
+
+        log.info("DeepStreamPipeline started (SHMReader + InferenceWorker)")
+
+    # ------------------------------------------------------------------
+    # Thread 1: SHM Reader — fast, no processing, just reads and buffers
+    # ------------------------------------------------------------------
+    def _shm_reader_loop(self):
+        """Reads SHM at max speed (~1000hz), writes to DetectionBuffer."""
+        # Retry attach until successful
+        while self._running and not self._reader.is_attached:
+            if self._reader.attach():
+                log.info("SHMReader: attached to shared memory")
+                break
+            log.info("SHMReader: waiting for DeepStream C++ (SHM not found)...")
+            time.sleep(2.0)
+
+        fps_counter = 0
+        fps_timer = time.monotonic()
+        stale_counter = 0
+        STALE_THRESHOLD = 30  # ~6 sec at 200ms timeout
+
+        while self._running:
+            # Read detections from shared memory
+            cam_results = self._reader.read()
+            if cam_results is None:
+                stale_counter += 1
+                if self._reader.is_attached and stale_counter > STALE_THRESHOLD:
+                    log.warning("SHMReader: stale (%d timeouts), re-attaching...", stale_counter)
+                    self._reader.detach()
+                    stale_counter = 0
+                if not self._reader.is_attached:
+                    while self._running and not self._reader.is_attached:
+                        if self._reader.attach():
+                            log.info("SHMReader: re-attached")
+                            break
+                        time.sleep(2.0)
+                continue
+            stale_counter = 0
+
+            # Build live detection map (always, regardless of race_active)
+            live = {}
+            for cam_det in cam_results:
+                if cam_det.n_detections > 0:
+                    live[cam_det.cam_id] = {
+                        "frame_w": cam_det.frame_w,
+                        "frame_h": cam_det.frame_h,
+                        "detections": [
+                            {
+                                "color": d.get("color", "?"),
+                                "conf": round(d.get("conf", 0) * 100),
+                                "track_id": d.get("track_id", 0),
+                                "bbox": d.get("bbox", (0, 0, 0, 0)),
+                            }
+                            for d in cam_det.detections
+                        ],
+                    }
+
+            # Write to buffer — inference thread reads from here
+            self._detection_buffer.update(cam_results, live)
+            self.live_detections = live
+
+            # SHM Reader FPS tracking
+            fps_counter += 1
+            elapsed_fps = time.monotonic() - fps_timer
+            if elapsed_fps >= 1.0:
+                self.shm_fps = fps_counter / elapsed_fps
+                fps_counter = 0
+                fps_timer = time.monotonic()
+
+    # ------------------------------------------------------------------
+    # Thread 2: Inference — voting, fusion, ranking (at its own pace)
+    # ------------------------------------------------------------------
+    def _inference_loop(self):
+        """Reads DetectionBuffer, runs voting/fusion. Independent of SHM speed."""
+        fps_counter = 0
+        fps_timer = time.monotonic()
+        last_frame_id = 0
+
+        while self._running:
+            cam_results, frame_id, _ = self._detection_buffer.get()
+
+            # No new data — sleep briefly
+            if frame_id == last_frame_id or not cam_results:
+                time.sleep(0.001)  # 1ms poll — don't spin CPU
+                continue
+            last_frame_id = frame_id
+
+            t0 = time.monotonic()
+            self.cycles += 1
+
+            if not state.race_active:
+                continue
+
+            # Process through vote engines with frame skip + one-result-per-camera
+            for cam_det in cam_results:
+                cam_id = cam_det.cam_id
+
+                # Skip completed cameras
+                if cam_id in self._cam_completed:
+                    continue
+
+                if cam_det.n_detections == 0:
+                    continue
+
+                # Frame skip: ~25fps → ~4fps effective
+                self._cam_frame_count[cam_id] = self._cam_frame_count.get(cam_id, 0) + 1
+                if self._cam_frame_count[cam_id] % self.frame_skip != 0:
+                    continue
+
+                engine = self._get_vote_engine(cam_id)
+                assigned, weight = engine.submit_frame(cam_det.detections)
+                self.frames_processed += 1
+
+                # Track first analysis time
+                now = time.monotonic()
+                if cam_id not in self._cam_first_analysis:
+                    self._cam_first_analysis[cam_id] = now
+
+                # Track when all 5 colors become visible
+                if weight > 0:
+                    visible_colors = set(d['color'] for d in assigned)
+                    if len(visible_colors) >= 5 and cam_id not in self._cam_all_visible_time:
+                        self._cam_all_visible_time[cam_id] = now
+
+                # Check completion conditions
+                should_complete = False
+                reason = ""
+
+                if engine.is_result_ready():
+                    # Condition 1: all positions filled + grace period
+                    if cam_id in self._cam_all_visible_time:
+                        elapsed_grace = now - self._cam_all_visible_time[cam_id]
+                        if elapsed_grace >= self.grace_period_sec:
+                            should_complete = True
+                            reason = f"confident + grace {elapsed_grace:.1f}s"
+                    # Condition 2: confident + enough frames (no need to wait)
+                    if not should_complete and engine.vote_frames >= 8:
+                        should_complete = True
+                        reason = f"confident + {engine.vote_frames} frames"
+
+                if not should_complete and engine.vote_frames >= 2:
+                    # Condition 3: timeout with votes
+                    elapsed = now - self._cam_first_analysis[cam_id]
+                    if elapsed >= self.max_analysis_sec:
+                        should_complete = True
+                        reason = f"timeout ({elapsed:.1f}s)"
+
+                if not should_complete and cam_id in self._cam_first_analysis:
+                    # Condition 4: partial timeout — straggler case
+                    elapsed = now - self._cam_first_analysis[cam_id]
+                    if elapsed >= self.max_analysis_sec:
+                        should_complete = True
+                        reason = f"partial timeout ({elapsed:.1f}s, {len(assigned)} horses)"
+
+                if should_complete:
+                    self._cam_completed.add(cam_id)
+                    vote_result = engine.compute_result()
+                    log.info("CAMERA COMPLETE  %s  order=[%s]  (%s, %d vote frames)",
+                             cam_id, " > ".join(vote_result), reason, engine.vote_frames)
+
+                    # Build single-camera CameraDetections and update fusion ONCE
+                    voted = CameraDetections(cam_id, cam_det.frame_width, cam_det.frame_height)
+                    voted.timestamp = cam_det.timestamp
+                    for d in assigned:
+                        voted.add(d)
+                    self.fusion.update([voted])
+
+                    # Build rankings and update state
+                    fusion_ranking = self.fusion.get_ranking()
+                    rankings = self._build_rankings(fusion_ranking)
+                    state.set_rankings(rankings)
+
+                    # Queue camera_result for broadcast
+                    self._pending_camera_results.append({
+                        "type": "camera_result",
+                        "camera_id": cam_id,
+                        "ranking": vote_result,
+                        "vote_frames": engine.vote_frames,
+                    })
+
+            # Inference FPS tracking
+            fps_counter += 1
+            elapsed_fps = time.monotonic() - fps_timer
+            if elapsed_fps >= 1.0:
+                self.current_fps = fps_counter / elapsed_fps
+                fps_counter = 0
+                fps_timer = time.monotonic()
+
+            self.last_cycle_time = time.monotonic() - t0
+
+    def _build_rankings(self, fusion_ranking: list[dict]) -> list:
+        """Convert fusion ranking to frontend format (same as MultiCameraPipeline)."""
+        rankings = []
+        for entry in fusion_ranking:
+            color = entry["color"]
+            horse_info = COLOR_TO_HORSE.get(color)
+            if not horse_info:
+                continue
+
+            distance = entry.get("position_m", 0)
+            rank = entry.get("rank", 0)
+
+            if rankings:
+                leader_dist = rankings[0]["distanceCovered"]
+                gap = abs(leader_dist - distance) / max(TRACK_LENGTH, 1) * 60.0
+            else:
+                gap = 0.0
+
+            rankings.append({
+                "id": horse_info["id"],
+                "number": int(horse_info["number"]),
+                "name": horse_info["name"],
+                "color": horse_info["color"],
+                "jockeyName": horse_info["jockeyName"],
+                "silkId": int(horse_info["silkId"]),
+                "position": rank,
+                "distanceCovered": round(float(distance), 1),
+                "currentLap": 1,
+                "timeElapsed": 0,
+                "speed": round(entry.get("speed_mps", 0) * 3.6, 1),
+                "gapToLeader": round(float(gap), 2),
+                "lastCameraId": entry.get("last_camera", ""),
+            })
+
+        return rankings
+
+    def stop(self):
+        self._running = False
+        if self._shm_thread:
+            self._shm_thread.join(timeout=3.0)
+        if self._inference_thread:
+            self._inference_thread.join(timeout=3.0)
+        self._reader.detach()
+
+    def reset(self):
+        self.fusion.reset()
+        for engine in self._vote_engines.values():
+            engine.reset()
+        self._cam_first_analysis.clear()
+        self._cam_all_visible_time.clear()
+        self._cam_completed.clear()
+        self._cam_frame_count.clear()
+        self._pending_camera_results.clear()
+
+    def get_stats(self) -> dict:
+        return {
+            "deepstream": {
+                "shm_attached": self._reader.is_attached,
+                "shm_seq": self._reader.last_seq,
+                "cycles": self.cycles,
+                "frames_processed": self.frames_processed,
+                "current_fps": round(self.current_fps, 1),
+                "shm_fps": round(self.shm_fps, 1),
+                "last_cycle_ms": round(self.last_cycle_time * 1000, 1),
+            },
+            "fusion": self.fusion.get_stats(),
+        }

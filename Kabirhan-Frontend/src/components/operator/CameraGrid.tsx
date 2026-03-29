@@ -1,8 +1,81 @@
+import { useRef, useEffect, useCallback } from 'react';
 import { Video, VideoOff } from 'lucide-react';
 import { useCameraStore } from '../../store/cameraStore';
 import { useRaceStore } from '../../store/raceStore';
 import { Go2RTCPlayer } from '../Go2RTCPlayer';
 import { TRACK_LENGTH } from '../../types';
+
+const COLOR_MAP: Record<string, string> = {
+    blue: '#3b82f6',
+    green: '#22c55e',
+    purple: '#a855f7',
+    red: '#ef4444',
+    yellow: '#eab308',
+    unknown: '#6b7280',
+};
+
+/** Canvas overlay that draws bbox + color labels on a camera feed */
+const DetectionOverlay = ({ cameraId }: { cameraId: string }) => {
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+    const { liveDetections } = useCameraStore();
+
+    const draw = useCallback(() => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        const camData = liveDetections[cameraId];
+        const rect = canvas.getBoundingClientRect();
+        canvas.width = rect.width;
+        canvas.height = rect.height;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        if (!camData || !camData.detections || camData.detections.length === 0) return;
+
+        const scaleX = canvas.width / camData.frame_w;
+        const scaleY = canvas.height / camData.frame_h;
+
+        for (const det of camData.detections) {
+            if (!det.bbox) continue;
+            const [x1, y1, x2, y2] = det.bbox;
+            const sx = x1 * scaleX;
+            const sy = y1 * scaleY;
+            const sw = (x2 - x1) * scaleX;
+            const sh = (y2 - y1) * scaleY;
+
+            const color = COLOR_MAP[det.color] || COLOR_MAP.unknown;
+
+            // Draw bbox
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
+            ctx.strokeRect(sx, sy, sw, sh);
+
+            // Draw label background
+            const label = `${det.color.toUpperCase()} ${det.conf}%`;
+            ctx.font = 'bold 11px sans-serif';
+            const textW = ctx.measureText(label).width + 8;
+            ctx.fillStyle = color;
+            ctx.fillRect(sx, sy - 18, textW, 18);
+
+            // Draw label text
+            ctx.fillStyle = '#fff';
+            ctx.fillText(label, sx + 4, sy - 5);
+        }
+    }, [cameraId, liveDetections]);
+
+    useEffect(() => {
+        const id = requestAnimationFrame(draw);
+        return () => cancelAnimationFrame(id);
+    }, [draw]);
+
+    return (
+        <canvas
+            ref={canvasRef}
+            className="absolute inset-0 z-10 pointer-events-none"
+        />
+    );
+};
 
 export const CameraGrid = () => {
     const { analyticsCameras, liveDetections } = useCameraStore();
@@ -31,8 +104,9 @@ export const CameraGrid = () => {
                     const hasHorses = horsesNear.length > 0;
 
                     // Live detection from DeepStream C++ (real-time, with colors)
-                    const dets = liveDetections[camera.id] || [];
-                    const detCount = Array.isArray(dets) ? dets.length : 0;
+                    const camData = liveDetections[camera.id];
+                    const dets = camData?.detections || [];
+                    const detCount = dets.length;
                     const isActive = detCount > 0;
 
                     return (
@@ -56,7 +130,7 @@ export const CameraGrid = () => {
                                 </div>
                             )}
 
-                            {/* WebRTC Stream via go2rtc */}
+                            {/* WebRTC Stream via go2rtc + Detection overlay */}
                             <div className="relative aspect-video bg-black">
                                 <Go2RTCPlayer
                                     cameraId={`${camera.go2rtcId}-sub`}
@@ -64,6 +138,7 @@ export const CameraGrid = () => {
                                     className="absolute inset-0"
                                     connectDelay={0}
                                 />
+                                <DetectionOverlay cameraId={camera.id} />
                             </div>
 
                             {/* Bottom Info Bar */}

@@ -242,7 +242,7 @@ const handleBackendMessage = (message: BackendMessage) => {
             if (message.cameras) {
                 const { setLiveDetections } = useCameraStore.getState();
                 if (typeof setLiveDetections === 'function') {
-                    setLiveDetections(message.cameras as unknown as Record<string, Array<{color: string, conf: number, track_id?: number}>>);
+                    setLiveDetections(message.cameras as any);
                 }
             }
             break;

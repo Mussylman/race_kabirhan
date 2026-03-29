@@ -4,6 +4,66 @@
 
 ---
 
+## 2026-03-26 — Capture/Inference/Display разделение
+
+### Архитектура (реализовано)
+Разделил `DeepStreamPipeline._reader_loop()` на 3 независимых потока:
+
+```
+DeepStream C++ (25 RTSP → YOLO → classify) → SHM /rv_detections
+                                                ↓
+                                    SHM Reader Thread (~1000hz poll)
+                                                ↓
+                                          DetectionBuffer (lock, 1 slot)
+                                                ↓
+                                    Inference Thread (voting/fusion, ~4fps effective)
+                                                ↓
+                                    WebSocket broadcast (async, 5-10hz)
+                                                ↓
+                                    Frontend canvas overlay (30fps rAF)
+
+go2rtc WebRTC (25 потоков) ──────→ Frontend <video> (свой FPS)
+```
+
+4 независимых скорости. Никто никого не ждёт.
+
+### Что изменено
+- `api/server.py` — добавлен класс `DetectionBuffer` (thread-safe single-slot buffer)
+- `DeepStreamPipeline` — один `_reader_loop` разделён на:
+  - `_shm_reader_loop()` — Thread "SHMReader", читает SHM на макс скорости, пишет в DetectionBuffer
+  - `_inference_loop()` — Thread "InferenceWorker", читает DetectionBuffer, делает voting/fusion/ranking
+- `ranking_broadcast_loop()` — без изменений (уже был отдельный async loop, 5hz)
+- Добавлен `shm_fps` в stats + лог показывает обе скорости: `SHM=Xhz Infer=Yfps`
+- `stop()` — join обоих потоков с timeout
+
+### Статус
+Код изменён, синтаксис OK. Не протестировано, не закоммичено.
+
+### Следующие шаги (план в memory/project_plan.md)
+
+**Фаза 1: Рефакторинг структуры**
+- api/server.py (1880 строк) → 4 файла: server_core, deepstream_sub, camera_io, ws_handlers
+- pipeline.cpp (1263 строк) → 3 файла: pipeline, probe_handler, camera_activation
+- backendConnection.ts (356 строк) → 2 файла: ws_connection, message_handlers
+
+**Фаза 2: WebRTC production pipeline**
+- DeepStream headless → SHM /rv_ws_blob (компактный бинарный формат для браузера)
+- Python zero-copy прокси: mmap → websocket.send_bytes (без парсинга)
+- go2rtc → 25 камер WebRTC passthrough
+- Frontend: Web Worker + OffscreenCanvas + requestVideoFrameCallback + jitter buffer
+- Один скрипт: ./scripts/run_all.sh
+
+**Фаза 3: Track voting + Fusion**
+- Per-track majority vote за 20+ кадров
+- Python fusion → позиции на трассе → WebSocket рейтинг
+
+**Фаза 4: Production**
+- RTSP live тест, Docker-compose, мониторинг
+
+**Блокер:** `sudo chown -R user:user Kabirhan-Frontend/node_modules`
+
+---
+
 ## 2026-03-24 — v3 classifier + NV12→RGBA fix + mux coord fix
 
 ### Что сделано
@@ -145,11 +205,37 @@ NV12 kernel UV offset: src + 1620*3072 = src + 4976640 ✓
 - `deepstream/src/color_infer.cpp` — `surfaceList[surf_idx]`, planeParams.offset/pitch
 - `deepstream/src/pipeline.cpp` — `roi.surface_index = frame_meta->batch_id`
 
-### Следующий шаг
-- Тест 25 камер с фиксом
-- Track voting (накопление цвета по track_id)
-- Python SHM reader + fusion
-- Тест на живых RTSP камерах
+### WebRTC + Frontend план (26 марта)
+
+**go2rtc тест:** 5 камер через WebRTC — без лагов. go2rtc скачан в /tmp/go2rtc, конфиг configs/go2rtc_files.yaml (файловые источники с -stream_loop -1).
+
+**Архитектура production:**
+```
+DeepStream (headless, 38fps) → YOLO + classify → SHM
+Python server (api/server.py) → SHM reader → WebSocket (bbox + цвета)
+go2rtc → 25 камер → WebRTC (видео passthrough, 0 GPU)
+Frontend (React) → WebRTC видео + WebSocket bbox → canvas overlay
+```
+
+**Что сделано:**
+- `api/server.py` — live_detections теперь включает bbox, frame_w, frame_h
+- `Kabirhan-Frontend/src/components/operator/CameraGrid.tsx` — добавлен DetectionOverlay canvas компонент (рисует bbox + цвета поверх WebRTC видео)
+- `Kabirhan-Frontend/src/store/cameraStore.ts` — тип liveDetections обновлён (bbox + frame размеры)
+- `Kabirhan-Frontend/src/services/backendConnection.ts` — убрана старая типизация
+- `scripts/run_all.sh` — один скрипт запускает все 4 сервиса (go2rtc + DeepStream + Python + Frontend)
+
+**Блокер:** node_modules в Kabirhan-Frontend принадлежат root. Нужно:
+```bash
+sudo chown -R user:user /home/user/race_vision/Kabirhan-Frontend/node_modules
+```
+Потом `./scripts/run_all.sh`
+
+### Следующий шаг (завтра)
+1. Починить permissions node_modules
+2. Запустить ./scripts/run_all.sh — проверить WebRTC + bbox overlay
+3. Track voting (накопление цвета по track_id)
+4. Тест 25 камер
+5. Тест на живых RTSP камерах
 
 ---
 
