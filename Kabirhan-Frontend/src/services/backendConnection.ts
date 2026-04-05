@@ -4,6 +4,8 @@
 import { useRaceStore } from '../store/raceStore';
 import { useCameraStore } from '../store/cameraStore';
 import { findClosestSilkId, getSilkColor } from '../utils/silkUtils';
+import { pushDetectionFrame } from './detectionBuffer';
+import { flog, throttledLog } from '../utils/frameLogger';
 
 // Derive WebSocket URL from current page origin (works behind nginx proxy)
 const getWsUrl = (): string => {
@@ -239,10 +241,28 @@ const handleBackendMessage = (message: BackendMessage) => {
 
         case 'live_detections':
             // Real-time detection status from DeepStream C++ (with colors)
+            // Push into per-camera temporal buffer (NOT directly to render)
             if (message.cameras) {
+                const tsServerSend: number = (message as any).ts_server_send ?? 0;
+                const tsClientRecv = Date.now() / 1000;
+                const cameras = message.cameras as Record<string, any>;
+                for (const [camId, camData] of Object.entries(cameras)) {
+                    pushDetectionFrame(camId, camData, tsServerSend);
+                    // WS_RECV structured log — throttled 2s per camera
+                    const frameSeq: number = camData.frame_seq ?? 0;
+                    const latencyMs = (tsClientRecv - tsServerSend) * 1000;
+                    throttledLog(`WS_RECV:${camId}`, 2000, () => {
+                        flog('WS_RECV', camId, frameSeq, tsClientRecv, {
+                            dets: camData.detections?.length ?? 0,
+                            latency_ms: latencyMs,
+                            ts_server_send: tsServerSend,
+                        });
+                    });
+                }
+                // Also update store for non-overlay consumers (badges, status, etc.)
                 const { setLiveDetections } = useCameraStore.getState();
                 if (typeof setLiveDetections === 'function') {
-                    setLiveDetections(message.cameras as any);
+                    setLiveDetections(cameras);
                 }
             }
             break;

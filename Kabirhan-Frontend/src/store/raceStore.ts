@@ -160,7 +160,7 @@ export const useRaceStore = create<RaceState>((set, get) => ({
     },
 
     initializeDefaultRace: () => {
-        const horses = createDefaultHorses(10);
+        const horses = createDefaultHorses(5);
         set({
             race: { ...defaultRace, horses },
             horses,

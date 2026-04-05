@@ -5,6 +5,21 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   server: {
-    open: '/operator',  // Başlangıçta /operator sayfasını aç
+    port: 5174,
+    strictPort: true,
+    open: '/operator',
+    proxy: {
+      '/ws': {
+        target: 'ws://localhost:8000',
+        ws: true,
+        rewriteWsOrigin: true,
+      },
+      '/api': {
+        target: 'http://localhost:8000',
+      },
+      '/stream': {
+        target: 'http://localhost:8000',
+      },
+    },
   },
 })

@@ -34,6 +34,7 @@ import mmap
 from typing import Optional
 
 from .detections import CameraDetections
+from .log_utils import slog, throttle, agg, LOG_GEOMETRY
 
 log = logging.getLogger("pipeline.shm_reader")
 
@@ -223,15 +224,19 @@ class SharedMemoryReader:
             cam_id = cam_id_raw.rstrip(b'\x00').decode('ascii', errors='replace')
             num_dets = min(num_dets, MAX_DETECTIONS)
 
+            ts_capture = timestamp_us / 1e6
+
             if num_dets == 0:
                 # No detections — still create empty CameraDetections for stale tracking
                 cam_result = CameraDetections(cam_id, frame_w, frame_h)
-                cam_result.timestamp = timestamp_us / 1e6
+                cam_result.timestamp = ts_capture
+                cam_result.frame_seq = write_seq
                 results.append(cam_result)
                 continue
 
             cam_result = CameraDetections(cam_id, frame_w, frame_h)
-            cam_result.timestamp = timestamp_us / 1e6
+            cam_result.timestamp = ts_capture
+            cam_result.frame_seq = write_seq
 
             # Read detections
             for j in range(num_dets):
@@ -265,8 +270,22 @@ class SharedMemoryReader:
                 }
                 cam_result.add(det)
 
+            # SHM_READ log — throttled to 1/2s per camera (every frame when LOG_TIMING)
+            if num_dets > 0:
+                now = time.time()
+                age_ms = (now - ts_capture) * 1000
+                agg.record_shm(cam_id, age_ms)
+                key = f"SHM_READ:{cam_id}"
+                extra: dict = {"dets": num_dets, "ts_capture": ts_capture, "age_ms": age_ms}
+                if LOG_GEOMETRY and cam_result.detections:
+                    first = cam_result.detections[0]
+                    extra["bbox0"] = str(first.get("bbox", "?"))
+                if throttle.allow(key, interval=2.0):
+                    slog("SHM_READ", cam_id, write_seq, now, **extra)
+
             results.append(cam_result)
 
+        agg.flush_if_due()
         return results if results else None
 
     def _wait_semaphore(self) -> bool:

@@ -10,7 +10,7 @@ echo "════════════════════════�
 echo ""
 
 # Test configuration
-CONFIG_FILE="${1:-cameras_test_15.json}"
+CONFIG_FILE="${1:-configs/cameras_test_15.json}"
 YOLO_ENGINE="/app/configs/nvinfer_jockey.txt"
 COLOR_ENGINE="/app/models/color_classifier.engine"
 TEST_DURATION=60  # seconds

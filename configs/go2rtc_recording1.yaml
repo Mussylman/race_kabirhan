@@ -1,0 +1,61 @@
+# go2rtc config for recording 1 — all 25 cameras looped
+
+streams:
+  cam-01:
+    - exec:ffmpeg -stream_loop -1 -re -i /home/user/recordings/yaris_20260303_162028/kamera_01_162028_END162507.mp4 -c:v copy -an -f rtsp {output}
+  cam-02:
+    - exec:ffmpeg -stream_loop -1 -re -i /home/user/recordings/yaris_20260303_162028/kamera_02_162028_END162507.mp4 -c:v copy -an -f rtsp {output}
+  cam-03:
+    - exec:ffmpeg -stream_loop -1 -re -i /home/user/recordings/yaris_20260303_162028/kamera_03_162029_END162507.mp4 -c:v copy -an -f rtsp {output}
+  cam-04:
+    - exec:ffmpeg -stream_loop -1 -re -i /home/user/recordings/yaris_20260303_162028/kamera_04_162029_END162507.mp4 -c:v copy -an -f rtsp {output}
+  cam-05:
+    - exec:ffmpeg -stream_loop -1 -re -i /home/user/recordings/yaris_20260303_162028/kamera_05_162030_END162507.mp4 -c:v copy -an -f rtsp {output}
+  cam-06:
+    - exec:ffmpeg -stream_loop -1 -re -i /home/user/recordings/yaris_20260303_162028/kamera_06_162030_END162507.mp4 -c:v copy -an -f rtsp {output}
+  cam-07:
+    - exec:ffmpeg -stream_loop -1 -re -i /home/user/recordings/yaris_20260303_162028/kamera_07_162031_END162507.mp4 -c:v copy -an -f rtsp {output}
+  cam-08:
+    - exec:ffmpeg -stream_loop -1 -re -i /home/user/recordings/yaris_20260303_162028/kamera_08_162031_END162507.mp4 -c:v copy -an -f rtsp {output}
+  cam-09:
+    - exec:ffmpeg -stream_loop -1 -re -i /home/user/recordings/yaris_20260303_162028/kamera_09_162032_END162507.mp4 -c:v copy -an -f rtsp {output}
+  cam-10:
+    - exec:ffmpeg -stream_loop -1 -re -i /home/user/recordings/yaris_20260303_162028/kamera_10_162032_END162507.mp4 -c:v copy -an -f rtsp {output}
+  cam-11:
+    - exec:ffmpeg -stream_loop -1 -re -i /home/user/recordings/yaris_20260303_162028/kamera_11_162033_END162507.mp4 -c:v copy -an -f rtsp {output}
+  cam-12:
+    - exec:ffmpeg -stream_loop -1 -re -i /home/user/recordings/yaris_20260303_162028/kamera_12_162033_END162507.mp4 -c:v copy -an -f rtsp {output}
+  cam-13:
+    - exec:ffmpeg -stream_loop -1 -re -i /home/user/recordings/yaris_20260303_162028/kamera_13_162034_END162507.mp4 -c:v copy -an -f rtsp {output}
+  cam-14:
+    - exec:ffmpeg -stream_loop -1 -re -i /home/user/recordings/yaris_20260303_162028/kamera_14_162034_END162507.mp4 -c:v copy -an -f rtsp {output}
+  cam-15:
+    - exec:ffmpeg -stream_loop -1 -re -i /home/user/recordings/yaris_20260303_162028/kamera_15_162035_END162507.mp4 -c:v copy -an -f rtsp {output}
+  cam-16:
+    - exec:ffmpeg -stream_loop -1 -re -i /home/user/recordings/yaris_20260303_162028/kamera_16_162035_END162507.mp4 -c:v copy -an -f rtsp {output}
+  cam-17:
+    - exec:ffmpeg -stream_loop -1 -re -i /home/user/recordings/yaris_20260303_162028/kamera_17_162036_END162507.mp4 -c:v copy -an -f rtsp {output}
+  cam-18:
+    - exec:ffmpeg -stream_loop -1 -re -i /home/user/recordings/yaris_20260303_162028/kamera_18_162036_END162507.mp4 -c:v copy -an -f rtsp {output}
+  cam-19:
+    - exec:ffmpeg -stream_loop -1 -re -i /home/user/recordings/yaris_20260303_162028/kamera_19_162037_END162507.mp4 -c:v copy -an -f rtsp {output}
+  cam-20:
+    - exec:ffmpeg -stream_loop -1 -re -i /home/user/recordings/yaris_20260303_162028/kamera_20_162037_END162507.mp4 -c:v copy -an -f rtsp {output}
+  cam-21:
+    - exec:ffmpeg -stream_loop -1 -re -i /home/user/recordings/yaris_20260303_162028/kamera_21_162038_END162507.mp4 -c:v copy -an -f rtsp {output}
+  cam-22:
+    - exec:ffmpeg -stream_loop -1 -re -i /home/user/recordings/yaris_20260303_162028/kamera_22_162038_END162507.mp4 -c:v copy -an -f rtsp {output}
+  cam-23:
+    - exec:ffmpeg -stream_loop -1 -re -i /home/user/recordings/yaris_20260303_162028/kamera_23_162039_END162507.mp4 -c:v copy -an -f rtsp {output}
+  cam-24:
+    - exec:ffmpeg -stream_loop -1 -re -i /home/user/recordings/yaris_20260303_162028/kamera_24_162039_END162507.mp4 -c:v copy -an -f rtsp {output}
+  cam-25:
+    - exec:ffmpeg -stream_loop -1 -re -i /home/user/recordings/yaris_20260303_162028/kamera_25_162040_END162507.mp4 -c:v copy -an -f rtsp {output}
+
+api:
+  origin: "*"
+
+webrtc:
+  candidates:
+    - 127.0.0.1
+    - stun:stun.l.google.com:19302

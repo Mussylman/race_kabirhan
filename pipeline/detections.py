@@ -15,6 +15,7 @@ class CameraDetections:
         self.frame_height = frame_height
         self.detections: list[dict] = []
         self.timestamp: float = time.time()
+        self.frame_seq: int = 0   # SHM write_seq — cross-layer tracing key
 
     def add(self, det: dict):
         self.detections.append(det)

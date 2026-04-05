@@ -71,6 +71,8 @@ from api.deepstream_pipeline import DeepStreamSubprocess, DeepStreamPipeline
 # Legacy / torch-based pipelines
 from api.legacy_pipeline import LegacyDetectionLoop, MultiCameraPipeline
 
+from pipeline.log_utils import slog, throttle, agg
+
 # ============================================================
 # FASTAPI APP
 # ============================================================
@@ -409,10 +411,23 @@ async def ranking_broadcast_loop():
 
         # Broadcast live detections from DeepStream (which cameras see horses NOW)
         if _deepstream_pipeline and _deepstream_pipeline.live_detections:
-            await broadcast({
+            ts_send = time.time()
+            msg = {
                 "type": "live_detections",
+                "ts_server_send": ts_send,
                 "cameras": _deepstream_pipeline.live_detections,
-            })
+            }
+            await broadcast(msg)
+            # Structured WS_SEND log — throttled per camera
+            for cam_id, cam_data in _deepstream_pipeline.live_detections.items():
+                ts_cap = cam_data.get("ts_capture", 0)
+                age_ms = (ts_send - ts_cap) * 1000 if ts_cap else -1
+                dets = cam_data.get("detections", [])
+                frame_seq = cam_data.get("frame_seq", 0)
+                agg.record_ws_send(cam_id)
+                if throttle.allow(f"WS_SEND:{cam_id}", interval=2.0):
+                    slog("WS_SEND", cam_id, frame_seq, ts_send,
+                         clients=len(ws_clients), dets=len(dets), age_ms=age_ms)
 
         # Broadcast activation map every 2 seconds
         now = time.time()

@@ -183,7 +183,8 @@ class JockeyReID:
                     pil_img = Image.fromarray(rgb)
                     tensors.append(self._transform(pil_img))
                 batch = torch.stack(tensors).to(self.device)
-                features = self._model(batch)
+                out = self._model(batch)
+                features = out.last_hidden_state[:, 0] if hasattr(out, 'last_hidden_state') else out
 
             elif self.backend == "osnet":
                 # OSNet FeatureExtractor accepts file paths or PIL images
@@ -194,6 +195,12 @@ class JockeyReID:
                 features = self._model(pil_images)
                 if isinstance(features, np.ndarray):
                     features = torch.from_numpy(features)
+
+        # Unwrap model output if needed (transformers BaseModelOutput)
+        if hasattr(features, 'last_hidden_state'):
+            features = features.last_hidden_state[:, 0]
+        if not isinstance(features, torch.Tensor):
+            features = torch.tensor(features)
 
         # L2 normalize
         features = features / features.norm(dim=-1, keepdim=True)

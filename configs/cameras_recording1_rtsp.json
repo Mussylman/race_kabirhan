@@ -1,0 +1,156 @@
+{
+  "track_length": 2500,
+  "max_active": 25,
+  "analytics": [
+    {
+      "id": "cam-01",
+      "url": "rtsp://127.0.0.1:8554/cam-01",
+      "track_start": 0,
+      "track_end": 100
+    },
+    {
+      "id": "cam-02",
+      "url": "rtsp://127.0.0.1:8554/cam-02",
+      "track_start": 0,
+      "track_end": 100
+    },
+    {
+      "id": "cam-03",
+      "url": "rtsp://127.0.0.1:8554/cam-03",
+      "track_start": 0,
+      "track_end": 100
+    },
+    {
+      "id": "cam-04",
+      "url": "rtsp://127.0.0.1:8554/cam-04",
+      "track_start": 0,
+      "track_end": 100
+    },
+    {
+      "id": "cam-05",
+      "url": "rtsp://127.0.0.1:8554/cam-05",
+      "track_start": 0,
+      "track_end": 100
+    },
+    {
+      "id": "cam-06",
+      "url": "rtsp://127.0.0.1:8554/cam-06",
+      "track_start": 0,
+      "track_end": 100
+    },
+    {
+      "id": "cam-07",
+      "url": "rtsp://127.0.0.1:8554/cam-07",
+      "track_start": 0,
+      "track_end": 100
+    },
+    {
+      "id": "cam-08",
+      "url": "rtsp://127.0.0.1:8554/cam-08",
+      "track_start": 0,
+      "track_end": 100
+    },
+    {
+      "id": "cam-09",
+      "url": "rtsp://127.0.0.1:8554/cam-09",
+      "track_start": 0,
+      "track_end": 100
+    },
+    {
+      "id": "cam-10",
+      "url": "rtsp://127.0.0.1:8554/cam-10",
+      "track_start": 0,
+      "track_end": 100
+    },
+    {
+      "id": "cam-11",
+      "url": "rtsp://127.0.0.1:8554/cam-11",
+      "track_start": 0,
+      "track_end": 100
+    },
+    {
+      "id": "cam-12",
+      "url": "rtsp://127.0.0.1:8554/cam-12",
+      "track_start": 0,
+      "track_end": 100
+    },
+    {
+      "id": "cam-13",
+      "url": "rtsp://127.0.0.1:8554/cam-13",
+      "track_start": 0,
+      "track_end": 100
+    },
+    {
+      "id": "cam-14",
+      "url": "rtsp://127.0.0.1:8554/cam-14",
+      "track_start": 0,
+      "track_end": 100
+    },
+    {
+      "id": "cam-15",
+      "url": "rtsp://127.0.0.1:8554/cam-15",
+      "track_start": 0,
+      "track_end": 100
+    },
+    {
+      "id": "cam-16",
+      "url": "rtsp://127.0.0.1:8554/cam-16",
+      "track_start": 0,
+      "track_end": 100
+    },
+    {
+      "id": "cam-17",
+      "url": "rtsp://127.0.0.1:8554/cam-17",
+      "track_start": 0,
+      "track_end": 100
+    },
+    {
+      "id": "cam-18",
+      "url": "rtsp://127.0.0.1:8554/cam-18",
+      "track_start": 0,
+      "track_end": 100
+    },
+    {
+      "id": "cam-19",
+      "url": "rtsp://127.0.0.1:8554/cam-19",
+      "track_start": 0,
+      "track_end": 100
+    },
+    {
+      "id": "cam-20",
+      "url": "rtsp://127.0.0.1:8554/cam-20",
+      "track_start": 0,
+      "track_end": 100
+    },
+    {
+      "id": "cam-21",
+      "url": "rtsp://127.0.0.1:8554/cam-21",
+      "track_start": 0,
+      "track_end": 100
+    },
+    {
+      "id": "cam-22",
+      "url": "rtsp://127.0.0.1:8554/cam-22",
+      "track_start": 0,
+      "track_end": 100
+    },
+    {
+      "id": "cam-23",
+      "url": "rtsp://127.0.0.1:8554/cam-23",
+      "track_start": 0,
+      "track_end": 100
+    },
+    {
+      "id": "cam-24",
+      "url": "rtsp://127.0.0.1:8554/cam-24",
+      "track_start": 0,
+      "track_end": 100
+    },
+    {
+      "id": "cam-25",
+      "url": "rtsp://127.0.0.1:8554/cam-25",
+      "track_start": 0,
+      "track_end": 100
+    }
+  ]
+}

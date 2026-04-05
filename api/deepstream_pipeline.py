@@ -5,6 +5,7 @@ Imports ONLY from api.shared (no other api.* modules).
 """
 
 import os
+import json
 import time
 import subprocess
 import threading
@@ -16,6 +17,79 @@ from api.shared import (
     FusionEngine, SharedMemoryReader,
     COLOR_TO_HORSE, ALL_COLORS, TRACK_LENGTH,
 )
+from pipeline.log_utils import slog, throttle, agg
+
+
+# ============================================================
+# COLOR TRACKER — per-track EMA smoothing to filter noise
+# ============================================================
+
+class ColorTracker:
+    """Tracks per-(cam, track_id) color probabilities via EMA.
+
+    Solves: classifier sometimes flips yellow→blue for 1-2 frames.
+    After 3+ frames of consistent color, the EMA stabilizes and
+    transient misclassifications are overridden.
+    """
+
+    EMA_ALPHA = 0.3          # new observation weight (lower = smoother)
+    MIN_CONF = 0.60          # below this → "unknown"
+    COLOR_NAMES = ["blue", "green", "purple", "red", "yellow"]
+
+    def __init__(self):
+        # key: (cam_id, track_id) → {"probs": [5 floats], "frames": int}
+        self._tracks: dict[tuple, dict] = {}
+
+    def update(self, cam_id: str, track_id: int, color: str, conf: float) -> tuple[str, int]:
+        """Feed a raw classification, return smoothed (color, conf%).
+
+        Args:
+            cam_id: camera identifier
+            track_id: nvtracker object ID
+            color: raw classifier output ("red", "blue", etc.)
+            conf: raw confidence 0-100
+
+        Returns:
+            (smoothed_color, smoothed_conf_percent)
+        """
+        key = (cam_id, track_id)
+        if key not in self._tracks:
+            self._tracks[key] = {"probs": [0.0] * 5, "frames": 0}
+
+        entry = self._tracks[key]
+        alpha = self.EMA_ALPHA
+
+        # Build one-hot from raw classification
+        raw = [0.0] * 5
+        if color in self.COLOR_NAMES:
+            idx = self.COLOR_NAMES.index(color)
+            raw[idx] = conf / 100.0
+
+        # EMA update
+        if entry["frames"] == 0:
+            entry["probs"] = raw
+        else:
+            for i in range(5):
+                entry["probs"][i] = alpha * raw[i] + (1 - alpha) * entry["probs"][i]
+        entry["frames"] += 1
+
+        # Read smoothed result
+        best_idx = max(range(5), key=lambda i: entry["probs"][i])
+        best_conf = entry["probs"][best_idx]
+
+        if best_conf < self.MIN_CONF:
+            return ("unknown", round(best_conf * 100))
+        return (self.COLOR_NAMES[best_idx], round(best_conf * 100))
+
+    def cleanup(self, max_age: int = 500):
+        """Remove tracks not seen for max_age frames."""
+        # Simple: just keep last 200 tracks
+        if len(self._tracks) > 200:
+            oldest = sorted(self._tracks.keys(),
+                          key=lambda k: self._tracks[k]["frames"])
+            for k in oldest[:len(self._tracks) - 100]:
+                del self._tracks[k]
+
 
 # ============================================================
 # DEEPSTREAM C++ SUBPROCESS MANAGER
@@ -192,6 +266,12 @@ class DeepStreamPipeline:
         # Live detection status — updated by SHM Reader, read by broadcast
         self.live_detections: dict[str, list] = {}
 
+        # Detection JSONL logger — saves every frame with detections for post-analysis
+        self._jsonl_path = os.environ.get("DETECTION_LOG", "/tmp/race_analysis/detections.jsonl")
+        os.makedirs(os.path.dirname(self._jsonl_path), exist_ok=True)
+        self._jsonl_file = open(self._jsonl_path, "w")
+        log.info("Detection JSONL logger: %s", self._jsonl_path)
+
     def _get_vote_engine(self, cam_id: str):
         from pipeline.vote_engine import VoteEngine
         if cam_id not in self._vote_engines:
@@ -256,8 +336,10 @@ class DeepStreamPipeline:
             for cam_det in cam_results:
                 if cam_det.n_detections > 0:
                     live[cam_det.cam_id] = {
-                        "frame_w": cam_det.frame_w,
-                        "frame_h": cam_det.frame_h,
+                        "frame_w": cam_det.frame_width,
+                        "frame_h": cam_det.frame_height,
+                        "ts_capture": cam_det.timestamp,  # seconds since epoch from C++ SHM
+                        "frame_seq": cam_det.frame_seq,   # SHM write_seq — cross-layer tracing key
                         "detections": [
                             {
                                 "color": d.get("color", "?"),
@@ -268,6 +350,22 @@ class DeepStreamPipeline:
                             for d in cam_det.detections
                         ],
                     }
+                    # LIVE_UPDATE log — throttled
+                    if throttle.allow(f"LIVE_UPDATE:{cam_det.cam_id}", interval=2.0):
+                        slog("LIVE_UPDATE", cam_det.cam_id, cam_det.frame_seq,
+                             time.time(), dets=cam_det.n_detections)
+
+                    # JSONL: every frame with detections — for post-run frame extraction
+                    record = {
+                        "ts_capture": cam_det.timestamp,
+                        "cam_id":     cam_det.cam_id,
+                        "frame_seq":  cam_det.frame_seq,
+                        "frame_w":    cam_det.frame_width,
+                        "frame_h":    cam_det.frame_height,
+                        "detections": live[cam_det.cam_id]["detections"],
+                    }
+                    self._jsonl_file.write(json.dumps(record) + "\n")
+                    self._jsonl_file.flush()
 
             # Write to buffer — inference thread reads from here
             self._detection_buffer.update(cam_results, live)
@@ -405,67 +503,4 @@ class DeepStreamPipeline:
     def _build_rankings(self, fusion_ranking: list[dict]) -> list:
         """Convert fusion ranking to frontend format (same as MultiCameraPipeline)."""
         rankings = []
-        for entry in fusion_ranking:
-            color = entry["color"]
-            horse_info = COLOR_TO_HORSE.get(color)
-            if not horse_info:
-                continue
-
-            distance = entry.get("position_m", 0)
-            rank = entry.get("rank", 0)
-
-            if rankings:
-                leader_dist = rankings[0]["distanceCovered"]
-                gap = abs(leader_dist - distance) / max(TRACK_LENGTH, 1) * 60.0
-            else:
-                gap = 0.0
-
-            rankings.append({
-                "id": horse_info["id"],
-                "number": int(horse_info["number"]),
-                "name": horse_info["name"],
-                "color": horse_info["color"],
-                "jockeyName": horse_info["jockeyName"],
-                "silkId": int(horse_info["silkId"]),
-                "position": rank,
-                "distanceCovered": round(float(distance), 1),
-                "currentLap": 1,
-                "timeElapsed": 0,
-                "speed": round(entry.get("speed_mps", 0) * 3.6, 1),
-                "gapToLeader": round(float(gap), 2),
-                "lastCameraId": entry.get("last_camera", ""),
-            })
-
-        return rankings
-
-    def stop(self):
-        self._running = False
-        if self._shm_thread:
-            self._shm_thread.join(timeout=3.0)
-        if self._inference_thread:
-            self._inference_thread.join(timeout=3.0)
-        self._reader.detach()
-
-    def reset(self):
-        self.fusion.reset()
-        for engine in self._vote_engines.values():
-            engine.reset()
-        self._cam_first_analysis.clear()
-        self._cam_all_visible_time.clear()
-        self._cam_completed.clear()
-        self._cam_frame_count.clear()
-        self._pending_camera_results.clear()
-
-    def get_stats(self) -> dict:
-        return {
-            "deepstream": {
-                "shm_attached": self._reader.is_attached,
-                "shm_seq": self._reader.last_seq,
-                "cycles": self.cycles,
-                "frames_processed": self.frames_processed,
-                "current_fps": round(self.current_fps, 1),
-                "shm_fps": round(self.shm_fps, 1),
-                "last_cycle_ms": round(self.last_cycle_time * 1000, 1),
-            },
-            "fusion": self.fusion.get_stats(),
-        }
+  

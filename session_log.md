@@ -4,6 +4,200 @@
 
 ---
 
+## 2026-03-30 — Temporal alignment + E2E smoke test
+
+### Цель сессии
+Bbox точно поверх видео из записей. Coordinate contract + timestamp propagation + metadata buffer.
+
+### Что сделано (код)
+
+**Backend — timestamps в WebSocket:**
+- `api/deepstream_pipeline.py` — добавлен `ts_capture` (из SHM) в `live_detections` message
+- `api/server.py` — добавлен `ts_server_send` + лог `[WS_SEND]` с bbox координатами, frame size, age_ms
+
+**Frontend — temporal alignment infrastructure:**
+- `Kabirhan-Frontend/src/services/detectionBuffer.ts` (новый) — per-camera metadata buffer:
+  - `pushDetectionFrame()` — WS пишет сюда (не напрямую в render)
+  - `selectFrame(camId, videoTime, syncOffset)` — ищет ближайший кадр по ts_capture
+  - `getLatestFrame()` — fallback без video clock
+  - Stale check >300ms → очистка overlay
+  - Логи: `[WS_RECV]`, `[BUFFER_PUSH]`, `[FRAME_SELECT]`, `[SYNC_STATS]` (раз/сек)
+- `Kabirhan-Frontend/src/services/backendConnection.ts` — WS handler пушит в buffer + store
+- `Kabirhan-Frontend/src/components/operator/CameraGrid.tsx`:
+  - `DetectionOverlay` переписан: rAF loop, time-aware rendering, stale clearing
+  - `JpegStream` заменён на `VideoStream` (MSE через go2rtc WebSocket)
+  - `SYNC_OFFSET` константа для тюнинга
+
+**Конфиги:**
+- `configs/go2rtc_test.yaml` — 1 камера (cam-05) с `-stream_loop -1` через exec
+- `configs/go2rtc_files.yaml` — 5 камер с exec loop
+- `cameras_1cam_test.json` — RTSP URL `rtsp://localhost:8554/cam-05` (через go2rtc)
+- `scripts/run_all.sh` — `npx vite --host 0.0.0.0` вместо `npm run dev`
+
+### Ключевое архитектурное решение
+**go2rtc = единый источник** для видео и инференса:
+```
+MP4 → go2rtc (loop) → RTSP localhost:8554
+                          ├→ браузер (MSE WebSocket) — дисплей
+                          └→ DeepStream (RTSP input) — инференс → SHM → Python → bbox
+```
+Убирает timing race: оба потребителя видят одни и те же кадры.
+
+### Coordinate contract — ПОДТВЕРЖДЁН, НО ПРОБЛЕМА
+- C++ pipeline: `frame_meta->source_frame_width` → SHM `frame_width`
+- При file:// source: `source_frame_width` = оригинал (1280×720) ✓
+- **При RTSP source через go2rtc**: `source_frame_width` = **2880×1620** (mux dimensions!) ✗
+- Bbox координаты тоже в mux space (x=1617 > 1280)
+- Frontend масштабирует `bbox / frame_w * canvas_w` — математически верно если frame_w=2880
+- **НО**: bbox рисуется "не в том месте" — нужна диагностика со скриншотом
+
+### Лог WS_SEND (реальные данные)
+```
+[WS_SEND] cam=cam-05 dets=3 frame=2880x1620 age_ms=16.8 | red:(1617,563,1693,689) yellow:(1405,488,1501,680) green:(1762,535,1846,730)
+[WS_SEND] cam=cam-05 dets=2 frame=2880x1620 age_ms=9.6  | green:(0,639,50,807) red:(18,578,95,724)
+```
+
+### Проблемы найденные
+
+1. **Bbox не в том месте** — видел overlay, но позиция неправильная. Нужен скриншот для диагностики. Возможные причины:
+   - `<video>` и `<canvas>` разный размер/offset (object-contain vs object-fill)
+   - aspect ratio mismatch: видео 16:9, mux 2880:1620 ≈ 16:9, но canvas может быть другой
+   - go2rtc MSE отдаёт видео в одном resolution, DS mux в другом
+
+2. **MSE VideoStream** — работает (видео играет), но потребовалось 3 итерации:
+   - Первая попытка: чёрный экран (клиент не слал codecs первым)
+   - Вторая: чёрный экран (неправильный протокол)
+   - Третья: работает (скопировал протокол из go2rtc video-rtc.js)
+
+3. **SSH tunnel порты** — пользователь через SSH, проброшены конкретные порты (5174, 1984, 8000). Перезапуск vite = другой порт = всё ломается. **ПРАВИЛО: не трогать vite если работает.**
+
+4. **Env переменные для vite:**
+   - `VITE_GO2RTC_URL=http://100.104.201.30:1984` (или localhost если через tunnel)
+   - `VITE_WS_URL=ws://100.104.201.30:8000/ws` (иначе стучится в vite dev server)
+   - Задаются при старте: `VITE_GO2RTC_URL=... VITE_WS_URL=... npx vite --host 0.0.0.0`
+
+### Файлы изменены
+- `api/deepstream_pipeline.py` — ts_capture в live_detections
+- `api/server.py` — ts_server_send, [WS_SEND] лог с bbox
+- `Kabirhan-Frontend/src/services/detectionBuffer.ts` — новый, metadata buffer
+- `Kabirhan-Frontend/src/services/backendConnection.ts` — import detectionBuffer, push to buffer
+- `Kabirhan-Frontend/src/components/operator/CameraGrid.tsx` — VideoStream (MSE), DetectionOverlay (rAF + time-aware)
+- `configs/go2rtc_test.yaml` — 1cam exec loop
+- `configs/go2rtc_files.yaml` — 5cam exec loop
+- `cameras_1cam_test.json` — RTSP URL
+- `scripts/run_all.sh` — vite --host
+
+### Что НЕ закоммичено, НЕ протестировано до конца
+- Bbox overlay позиция — нужен скриншот + исправление
+- Temporal alignment (syncOffset) — infrastructure готова, тюнинг не начат
+- 5 камер одновременно — тестировали только 1 (cam-05)
+
+---
+
+## 2026-03-31 — 25-camera full system launch
+
+### Что сделано
+
+**Исправления bbox overlay (CameraGrid.tsx):**
+- `videoRef` не пробрасывался в `DetectionOverlay` → создан `CameraCell` компонент, который держит shared videoRef
+- `VideoStream` теперь принимает опциональный `videoRef` (externalRef ?? internalRef)
+- `selectFrame()` выбирал САМЫЙ СТАРЫЙ кадр (ts_capture ~1.77e9 vs videoTime 5-60s → oldest had min delta) → упрощён до `getLatestFrame()` с age < 300ms стale check
+- `selectFrame` и `SYNC_OFFSET` неиспользуемые импорты убраны
+- Добавлена константа `STALE_THRESHOLD_MS = 300`
+
+**Mux coordinates — исправлено:**
+- mux 1520×1520 (square) с видео 1280×720 (16:9) → padding в mux, bbox смещены
+- Переключено на `--mux-width 1280 --mux-height 720` (точно совпадает с камерой) → нет padding → прямое масштабирование
+
+**Vite config:**
+- Зафиксирован порт 5174 (`port: 5174, strictPort: true`) чтобы не менять SSH tunnel
+
+**Frontend — 25 камер:**
+- `ACTIVE_CAMERA_IDS`: было 5 жёстко прошитых → теперь все 25 (cam-01..cam-25)
+- Grid: `grid-cols-3` → `grid-cols-5` (5×5 layout для 25 камер)
+
+**go2rtc конфиг:**
+- Создан `configs/go2rtc_25cam.yaml` — все 25 камер с exec:ffmpeg loop
+
+**DeepStream 25cam:**
+- Проблема: запуск без `--file-mode` → `mux_batched_push_timeout=40ms` → pipeline завис после 1 batch (insufficient для 25 file деодеров)
+- Решение: `--file-mode` → `mux_batched_push_timeout=1s` → pipeline запустился нормально
+- 25 cameras, batch=25, `jockey_yolov11s.onnx_b25_gpu0_fp16.engine`
+- fps=25.0, все 25 камер обрабатываются
+
+### Команды запуска (25cam)
+
+```bash
+# go2rtc (для frontend видео)
+/tmp/go2rtc -config configs/go2rtc_25cam.yaml &
+
+# DeepStream (25 cameras, file sources)
+LD_LIBRARY_PATH=/opt/nvidia/deepstream/deepstream/lib:$LD_LIBRARY_PATH \
+./deepstream/build/race_vision_deepstream \
+  --config configs/cameras_all_25.json \
+  --yolo-engine deepstream/configs/nvinfer_jockey.txt \
+  --color-engine models/color_classifier_v3.engine \
+  --mux-width 1280 --mux-height 720 \
+  --file-mode &
+
+# Backend
+.venv/bin/python -m api.server --deepstream --auto-start --config configs/cameras_all_25.json &
+
+# Frontend (порт 5174)
+cd Kabirhan-Frontend && VITE_GO2RTC_URL=http://localhost:1984 VITE_WS_URL=ws://localhost:8000/ws npx vite --host 0.0.0.0 &
+```
+
+### Производительность (RTX 3060)
+- 25 cameras × 1280×720 @ 25fps = 625 frames/s
+- YOLO batch=25, classify ~120ms/50frm (2.4ms per frame)
+- Total pipeline probe: ~39ms/frame (в рамках 40ms budget)
+
+### Наблюдения
+- Лошади видны только ~2-5 сек на каждой камере (быстро проходят)
+- Вся запись 267s — лошади проходят в начале каждого цикла
+- На старте: cam-05 первым детектит red/green/yellow, затем волна по остальным камерам
+
+### Что проверить
+- [ ] Bbox overlay в браузере — позиция правильная?
+- [ ] 25 видео потоков в браузере одновременно — не зависает?
+- [ ] Ranking panel обновляется по мере детекций
+
+---
+
+### План — что нужно доделать
+
+**Шаг 1: Починить bbox позицию (БЛОКЕР)**
+- Запустить 1cam test setup (go2rtc → DS → backend → frontend)
+- Скриншот с bbox — понять смещение
+- Диагностика: сравнить canvas size, video size, frame_w/h
+- Возможный фикс: CSS alignment `<video>` и `<canvas>`, или пересчёт координат
+
+**Шаг 2: Стабильный запуск**
+- Один скрипт `scripts/run_all.sh` запускает всё корректно
+- Env переменные через `.env` файл (не руками)
+- Vite на фиксированном порту
+- DS через RTSP от go2rtc (не file://)
+
+**Шаг 3: Temporal alignment тюнинг**
+- Открыть DevTools Console → смотреть `[SYNC_STATS]` логи
+- Подобрать `SYNC_OFFSET` чтобы bbox совпадал по времени
+- Проверить `[FRAME_SELECT] delta_ms` — насколько bbox отстаёт/опережает видео
+
+**Шаг 4: 5 камер**
+- Переключить на `cameras_5cam.json` с RTSP URLs от go2rtc
+- Проверить производительность (25 fps * 5 камер)
+- MSE видео для 5 камер одновременно в браузере
+
+**Шаг 5: Track voting + ranking**
+- VoteEngine уже есть — проверить на 5 камерах
+- Ranking panel на фронте
+
+**Шаг 6: UI control plane**
+- Start/Stop кнопки
+- Status panel (SHM, FPS, active cameras)
+
+---
+
 ## 2026-03-26 — Capture/Inference/Display разделение
 
 ### Архитектура (реализовано)
@@ -875,5 +1069,185 @@ Triton уже включён в Docker-образ (`deepstream:7.1-triton-multia
 
 ### Статус
 Исследование завершено. Код не менялся. Миграция возможна поэтапно.
+
+---
+
+## 2026-03-31 — Сквозное логирование + покамерный анализ
+
+### Цель сессии
+1. Внедрить структурированное сквозное логирование по всему пайплайну (C++ → SHM → Python → WS → Browser → Canvas)
+2. Запустить полный 25-камерный прогон, собрать JSONL логи, извлечь аннотированные кадры
+3. Покамерный визуальный анализ: DeepStream --display + live_frame_saver.py
+
+### Что сделано (код)
+
+**Backend — structured logging:**
+- `pipeline/log_utils.py` (новый) — `slog()`, `ThrottleMap`, `PerCameraAggregator`
+  - Стадии: SHM_READ → LIVE_UPDATE → WS_SEND → FUSION_UPDATE → STATS_1S
+  - Env-флаги: `LOG_LEVEL`, `LOG_TIMING`, `LOG_GEOMETRY`, `LOG_FUSION`, `LOG_STATS`
+- `pipeline/shm_reader.py` — SHM_READ лог: dets, ts_capture, age_ms + frame_seq propagation
+- `pipeline/detections.py` — `frame_seq: int = 0` добавлен в CameraDetections
+- `api/deepstream_pipeline.py` — LIVE_UPDATE лог + JSONL logger (каждый кадр с детекциями → `/tmp/race_analysis/detections.jsonl`)
+- `api/server.py` — WS_SEND лог через throttle + aggregator
+- `pipeline/fusion.py` — FUSION_UPDATE логи (jump reject, accepted)
+
+**Frontend — structured logging:**
+- `Kabirhan-Frontend/src/utils/frameLogger.ts` (новый) — `flog()`, `throttledLog()`, `frontendAgg`
+  - Стадии: WS_RECV → BUFFER_PUSH → FRAME_SELECT → DRAW → CLEAR
+  - Env-флаги: `VITE_LOG_WS`, `VITE_LOG_BUFFER`, `VITE_LOG_VIDEO`, `VITE_LOG_TIMING`, `VITE_LOG_STATS`
+  - Runtime: `window.__LOG_FLAGS = { ws: true, ... }`
+- `Kabirhan-Frontend/src/services/detectionBuffer.ts` — frame_seq в DetectionFrame, flog интеграция
+- `Kabirhan-Frontend/src/services/backendConnection.ts` — WS_RECV лог с latency_ms
+- `Kabirhan-Frontend/src/components/operator/CameraGrid.tsx` — DRAW/CLEAR логи, STALE_THRESHOLD 300→1000ms
+- `Kabirhan-Frontend/vite.config.ts` — WebSocket proxy `/ws` → `localhost:8000`
+
+**Инструменты:**
+- `tools/extract_analysis_frames.py` (новый) — пост-прогон: JSONL → ffmpeg extract → cv2 bbox → JPEG
+- `tools/live_frame_saver.py` (новый) — realtime: SHM reader параллельно с DeepStream, сохраняет кадры с bbox
+
+**Конфиги:**
+- `/tmp/logs/cameras_cam-01.json` ... `cameras_cam-25.json` — 25 одиночных конфигов для покамерного тестирования
+
+### Баги найденные и исправленные
+1. **`slog()` не появлялся в логах** — использовал `_log.debug()` при `basicConfig(level=INFO)`. Fix: `_log.info()` + `_log.setLevel()` по `LOG_LEVEL`
+2. **Bbox не рисовались** — `import` в `detectionBuffer.ts` был в СЕРЕДИНЕ файла, модуль падал молча. Fix: перенёс import на строку 8
+3. **WebSocket не коннектился** — Vite не имел proxy. Fix: добавил proxy в `vite.config.ts`
+4. **Bbox мигали** — `STALE_THRESHOLD_MS=300ms` слишком жёстко при broadcast 200ms. Fix: 1000ms
+
+### Полный 25-камерный прогон
+- 1410 записей JSONL, 12 камер с детекциями, 13 камер пустые
+- 130 аннотированных кадров извлечено через `extract_analysis_frames.py`
+- Порядок прохождения лошадей: cam-05(1.7-44.5s) → cam-04 → cam-03 → cam-02 → cam-01 → cam-22 → cam-20 → cam-18 → cam-14 → cam-08 → cam-13 → cam-12(251-268s)
+
+### Покамерный анализ (DeepStream --display + live_frame_saver)
+- **cam-01**: `dets=0` на всех 6950 кадрах. НО в полном прогоне (25 камер) cam-01 имела 22 детекции.
+  - Причина: при полном прогоне все 25 видео идут синхронно, лошади проходят cam-01 на ~frame 2025-2069
+  - При одиночном запуске cam-01 — видео 278с, лошади появляются в том же абсолютном таймкоде, но в одиночном файле это происходит в начале записи
+  - **Нужно проверить**: возможно YOLO не детектит потому что лошади слишком далеко в начале видео, или nvinfer_jockey_1cam.txt конфиг отличается от полного
+
+### Покамерный анализ — расследование cam-01
+
+**Проблема**: cam-01 одиночно давала `dets=0` на всех 6950 кадрах.
+
+**Причины найдены:**
+1. `nvinfer_jockey_1cam.txt` использовал `batch=1 engine` — он сломан, YOLO не детектит
+2. `color_classifier_v2.engine` — всегда `unknown/conf=20`, не классифицирует
+
+**Решение:**
+- Использовать `nvinfer_jockey.txt` (batch=25 engine) — работает и для 1 камеры
+- Использовать `color_classifier_v3.engine` — правильно классифицирует 5 цветов
+
+После исправления: cam-01 дала 14 кадров с детекциями, yellow/red/green conf=100%.
+
+### Полный прогон — Запись 1 (yaris_20260303_162028)
+
+25 камер последовательно, `nvinfer_jockey.txt` + `color_classifier_v3.engine`.
+
+**Результат**: 360 кадров, 12 камер с детекциями, 13 пустых.
+
+Маршрут: cam-05(2-44s) → 04(53s) → 03(61-64s) → 02(74s) → 01(81-85s) → 22(108s) → 20(135s) → 18(158s) → 16(182s) → 14(213s) → 08(223-229s) → 13(240-244s) → 12(251-268s)
+
+**Ложные blue**: 8 детекций на cam-05, conf 71-92% — на самом деле жёлтый жокей. Настоящего blue нет.
+
+### Полный прогон — Запись 2 (yaris_20260303_164835)
+
+25 камер ПАРАЛЛЕЛЬНО одним DeepStream процессом (значительно быстрее).
+
+**Результат**: 635 кадров, 18 камер с детекциями, 7 пустых.
+
+Маршрут: cam-13(3-65s) → 08(81s) → 14(93s) → 11(105s) → 15(115s) → 16(125-130s) → 17(136-141s) → 18(148-154s) → 19(160-165s) → 20(171-177s) → 21(181s) → 22(198-201s) → 24(225-231s) → 01(248-254s) → 02(259s) → 05(282-377s) → 06(294-327s) → 03(463s)
+
+### Сравнение двух записей
+
+| | Запись 1 | Запись 2 |
+|---|---------|---------|
+| Кадры | 360 | 635 |
+| Активных камер | 13/25 | 18/25 |
+| Направление | cam-05 → cam-12 | cam-13 → cam-06 (обратное) |
+| Цвета | red, yellow, green | red, yellow, green |
+
+Запись 2 богаче потому что в записи 1 несколько камер были чёрные (не работали), поэтому жокеи не были видны, хотя реально проходили.
+
+### Технические выводы
+- **batch=25 engine работает для любого кол-ва камер** (1-25)
+- **batch=1 engine сломан** — не использовать `nvinfer_jockey_1cam.txt`
+- **color_classifier_v3.engine** — рабочий, conf 88-100%
+- **color_classifier_v2.engine** — не использовать (всегда unknown)
+- **Параллельный прогон 25 камер** значительно быстрее последовательного
+- **cam-02 запись 2**: длительность 262с — подозрительно, возможны ложные срабатывания
+
+### Ground Truth данные
+- Запись 1: `/tmp/logs/frames/cam-*.jsonl` (360 кадров, 12 камер)
+- Запись 2: `/tmp/logs2/frames/cam-*.jsonl` (635 кадров, 18 камер)
+- Формат: `{cam_id, frame_seq, video_sec, ts_capture, frame_w, frame_h, detections[{color,conf,track_id,bbox}]}`
+
+---
+
+## 2026-04-01 — E2E тест: фронтенд + bbox + ACTIVE на записи 2
+
+### Цель
+Запустить полную систему (go2rtc + DeepStream + backend + frontend) на записи 2 (yaris_20260303_164835) и проверить:
+1. Bbox рисуются на правильных камерах в правильные моменты
+2. Зелёный ACTIVE бокс загорается на правильной камере
+3. Тайминги фронтенда совпадают с ground truth из JSONL прогона
+
+### Ground Truth (запись 2 — тайминги)
+| Камера | Начало | Конец | Цвета |
+|--------|--------|-------|-------|
+| cam-13 | 3.4s | 65.3s | red, green, yellow |
+| cam-08 | 81.2s | 83.4s | yellow, green |
+| cam-14 | 92.5s | 93.7s | green |
+| cam-11 | 105.1s | 107.4s | red, green |
+| cam-15 | 115.3s | 118.4s | yellow, green |
+| cam-16 | 125.2s | 130.2s | red, yellow, green |
+| cam-17 | 136.3s | 141.5s | yellow, green |
+| cam-18 | 148.0s | 154.0s | red, yellow, green |
+| cam-19 | 160.3s | 165.0s | red, green |
+| cam-20 | 171.1s | 176.6s | red, green |
+| cam-21 | 181.5s | 182.4s | yellow, red |
+| cam-22 | 198.1s | 201.2s | yellow, red, green |
+| cam-24 | 224.5s | 230.8s | yellow, red, green |
+| cam-01 | 248.4s | 254.2s | yellow, green |
+| cam-02 | 258.9s | 521.1s | yellow, red, blue(ложн?) |
+| cam-05 | 281.9s | 377.2s | yellow, green, red |
+| cam-06 | 294.4s | 326.5s | red, yellow, green |
+| cam-03 | 463.0s | 463.0s | yellow |
+
+### Что сделано
+
+**E2E тест запущен:**
+- go2rtc (Docker) → DeepStream (25 RTSP) → backend → frontend
+- Детекции идут, WS_SEND работает, clients=1
+- Порядок камер совпадает с ground truth: cam-14→11→15→16→17→18→19→20→21
+- Интервалы между камерами ~10-13с — совпадают с GT
+
+**Bbox смещение обнаружено и исправлено:**
+- Bbox в mux-space (1520×1520 квадрат), видео 1280×720 (16:9)
+- С maintain-aspect-ratio letterbox padding не учитывался
+- Fix в CameraGrid.tsx: вычисление padX/padY из aspect ratio, вычитание перед масштабированием
+
+**PublicDisplay (/) исправлен:**
+- Добавлен `initializeDefaultRace()` при маунте (было только в OperatorPanel)
+- Уменьшено с 10 до 5 жокеев (наши цвета: Red, Blue, Green, Yellow, Purple)
+- Добавлен демо-режим: без backend жокеи меняют позиции каждые 5-8с
+
+**Живые камеры проверены:**
+- 13 из 25 камер онлайн (ping + RTSP OK)
+- Конфиг `configs/cameras_live.json` + `configs/go2rtc_live.yaml`
+- Система запущена на живых — DeepStream 13cam 25fps, dets=0 (нет скачки)
+
+**Архивация:**
+- `configs/archive/` — старые конфиги (cameras_test_*, go2rtc_test, etc.)
+- `deepstream/configs/archive/` — nvinfer_1cam, nvinfer_5cam, yolov8s, trigger, bytetrack
+- `models/archive/` — color_v1, color_v2, yolov8s, yolov8n, batch=1/5 engines
+
+**run_all.sh обновлён:**
+- go2rtc через Docker (alexxit/go2rtc)
+- `--rec2` флаг для записи 2
+- `--go2rtc` и `--cameras` для custom конфигов
+
+### Нерешённые проблемы
+- Bbox letterbox fix нужно протестировать визуально
+- Фронтендер прислал новый репо (github), но нет интернета на сервере — нужно скопировать через scp
 
 ---

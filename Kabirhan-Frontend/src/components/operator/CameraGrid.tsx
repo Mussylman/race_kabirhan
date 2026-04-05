@@ -1,9 +1,139 @@
-import { useRef, useEffect, useCallback } from 'react';
+import { useRef, useEffect, useCallback, useState } from 'react';
 import { Video, VideoOff } from 'lucide-react';
 import { useCameraStore } from '../../store/cameraStore';
 import { useRaceStore } from '../../store/raceStore';
-import { Go2RTCPlayer } from '../Go2RTCPlayer';
+import { GO2RTC_URL } from '../../config/go2rtc';
 import { TRACK_LENGTH } from '../../types';
+import { getLatestFrame, type DetectionFrame } from '../../services/detectionBuffer';
+import { flog, throttledLog } from '../../utils/frameLogger';
+
+/**
+ * MSE video stream from go2rtc.
+ * Protocol: client sends {type:'mse', value:codecs} → server sends {type:'mse', value:codec} → binary segments.
+ */
+const VideoStream = ({ cameraId, videoRef: externalRef }: { cameraId: string; videoRef?: React.RefObject<HTMLVideoElement | null> }) => {
+    const internalRef = useRef<HTMLVideoElement>(null);
+    const videoRef = externalRef ?? internalRef;
+
+    useEffect(() => {
+        const video = videoRef.current;
+        if (!video) return;
+
+        const wsUrl = GO2RTC_URL.replace(/^http/, 'ws') + `/api/ws?src=${cameraId}`;
+        let ws: WebSocket | null = null;
+        let ms: MediaSource | null = null;
+        let sb: SourceBuffer | null = null;
+        let buf = new Uint8Array(2 * 1024 * 1024); // 2MB pre-allocated
+        let bufLen = 0;
+        let running = true;
+
+        // Build supported codecs string
+        const codecs = (isSupported: (codec: string) => boolean): string => {
+            const dominated = [
+                'video/mp4; codecs="avc1.640029"',  // H.264 High 4.1
+                'video/mp4; codecs="avc1.64001f"',  // H.264 High 3.1
+                'video/mp4; codecs="avc1.42e01e"',  // H.264 Baseline 3.0
+                'video/mp4; codecs="hvc1.1.6.L153"', // H.265
+            ];
+            return dominated.filter(c => isSupported(c)).join(', ');
+        };
+
+        const connect = () => {
+            if (!running) return;
+
+            ms = new MediaSource();
+            ms.addEventListener('sourceopen', () => {
+                // Tell go2rtc what codecs we support
+                ws = new WebSocket(wsUrl);
+                ws.binaryType = 'arraybuffer';
+
+                ws.onopen = () => {
+                    ws!.send(JSON.stringify({
+                        type: 'mse',
+                        value: codecs(MediaSource.isTypeSupported),
+                    }));
+                };
+
+                ws.onmessage = (ev) => {
+                    if (typeof ev.data === 'string') {
+                        const msg = JSON.parse(ev.data);
+                        if (msg.type === 'mse' && ms!.readyState === 'open') {
+                            // Server responds with actual codec to use
+                            sb = ms!.addSourceBuffer(msg.value);
+                            sb.mode = 'segments';
+                            sb.addEventListener('updateend', () => {
+                                if (!sb!.updating && bufLen > 0) {
+                                    try {
+                                        sb!.appendBuffer(buf.slice(0, bufLen));
+                                        bufLen = 0;
+                                    } catch { /* ignore */ }
+                                }
+                                // Keep buffer trimmed to last 5s
+                                if (!sb!.updating && sb!.buffered.length) {
+                                    const end = sb!.buffered.end(sb!.buffered.length - 1);
+                                    const start0 = sb!.buffered.start(0);
+                                    if (end - start0 > 5) {
+                                        sb!.remove(start0, end - 5);
+                                    }
+                                    // Chase live edge
+                                    if (video.currentTime < end - 1) {
+                                        video.currentTime = end - 0.5;
+                                    }
+                                }
+                            });
+                        }
+                        return;
+                    }
+
+                    // Binary H.264 segment
+                    if (!sb) return;
+                    if (sb.updating || bufLen > 0) {
+                        // Queue into pre-allocated buffer
+                        const data = new Uint8Array(ev.data);
+                        if (bufLen + data.length > buf.length) {
+                            // Grow buffer
+                            const newBuf = new Uint8Array(buf.length * 2);
+                            newBuf.set(buf.subarray(0, bufLen));
+                            buf = newBuf;
+                        }
+                        buf.set(data, bufLen);
+                        bufLen += data.length;
+                    } else {
+                        try {
+                            sb.appendBuffer(ev.data);
+                        } catch { /* ignore */ }
+                    }
+                };
+
+                ws.onclose = () => { if (running) setTimeout(connect, 2000); };
+                ws.onerror = () => ws?.close();
+            }, { once: true });
+
+            video.src = URL.createObjectURL(ms);
+            video.play().catch(() => {});
+        };
+
+        connect();
+
+        return () => {
+            running = false;
+            ws?.close();
+            if (ms?.readyState === 'open') {
+                try { ms.endOfStream(); } catch { /* ignore */ }
+            }
+        };
+    }, [cameraId]);
+
+    return (
+        <video
+            ref={videoRef}
+            autoPlay
+            muted
+            playsInline
+            className="absolute inset-0 w-full h-full object-contain"
+        />
+    );
+};
 
 const COLOR_MAP: Record<string, string> = {
     blue: '#3b82f6',
@@ -14,60 +144,132 @@ const COLOR_MAP: Record<string, string> = {
     unknown: '#6b7280',
 };
 
-/** Canvas overlay that draws bbox + color labels on a camera feed */
-const DetectionOverlay = ({ cameraId }: { cameraId: string }) => {
+/**
+ * Time-aware canvas overlay — draws bbox from DetectionBuffer, not directly from store.
+ *
+ * Render loop via rAF:
+ *   1. Get video.currentTime (or fallback to latest frame)
+ *   2. Apply syncOffset
+ *   3. Find nearest detection frame by ts_capture
+ *   4. Draw or clear if stale
+ */
+const SYNC_OFFSET = 0; // seconds — reserved for future temporal alignment
+const STALE_THRESHOLD_MS = 1000; // ms — clear overlay if no fresh detection data
+
+const DetectionOverlay = ({ cameraId, videoRef }: { cameraId: string; videoRef?: React.RefObject<HTMLVideoElement | null> }) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
-    const { liveDetections } = useCameraStore();
-
-    const draw = useCallback(() => {
-        const canvas = canvasRef.current;
-        if (!canvas) return;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return;
-
-        const camData = liveDetections[cameraId];
-        const rect = canvas.getBoundingClientRect();
-        canvas.width = rect.width;
-        canvas.height = rect.height;
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-        if (!camData || !camData.detections || camData.detections.length === 0) return;
-
-        const scaleX = canvas.width / camData.frame_w;
-        const scaleY = canvas.height / camData.frame_h;
-
-        for (const det of camData.detections) {
-            if (!det.bbox) continue;
-            const [x1, y1, x2, y2] = det.bbox;
-            const sx = x1 * scaleX;
-            const sy = y1 * scaleY;
-            const sw = (x2 - x1) * scaleX;
-            const sh = (y2 - y1) * scaleY;
-
-            const color = COLOR_MAP[det.color] || COLOR_MAP.unknown;
-
-            // Draw bbox
-            ctx.strokeStyle = color;
-            ctx.lineWidth = 2;
-            ctx.strokeRect(sx, sy, sw, sh);
-
-            // Draw label background
-            const label = `${det.color.toUpperCase()} ${det.conf}%`;
-            ctx.font = 'bold 11px sans-serif';
-            const textW = ctx.measureText(label).width + 8;
-            ctx.fillStyle = color;
-            ctx.fillRect(sx, sy - 18, textW, 18);
-
-            // Draw label text
-            ctx.fillStyle = '#fff';
-            ctx.fillText(label, sx + 4, sy - 5);
-        }
-    }, [cameraId, liveDetections]);
+    const rafRef = useRef<number>(0);
 
     useEffect(() => {
-        const id = requestAnimationFrame(draw);
-        return () => cancelAnimationFrame(id);
-    }, [draw]);
+        let running = true;
+
+        const renderLoop = () => {
+            if (!running) return;
+
+            const canvas = canvasRef.current;
+            if (canvas) {
+                const ctx = canvas.getContext('2d');
+                if (ctx) {
+                    const rect = canvas.getBoundingClientRect();
+                    canvas.width = rect.width;
+                    canvas.height = rect.height;
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                    // Use latest frame with staleness check.
+                    // Note: full temporal alignment (video.currentTime vs ts_capture) requires
+                    // a calibration offset and is deferred — the ts_capture is unix epoch while
+                    // currentTime is media time, so we can't directly compare them.
+                    let frame: DetectionFrame | null = getLatestFrame(cameraId);
+                    if (frame) {
+                        const age = (Date.now() / 1000 - frame.ts_client_recv) * 1000;
+                        if (age > STALE_THRESHOLD_MS) {
+                            throttledLog(`CLEAR:${cameraId}`, 500, () => {
+                                flog('CLEAR', cameraId, frame!.frame_seq, Date.now() / 1000, {
+                                    reason: 'STALE', age_ms: age,
+                                });
+                            });
+                            frame = null;
+                        }
+                    }
+
+                    if (frame && frame.detections.length > 0) {
+                        // Bbox coords are in mux space (e.g. 1520x1520 square).
+                        // Video is 16:9 letterboxed inside the square mux with maintain-aspect-ratio.
+                        // We need to undo the letterbox padding before scaling to canvas.
+                        const muxW = frame.frame_w;
+                        const muxH = frame.frame_h;
+                        const videoAspect = canvas.width / canvas.height; // display aspect (16:9)
+                        const muxAspect = muxW / muxH;
+                        let padX = 0, padY = 0, activeW = muxW, activeH = muxH;
+                        if (muxAspect > videoAspect) {
+                            // pillarbox — black bars on sides
+                            activeW = muxH * videoAspect;
+                            padX = (muxW - activeW) / 2;
+                        } else {
+                            // letterbox — black bars top/bottom
+                            activeH = muxW / videoAspect;
+                            padY = (muxH - activeH) / 2;
+                        }
+                        const scaleX = canvas.width / activeW;
+                        const scaleY = canvas.height / activeH;
+
+                        for (const det of frame.detections) {
+                            if (!det.bbox) continue;
+                            const [x1, y1, x2, y2] = det.bbox;
+                            const sx = (x1 - padX) * scaleX;
+                            const sy = (y1 - padY) * scaleY;
+                            const sw = (x2 - x1) * scaleX;
+                            const sh = (y2 - y1) * scaleY;
+
+                            const color = COLOR_MAP[det.color] || COLOR_MAP.unknown;
+
+                            // Draw bbox
+                            ctx.strokeStyle = color;
+                            ctx.lineWidth = 2;
+                            ctx.strokeRect(sx, sy, sw, sh);
+
+                            // Draw label background
+                            const label = `${det.color.toUpperCase()} ${det.conf}%`;
+                            ctx.font = 'bold 11px sans-serif';
+                            const textW = ctx.measureText(label).width + 8;
+                            ctx.fillStyle = color;
+                            ctx.fillRect(sx, sy - 18, textW, 18);
+
+                            // Draw label text
+                            ctx.fillStyle = '#fff';
+                            ctx.fillText(label, sx + 4, sy - 5);
+                        }
+
+                        // DRAW log — throttled 5s per camera (rAF is 60fps, very noisy)
+                        throttledLog(`DRAW:${cameraId}`, 5000, () => {
+                            const ts = Date.now() / 1000;
+                            const boxes = frame!.detections
+                                .map(d => `${d.color}:${d.conf}%`)
+                                .join(' ');
+                            flog('DRAW', cameraId, frame!.frame_seq, ts, {
+                                dets: frame!.detections.length,
+                                boxes,
+                            });
+                        });
+                    } else if (!frame) {
+                        // CLEAR log — throttled 500ms per camera
+                        throttledLog(`CLEAR:${cameraId}`, 500, () => {
+                            const ts = Date.now() / 1000;
+                            flog('CLEAR', cameraId, 0, ts, { reason: 'NO_FRAME' });
+                        });
+                    }
+                }
+            }
+
+            rafRef.current = requestAnimationFrame(renderLoop);
+        };
+
+        rafRef.current = requestAnimationFrame(renderLoop);
+        return () => {
+            running = false;
+            cancelAnimationFrame(rafRef.current);
+        };
+    }, [cameraId, videoRef]);
 
     return (
         <canvas
@@ -77,9 +279,32 @@ const DetectionOverlay = ({ cameraId }: { cameraId: string }) => {
     );
 };
 
+/** Wires VideoStream and DetectionOverlay to the same videoRef for time-aware bbox rendering */
+const CameraCell = ({ cameraId, go2rtcId }: { cameraId: string; go2rtcId: string }) => {
+    const videoRef = useRef<HTMLVideoElement>(null);
+    return (
+        <div className="relative aspect-video bg-black">
+            <VideoStream cameraId={go2rtcId} videoRef={videoRef} />
+            <DetectionOverlay cameraId={cameraId} videoRef={videoRef} />
+        </div>
+    );
+};
+
+// All camera IDs — show all that have go2rtc streams
+const ACTIVE_CAMERA_IDS = new Set([
+    'cam-01','cam-02','cam-03','cam-04','cam-05',
+    'cam-06','cam-07','cam-08','cam-09','cam-10',
+    'cam-11','cam-12','cam-13','cam-14','cam-15',
+    'cam-16','cam-17','cam-18','cam-19','cam-20',
+    'cam-21','cam-22','cam-23','cam-24','cam-25',
+]);
+
 export const CameraGrid = () => {
     const { analyticsCameras, liveDetections } = useCameraStore();
     const { rankings } = useRaceStore();
+
+    // Show only cameras that have go2rtc streams
+    const visibleCameras = analyticsCameras.filter(c => ACTIVE_CAMERA_IDS.has(c.id));
 
     return (
         <div className="p-6 h-full flex flex-col overflow-hidden">
@@ -87,13 +312,13 @@ export const CameraGrid = () => {
             <div className="mb-4 flex-shrink-0">
                 <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-1">Analytics Cameras</h2>
                 <p className="text-sm text-[var(--text-muted)]">
-                    {analyticsCameras.length} cameras — YOLO + CNN detection (not shown to viewers)
+                    {visibleCameras.length} cameras — YOLO + CNN detection
                 </p>
             </div>
 
-            {/* Camera Grid — 3 cameras side by side */}
-            <div className="grid grid-cols-3 gap-4 flex-1 overflow-y-auto">
-                {analyticsCameras.map((camera) => {
+            {/* Camera Grid — 5 cameras per row for 25 total */}
+            <div className="grid grid-cols-5 gap-2 flex-1 overflow-y-auto">
+                {visibleCameras.map((camera) => {
                     const isOnline = camera.status === 'online';
 
                     // Find horses within this camera's track segment (from rankings)
@@ -130,16 +355,8 @@ export const CameraGrid = () => {
                                 </div>
                             )}
 
-                            {/* WebRTC Stream via go2rtc + Detection overlay */}
-                            <div className="relative aspect-video bg-black">
-                                <Go2RTCPlayer
-                                    cameraId={`${camera.go2rtcId}-sub`}
-                                    cameraName={camera.name}
-                                    className="absolute inset-0"
-                                    connectDelay={0}
-                                />
-                                <DetectionOverlay cameraId={camera.id} />
-                            </div>
+                            {/* Video Stream via go2rtc MSE + Detection overlay */}
+                            <CameraCell cameraId={camera.id} go2rtcId={camera.go2rtcId} />
 
                             {/* Bottom Info Bar */}
                             <div className="p-3 bg-[var(--surface)]">

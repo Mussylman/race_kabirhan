@@ -1,0 +1,21 @@
+# go2rtc config for testing with local video files (looped)
+
+streams:
+  cam-01:
+    - exec:ffmpeg -stream_loop -1 -re -i /home/user/recordings/yaris_20260303_162028/kamera_01_162028_END162507.mp4 -c:v copy -an -f rtsp {output}
+  cam-03:
+    - exec:ffmpeg -stream_loop -1 -re -i /home/user/recordings/yaris_20260303_162028/kamera_03_162029_END162507.mp4 -c:v copy -an -f rtsp {output}
+  cam-05:
+    - exec:ffmpeg -stream_loop -1 -re -i /home/user/recordings/yaris_20260303_162028/kamera_05_162030_END162507.mp4 -c:v copy -an -f rtsp {output}
+  cam-08:
+    - exec:ffmpeg -stream_loop -1 -re -i /home/user/recordings/yaris_20260303_162028/kamera_08_162031_END162507.mp4 -c:v copy -an -f rtsp {output}
+  cam-12:
+    - exec:ffmpeg -stream_loop -1 -re -i /home/user/recordings/yaris_20260303_162028/kamera_12_162033_END162507.mp4 -c:v copy -an -f rtsp {output}
+
+api:
+  origin: "*"
+
+webrtc:
+  candidates:
+    - 127.0.0.1
+    - stun:stun.l.google.com:19302

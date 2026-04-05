@@ -37,7 +37,7 @@ echo ""
 #   - Classes: blue, green, purple, red, yellow
 # ==============================================================================
 
-CAMERA_CONFIG="/home/user/race_vision/cameras_test_15.json"
+CAMERA_CONFIG="/home/user/race_vision/configs/cameras_test_15.json"
 YOLO_CONFIG="/home/user/race_vision/deepstream/configs/nvinfer_jockey.txt"
 COLOR_ENGINE="/home/user/race_vision/models/color_classifier.engine"
 RECORDINGS_DIR="/home/user/recordings"

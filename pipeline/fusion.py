@@ -21,6 +21,7 @@ from typing import Optional
 
 from .track_topology import TrackTopology
 from .detections import CameraDetections
+from .log_utils import slog, throttle, agg, LOG_FUSION
 
 log = logging.getLogger("pipeline.fusion")
 
@@ -118,11 +119,28 @@ class FusionEngine:
                         abs(raw_pos - horse.position_m) > POSITION_JUMP_THRESHOLD):
                     log.debug("Rejected jump for %s: %.1f -> %.1f",
                               color, horse.position_m, raw_pos)
+                    cam_id_str = observations[-1][0] if observations else "?"
+                    frame_seq = next((c.frame_seq for c in cam_results
+                                      if c.cam_id == cam_id_str), 0)
+                    agg.record_fusion(cam_id_str, accepted=False)
+                    slog("FUSION_UPDATE", cam_id_str, frame_seq, now,
+                         color=color, from_m=horse.position_m, to_m=raw_pos,
+                         accepted=False, reason="jump")
                     continue
+
+                cam_id_str = observations[-1][0] if observations else "?"
+                frame_seq = next((c.frame_seq for c in cam_results
+                                  if c.cam_id == cam_id_str), 0)
+                agg.record_fusion(cam_id_str, accepted=True)
+                if LOG_FUSION:
+                    if throttle.allow(f"FUSION_OK:{color}", interval=5.0):
+                        slog("FUSION_UPDATE", cam_id_str, frame_seq, now,
+                             color=color, from_m=horse.position_m, to_m=raw_pos,
+                             accepted=True, reason="ok")
 
                 horse.raw_position_m = raw_pos
                 horse.last_seen_time = now
-                horse.last_camera = observations[-1][0]
+                horse.last_camera = cam_id_str
                 horse.observation_count += 1
                 horse.missing_frames = 0
                 horse.track_confidence = 1.0

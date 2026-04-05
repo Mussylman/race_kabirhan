@@ -1,0 +1,11 @@
+streams:
+  cam-05:
+    - exec:ffmpeg -stream_loop -1 -re -i /home/user/recordings/yaris_20260303_162028/kamera_05_162030_END162507.mp4 -c:v copy -an -f rtsp {output}
+
+api:
+  origin: "*"
+
+webrtc:
+  candidates:
+    - 127.0.0.1
+    - stun:stun.l.google.com:19302

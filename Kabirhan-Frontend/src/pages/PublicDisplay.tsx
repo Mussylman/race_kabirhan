@@ -74,14 +74,34 @@ const AnimatedNumber = ({ value, decimals = 1 }: { value: number; decimals?: num
 
 export const PublicDisplay = () => {
     const { t } = useTranslation();
-    const { race, rankings } = useRaceStore();
+    const { race, rankings, initializeDefaultRace, updateRankings, backendConnected } = useRaceStore();
     const { activePTZCameraId, ptzCameras, syncFromStorage } = useCameraStore();
+    const demoTimeRef = useRef(0);
 
-    // Connect to backend WebSocket
+    // Initialize default horses + connect to backend
     useEffect(() => {
+        initializeDefaultRace();
         connectToBackend();
         return () => disconnectFromBackend();
     }, []);
+
+    // Demo mode: simulate position changes when backend is not connected
+    useEffect(() => {
+        if (backendConnected || rankings.length === 0) return;
+
+        const interval = setInterval(() => {
+            demoTimeRef.current += 5;
+            const shuffled = [...rankings];
+            // Swap two random adjacent positions
+            const i = Math.floor(Math.random() * (shuffled.length - 1));
+            const tmp = shuffled[i].currentPosition;
+            shuffled[i] = { ...shuffled[i], currentPosition: shuffled[i + 1].currentPosition, speed: 12 + Math.random() * 4, timeElapsed: demoTimeRef.current };
+            shuffled[i + 1] = { ...shuffled[i + 1], currentPosition: tmp, speed: 11 + Math.random() * 4, timeElapsed: demoTimeRef.current };
+            updateRankings(shuffled);
+        }, 5000 + Math.random() * 3000);
+
+        return () => clearInterval(interval);
+    }, [backendConnected, rankings.length]);
 
     // Listen for camera changes from operator panel (other tabs)
     useEffect(() => {
