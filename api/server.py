@@ -517,6 +517,7 @@ def load_camera_config(config_path: str) -> tuple[CameraManager, TrackTopology]:
             cam["id"],
             cam.get("track_start", 0),
             cam.get("track_end", 100),
+            inverted=cam.get("inverted", False),
         )
 
     for cam in config.get("display", []):

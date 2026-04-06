@@ -240,6 +240,9 @@ class DeepStreamPipeline:
         # Buffer between SHM Reader and Inference
         self._detection_buffer = DetectionBuffer()
 
+        # Color tracker for EMA smoothing of per-track color classifications
+        self._color_tracker = ColorTracker()
+
         # Per-camera vote engines
         from pipeline.vote_engine import VoteEngine
         self._vote_engines: dict[str, VoteEngine] = {}
@@ -266,11 +269,76 @@ class DeepStreamPipeline:
         # Live detection status — updated by SHM Reader, read by broadcast
         self.live_detections: dict[str, list] = {}
 
+        # Auto-direction detection: track movement of objects to determine
+        # if horses run left-to-right (+center_x) or right-to-left (-center_x)
+        # per camera. Once determined, we flip topology for inverted cameras.
+        self._direction_votes: dict[str, list[float]] = {}  # cam_id → list of delta_x
+        self._direction_decided: dict[str, bool] = {}  # cam_id → True if inverted
+        self._direction_locked = False
+        self._track_positions: dict[tuple[str, int], float] = {}  # (cam_id, track_id) → last center_x
+        self.DIRECTION_VOTE_THRESHOLD = 30  # frames before deciding direction
+
         # Detection JSONL logger — saves every frame with detections for post-analysis
         self._jsonl_path = os.environ.get("DETECTION_LOG", "/tmp/race_analysis/detections.jsonl")
         os.makedirs(os.path.dirname(self._jsonl_path), exist_ok=True)
         self._jsonl_file = open(self._jsonl_path, "w")
         log.info("Detection JSONL logger: %s", self._jsonl_path)
+
+    def _update_direction(self, cam_results: list):
+        """Track object movement to auto-detect horse direction per camera.
+
+        Compares center_x of same track_id between frames. If objects move
+        right (increasing center_x), direction is normal. If left, inverted.
+        Once enough votes collected, flips topology for inverted cameras.
+        """
+        if self._direction_locked:
+            return
+
+        for cam_det in cam_results:
+            cam_id = cam_det.cam_id
+            if cam_id in self._direction_decided:
+                continue
+
+            for det in cam_det.detections:
+                track_id = det.get('track_id', 0)
+                cx = det.get('center_x', 0)
+                key = (cam_id, track_id)
+
+                if key in self._track_positions:
+                    delta = cx - self._track_positions[key]
+                    # Only count significant movements (>5 pixels)
+                    if abs(delta) > 5:
+                        if cam_id not in self._direction_votes:
+                            self._direction_votes[cam_id] = []
+                        self._direction_votes[cam_id].append(delta)
+
+                self._track_positions[key] = cx
+
+            # Check if we have enough votes for this camera
+            votes = self._direction_votes.get(cam_id, [])
+            if len(votes) >= self.DIRECTION_VOTE_THRESHOLD:
+                avg_delta = sum(votes) / len(votes)
+                inverted = avg_delta < 0  # moving left = inverted
+                self._direction_decided[cam_id] = inverted
+
+                if inverted:
+                    # Swap track_start and track_end in topology
+                    seg = self.topology.get_segment(cam_id)
+                    if seg and not seg.inverted:
+                        seg.inverted = True
+                        log.info("AUTO-DIRECTION: %s → INVERTED (avg_delta=%.1f, %d votes)",
+                                 cam_id, avg_delta, len(votes))
+                else:
+                    log.info("AUTO-DIRECTION: %s → NORMAL (avg_delta=%.1f, %d votes)",
+                             cam_id, avg_delta, len(votes))
+
+        # Check if all active cameras have direction decided
+        active_cams = set(c.cam_id for c in cam_results if c.n_detections > 0)
+        if active_cams and active_cams.issubset(set(self._direction_decided.keys())):
+            self._direction_locked = True
+            n_inverted = sum(1 for v in self._direction_decided.values() if v)
+            log.info("AUTO-DIRECTION: locked (%d cameras, %d inverted)",
+                     len(self._direction_decided), n_inverted)
 
     def _get_vote_engine(self, cam_id: str):
         from pipeline.vote_engine import VoteEngine
@@ -367,6 +435,9 @@ class DeepStreamPipeline:
                     self._jsonl_file.write(json.dumps(record) + "\n")
                     self._jsonl_file.flush()
 
+            # Auto-detect direction from object movement
+            self._update_direction(cam_results)
+
             # Write to buffer — inference thread reads from here
             self._detection_buffer.update(cam_results, live)
             self.live_detections = live
@@ -420,7 +491,35 @@ class DeepStreamPipeline:
                     continue
 
                 engine = self._get_vote_engine(cam_id)
-                assigned, weight = engine.submit_frame(cam_det.detections)
+
+                # Smooth colors via EMA tracker (reduces transient misclassifications)
+                smoothed_dets = []
+                for d in cam_det.detections:
+                    track_id = d.get('track_id', 0)
+                    raw_color = d.get('color', 'unknown')
+                    raw_conf = d.get('conf', 0) * 100 if d.get('conf', 0) <= 1.0 else d.get('conf', 0)
+                    smooth_color, smooth_conf = self._color_tracker.update(
+                        cam_id, track_id, raw_color, raw_conf)
+                    sd = dict(d)
+                    sd['color'] = smooth_color
+                    sd['conf'] = smooth_conf / 100.0
+                    smoothed_dets.append(sd)
+
+                # Filter out "unknown" colors
+                smoothed_dets = [d for d in smoothed_dets if d['color'] != 'unknown']
+                if not smoothed_dets:
+                    continue
+
+                # If camera is inverted, flip center_x so VoteEngine's
+                # "rightmost = 1st" logic still works correctly
+                dets_for_vote = smoothed_dets
+                if self._direction_decided.get(cam_id, False):
+                    dets_for_vote = []
+                    for d in smoothed_dets:
+                        flipped = dict(d)
+                        flipped['center_x'] = cam_det.frame_width - d['center_x']
+                        dets_for_vote.append(flipped)
+                assigned, weight = engine.submit_frame(dets_for_vote)
                 self.frames_processed += 1
 
                 # Track first analysis time
@@ -500,7 +599,81 @@ class DeepStreamPipeline:
 
             self.last_cycle_time = time.monotonic() - t0
 
+    def stop(self):
+        """Stop all pipeline threads."""
+        self._running = False
+        if self._shm_thread and self._shm_thread.is_alive():
+            self._shm_thread.join(timeout=5)
+        if self._inference_thread and self._inference_thread.is_alive():
+            self._inference_thread.join(timeout=5)
+        self._reader.detach()
+        if self._jsonl_file:
+            self._jsonl_file.close()
+        log.info("DeepStreamPipeline stopped")
+
+    def reset(self):
+        """Reset state for a new race."""
+        self.fusion.reset()
+        self._vote_engines.clear()
+        self._cam_frame_count.clear()
+        self._cam_first_analysis.clear()
+        self._cam_all_visible_time.clear()
+        self._cam_completed.clear()
+        self._pending_camera_results.clear()
+        self.frames_processed = 0
+        self.cycles = 0
+        # Keep direction decisions — they don't change between races
+        log.info("DeepStreamPipeline reset for new race")
+
+    def get_stats(self) -> dict:
+        """Return pipeline performance stats."""
+        return {
+            "deepstream": {
+                "frames_processed": self.frames_processed,
+                "cycles": self.cycles,
+                "current_fps": round(self.current_fps, 1),
+                "shm_fps": round(self.shm_fps, 1),
+                "last_cycle_ms": round(self.last_cycle_time * 1000, 1),
+                "shm_seq": self._reader.last_seq if hasattr(self._reader, 'last_seq') else 0,
+                "cameras_completed": len(self._cam_completed),
+                "vote_engines": len(self._vote_engines),
+            },
+            "fusion": self.fusion.get_stats(),
+        }
+
     def _build_rankings(self, fusion_ranking: list[dict]) -> list:
         """Convert fusion ranking to frontend format (same as MultiCameraPipeline)."""
         rankings = []
-  
+        for entry in fusion_ranking:
+            color = entry["color"]
+            horse_info = COLOR_TO_HORSE.get(color)
+            if not horse_info:
+                continue
+
+            distance = entry.get("position_m", 0)
+            rank = entry.get("rank", 0)
+
+            # Compute gap to leader (approximate seconds based on track position)
+            if rankings:
+                leader_dist = rankings[0]["distanceCovered"]
+                gap = abs(leader_dist - distance) / max(TRACK_LENGTH, 1) * 60.0
+            else:
+                gap = 0.0
+
+            rankings.append({
+                "id": horse_info["id"],
+                "number": int(horse_info["number"]),
+                "name": horse_info["name"],
+                "color": horse_info["color"],
+                "jockeyName": horse_info["jockeyName"],
+                "silkId": int(horse_info["silkId"]),
+                "position": rank,
+                "distanceCovered": round(float(distance), 1),
+                "currentLap": 1,
+                "timeElapsed": 0,
+                "speed": round(entry.get("speed_mps", 0) * 3.6, 1),  # m/s → km/h
+                "gapToLeader": round(float(gap), 2),
+                "lastCameraId": entry.get("last_camera", ""),
+            })
+
+        return rankings
