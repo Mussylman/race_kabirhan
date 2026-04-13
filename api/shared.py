@@ -31,7 +31,8 @@ DEFAULT_RTSP_URL = "rtsp://admin:Qaz445566@192.168.18.59:554//stream"
 SERVER_HOST = "0.0.0.0"
 SERVER_PORT = 8000
 
-BROADCAST_INTERVAL = 0.20  # 5 Hz WebSocket broadcast
+BROADCAST_INTERVAL = 0.20  # 5 Hz — rankings, activation_map, camera_result
+LIVE_DET_INTERVAL = 0.05  # 20 Hz — live detections (bboxes) — fast path
 MJPEG_QUALITY = 75
 MJPEG_FPS = 25
 TRACK_LENGTH = 2500

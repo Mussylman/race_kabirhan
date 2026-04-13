@@ -266,6 +266,10 @@ class DeepStreamPipeline:
         # Live detection status — updated by SHM Reader, read by broadcast
         self.live_detections: dict[str, list] = {}
 
+        # Event: SHM reader sets this when new live_detections are available.
+        # The async broadcast loop waits on this instead of sleeping 200ms.
+        self.live_detections_event = threading.Event()
+
         # Detection JSONL logger — saves every frame with detections for post-analysis
         self._jsonl_path = os.environ.get("DETECTION_LOG", "/tmp/race_analysis/detections.jsonl")
         os.makedirs(os.path.dirname(self._jsonl_path), exist_ok=True)
@@ -370,6 +374,10 @@ class DeepStreamPipeline:
             # Write to buffer — inference thread reads from here
             self._detection_buffer.update(cam_results, live)
             self.live_detections = live
+
+            # Signal broadcast loop immediately — no 200ms wait
+            if live:
+                self.live_detections_event.set()
 
             # SHM Reader FPS tracking
             fps_counter += 1

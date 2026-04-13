@@ -59,7 +59,7 @@ from api.shared import (
     CameraManager, TrackTopology,
     COLOR_TO_HORSE, ALL_COLORS,
     DEFAULT_RTSP_URL, SERVER_HOST, SERVER_PORT,
-    BROADCAST_INTERVAL, MJPEG_QUALITY, MJPEG_FPS, TRACK_LENGTH,
+    BROADCAST_INTERVAL, LIVE_DET_INTERVAL, MJPEG_QUALITY, MJPEG_FPS, TRACK_LENGTH,
 )
 
 # Camera I/O
@@ -372,11 +372,59 @@ async def mjpeg_stream(cam_id: int):
 
 
 # ============================================================
-# BACKGROUND BROADCAST TASK
+# BACKGROUND BROADCAST TASKS
 # ============================================================
 
+async def live_detection_broadcast_loop():
+    """Fast-path: broadcast live detections as soon as SHM reader has new data.
+
+    Event-driven — wakes up when DeepStreamPipeline signals new detections,
+    then broadcasts immediately. Each camera's results are sent independently
+    without waiting for other cameras. Max rate: LIVE_DET_INTERVAL (20 Hz).
+    """
+    while True:
+        if not _deepstream_pipeline:
+            await asyncio.sleep(1.0)
+            continue
+
+        # Wait for SHM reader to signal new detections (instead of sleeping 200ms)
+        loop = asyncio.get_event_loop()
+        got_data = await loop.run_in_executor(
+            None, _deepstream_pipeline.live_detections_event.wait, LIVE_DET_INTERVAL
+        )
+
+        if got_data:
+            _deepstream_pipeline.live_detections_event.clear()
+
+        if not ws_clients:
+            continue
+
+        live = _deepstream_pipeline.live_detections
+        if not live:
+            continue
+
+        ts_send = time.time()
+        msg = {
+            "type": "live_detections",
+            "ts_server_send": ts_send,
+            "cameras": live,
+        }
+        await broadcast(msg)
+
+        # Structured WS_SEND log — throttled per camera
+        for cam_id, cam_data in live.items():
+            ts_cap = cam_data.get("ts_capture", 0)
+            age_ms = (ts_send - ts_cap) * 1000 if ts_cap else -1
+            dets = cam_data.get("detections", [])
+            frame_seq = cam_data.get("frame_seq", 0)
+            agg.record_ws_send(cam_id)
+            if throttle.allow(f"WS_SEND:{cam_id}", interval=2.0):
+                slog("WS_SEND", cam_id, frame_seq, ts_send,
+                     clients=len(ws_clients), dets=len(dets), age_ms=age_ms)
+
+
 async def ranking_broadcast_loop():
-    """Periodically broadcast ranking updates to all WebSocket clients."""
+    """Slow-path: rankings, camera_results, activation_map, logging."""
     last_log_time = 0
     last_activation_broadcast = 0
     last_rankings_hash = ""
@@ -409,26 +457,6 @@ async def ranking_broadcast_loop():
                         "type": "ranking_update",
                         "rankings": rankings,
                     })
-
-        # Broadcast live detections from DeepStream (which cameras see horses NOW)
-        if _deepstream_pipeline and _deepstream_pipeline.live_detections:
-            ts_send = time.time()
-            msg = {
-                "type": "live_detections",
-                "ts_server_send": ts_send,
-                "cameras": _deepstream_pipeline.live_detections,
-            }
-            await broadcast(msg)
-            # Structured WS_SEND log — throttled per camera
-            for cam_id, cam_data in _deepstream_pipeline.live_detections.items():
-                ts_cap = cam_data.get("ts_capture", 0)
-                age_ms = (ts_send - ts_cap) * 1000 if ts_cap else -1
-                dets = cam_data.get("detections", [])
-                frame_seq = cam_data.get("frame_seq", 0)
-                agg.record_ws_send(cam_id)
-                if throttle.allow(f"WS_SEND:{cam_id}", interval=2.0):
-                    slog("WS_SEND", cam_id, frame_seq, ts_send,
-                         clients=len(ws_clients), dets=len(dets), age_ms=age_ms)
 
         # Broadcast activation map every 2 seconds
         now = time.time()
@@ -470,6 +498,7 @@ async def ranking_broadcast_loop():
 @app.on_event("startup")
 async def startup():
     asyncio.create_task(ranking_broadcast_loop())
+    asyncio.create_task(live_detection_broadcast_loop())
     if _go2rtc_monitor:
         _go2rtc_monitor.start()
     if _go2rtc_keeper:
