@@ -511,4 +511,73 @@ class DeepStreamPipeline:
     def _build_rankings(self, fusion_ranking: list[dict]) -> list:
         """Convert fusion ranking to frontend format (same as MultiCameraPipeline)."""
         rankings = []
+        for entry in fusion_ranking:
+            color = entry["color"]
+            horse_info = COLOR_TO_HORSE.get(color)
+            if not horse_info:
+                continue
+
+            distance = entry.get("position_m", 0)
+            rank = entry.get("rank", 0)
+
+            # Compute gap to leader
+            if rankings:
+                leader_dist = rankings[0]["distanceCovered"]
+                gap = abs(leader_dist - distance) / max(TRACK_LENGTH, 1) * 60.0
+            else:
+                gap = 0.0
+
+            rankings.append({
+                "id": horse_info["id"],
+                "number": int(horse_info["number"]),
+                "name": horse_info["name"],
+                "color": horse_info["color"],
+                "jockeyName": horse_info["jockeyName"],
+                "silkId": int(horse_info["silkId"]),
+                "position": rank,
+                "distanceCovered": round(float(distance), 1),
+                "currentLap": 1,
+                "timeElapsed": 0,
+                "speed": round(entry.get("speed_mps", 0), 2),  # m/s — frontend converts to km/h
+                "gapToLeader": round(float(gap), 2),
+                "lastCameraId": entry.get("last_camera", ""),
+            })
+
+        return rankings
+
+    def stop(self):
+        """Stop all pipeline threads."""
+        self._running = False
+        if self._jsonl_file:
+            self._jsonl_file.close()
+        log.info("DeepStreamPipeline stopped")
+
+    def reset(self):
+        """Reset for new race."""
+        self.fusion.reset()
+        self._vote_engines.clear()
+        self._cam_frame_count.clear()
+        self._cam_first_analysis.clear()
+        self._cam_all_visible_time.clear()
+        self._cam_completed.clear()
+        self._pending_camera_results.clear()
+        self.frames_processed = 0
+        self.cycles = 0
+        log.info("DeepStreamPipeline reset for new race")
+
+    def get_stats(self) -> dict:
+        """Return pipeline performance stats."""
+        return {
+            "deepstream": {
+                "frames_processed": self.frames_processed,
+                "cycles": self.cycles,
+                "current_fps": round(self.current_fps, 1),
+                "shm_fps": round(self.shm_fps, 0),
+                "last_cycle_ms": round(self.last_cycle_time * 1000, 1),
+                "shm_seq": self._reader.last_seq if hasattr(self._reader, 'last_seq') else 0,
+                "cameras_completed": len(self._cam_completed),
+                "vote_engines": len(self._vote_engines),
+            },
+            "fusion": self.fusion.get_stats() if hasattr(self.fusion, 'get_stats') else {},
+        }
   
