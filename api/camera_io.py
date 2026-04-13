@@ -253,3 +253,122 @@ class Go2RTCMonitor:
                 return json.loads(resp.read().decode())
         except Exception:
             return None
+
+
+# ============================================================
+# GO2RTC STREAM KEEPER — keeps RTSP connections always alive
+# ============================================================
+
+class Go2RTCStreamKeeper:
+    """Keeps all go2rtc RTSP sources permanently connected.
+
+    Problem: go2rtc connects to RTSP cameras on-demand — only when a
+    browser client requests the stream.  When nobody is viewing, the
+    RTSP connections are dropped.  This causes a multi-second delay
+    when someone opens the site (go2rtc must re-establish RTSP first).
+
+    Solution: this class runs a background thread per stream that acts
+    as a persistent HTTP consumer (via /api/stream.mp4).  As long as
+    the consumer is connected, go2rtc keeps the RTSP source alive.
+
+    Result: RTSP streams work independently of the frontend.
+    When a user opens the site, video appears instantly.
+    """
+
+    RECONNECT_DELAY = 5   # seconds between reconnection attempts
+    STARTUP_DELAY = 5     # seconds to wait for go2rtc to boot
+    MAX_RETRIES = 3       # retries for initial discovery
+
+    def __init__(self, go2rtc_url: str):
+        self._url = go2rtc_url.rstrip("/")
+        self._api_url = f"{self._url}/api/streams"
+        self._running = False
+        self._threads: dict[str, threading.Thread] = {}
+        self._task: Optional[asyncio.Task] = None
+
+    def start(self):
+        """Start the keeper (call from FastAPI startup event)."""
+        self._running = True
+        self._task = asyncio.create_task(self._discover_and_start())
+        log.info("Go2RTC stream keeper starting...")
+
+    def stop(self):
+        """Stop all consumer threads."""
+        self._running = False
+        if self._task:
+            self._task.cancel()
+            self._task = None
+        log.info("Go2RTC stream keeper stopped (%d threads)", len(self._threads))
+
+    async def _discover_and_start(self):
+        """Wait for go2rtc, discover streams, start persistent consumers."""
+        await asyncio.sleep(self.STARTUP_DELAY)
+
+        loop = asyncio.get_event_loop()
+        streams: Optional[dict] = None
+
+        for attempt in range(self.MAX_RETRIES):
+            streams = await loop.run_in_executor(None, self._fetch_streams)
+            if streams:
+                break
+            wait = 5 * (attempt + 1)
+            log.warning("Go2RTC stream keeper: go2rtc unreachable, retry in %ds...", wait)
+            await asyncio.sleep(wait)
+
+        if not streams:
+            log.error("Go2RTC stream keeper: go2rtc unreachable after %d retries", self.MAX_RETRIES)
+            return
+
+        for stream_id in streams:
+            self._start_consumer_thread(stream_id)
+
+        log.info("Go2RTC stream keeper: %d persistent consumers started — "
+                 "all RTSP streams will stay connected independently",
+                 len(self._threads))
+
+    def _start_consumer_thread(self, stream_id: str):
+        """Launch a daemon thread that keeps a single stream alive."""
+        if stream_id in self._threads and self._threads[stream_id].is_alive():
+            return
+        t = threading.Thread(
+            target=self._consume_loop,
+            args=(stream_id,),
+            daemon=True,
+            name=f"go2rtc-keep-{stream_id}",
+        )
+        self._threads[stream_id] = t
+        t.start()
+
+    def _consume_loop(self, stream_id: str):
+        """Persistent consumer for a single go2rtc stream.
+
+        Opens /api/stream.mp4 and reads data continuously.
+        go2rtc keeps the RTSP producer alive as long as this consumer exists.
+        On disconnect, waits briefly and reconnects.
+        """
+        url = f"{self._url}/api/stream.mp4?src={stream_id}"
+
+        while self._running:
+            try:
+                req = urllib.request.Request(url)
+                with urllib.request.urlopen(req, timeout=300) as resp:
+                    log.debug("Stream keeper connected: %s", stream_id)
+                    while self._running:
+                        chunk = resp.read(32768)
+                        if not chunk:
+                            break
+            except Exception:
+                pass
+
+            if self._running:
+                time.sleep(self.RECONNECT_DELAY)
+
+    def _fetch_streams(self) -> Optional[dict]:
+        """Get all configured streams from go2rtc API."""
+        try:
+            req = urllib.request.Request(self._api_url, method="GET")
+            req.add_header("Accept", "application/json")
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                return json.loads(resp.read().decode())
+        except Exception:
+            return None

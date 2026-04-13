@@ -154,7 +154,7 @@ export const Go2RTCPlayer = ({
         if (!mountedRef.current) return;
         if (!isVisibleRef.current) return;
         if (reconnectTimerRef.current) return;
-        const delay = Math.min(5000 * Math.pow(2, retriesRef.current), 60000);
+        const delay = Math.min(2000 * Math.pow(2, retriesRef.current), 30000);
         retriesRef.current += 1;
         reconnectTimerRef.current = setTimeout(() => {
             reconnectTimerRef.current = null;

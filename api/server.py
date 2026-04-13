@@ -63,7 +63,7 @@ from api.shared import (
 )
 
 # Camera I/O
-from api.camera_io import VideoFileGrabber, RTSPGrabber, Go2RTCMonitor
+from api.camera_io import VideoFileGrabber, RTSPGrabber, Go2RTCMonitor, Go2RTCStreamKeeper
 
 # DeepStream pipeline
 from api.deepstream_pipeline import DeepStreamSubprocess, DeepStreamPipeline
@@ -96,6 +96,7 @@ _deepstream_subprocess: Optional[DeepStreamSubprocess] = None
 _deepstream_pipeline: Optional[DeepStreamPipeline] = None
 _legacy_detector: Optional[LegacyDetectionLoop] = None
 _go2rtc_monitor: Optional[Go2RTCMonitor] = None
+_go2rtc_keeper: Optional[Go2RTCStreamKeeper] = None
 
 # ============================================================
 # WEBSOCKET ENDPOINT
@@ -471,6 +472,8 @@ async def startup():
     asyncio.create_task(ranking_broadcast_loop())
     if _go2rtc_monitor:
         _go2rtc_monitor.start()
+    if _go2rtc_keeper:
+        _go2rtc_keeper.start()
     log.info(f"Race Vision backend running on http://{SERVER_HOST}:{SERVER_PORT}")
     log.info(f"  WebSocket: ws://localhost:{SERVER_PORT}/ws")
     log.info(f"  MJPEG:     http://localhost:{SERVER_PORT}/stream/cam1")
@@ -548,7 +551,7 @@ def _shutdown_handler(signum, frame):
 
 def main():
     global _grabber, _pipeline, _deepstream_subprocess, _deepstream_pipeline
-    global _legacy_detector, _camera_manager, _go2rtc_monitor
+    global _legacy_detector, _camera_manager, _go2rtc_monitor, _go2rtc_keeper
 
     parser = argparse.ArgumentParser(description="Race Vision Backend Server")
     parser.add_argument("--url", default=None, help="Single RTSP stream URL (legacy mode)")
@@ -589,6 +592,11 @@ def main():
 
     # go2rtc stream health monitor (started in FastAPI startup event)
     _go2rtc_monitor = Go2RTCMonitor(args.go2rtc_url)
+
+    # go2rtc stream keeper — держит все RTSP потоки активными независимо
+    # от того, открыт ли сайт. Когда пользователь откроет страницу,
+    # видео появится мгновенно.
+    _go2rtc_keeper = Go2RTCStreamKeeper(args.go2rtc_url)
 
     # Load heavy imports only when needed (non-DeepStream modes require torch)
     if not args.deepstream:
@@ -717,6 +725,8 @@ def main():
         uvicorn.run(app, host=args.host, port=args.port, log_level="info")
     finally:
         log.info("Shutting down...")
+        if _go2rtc_keeper:
+            _go2rtc_keeper.stop()
         if _go2rtc_monitor:
             _go2rtc_monitor.stop()
         if _grabber:
