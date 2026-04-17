@@ -4,7 +4,7 @@
  *
  * Workflow per frame batch:
  *   1. For each person detection, compute torso ROI (10-40% height, 20% side margins)
- *   2. CUDA kernel: crop + resize 64x64 + NV12/RGBA→RGB + ImageNet normalize
+ *   2. CUDA kernel: crop + resize 128x128 + NV12/RGBA→RGB + ImageNet normalize
  *   3. Batch TRT inference → softmax → color_id + confidence
  */
 
@@ -64,7 +64,7 @@ public:
 
     /**
      * Classify pre-extracted CPU crops (for testing/validation).
-     * @param crops     float[N][3][64][64] in ImageNet-normalized RGB
+     * @param crops     float[N][3][128][128] in ImageNet-normalized RGB
      * @param num_crops Number of crops
      * @param results   Output: one ColorResult per crop
      */
@@ -73,11 +73,11 @@ public:
 
     bool is_loaded() const { return engine_ != nullptr; }
 
-    // Crop extraction parameters: full bbox (no torso sub-crop)
-    static constexpr float TORSO_TOP    = 0.0f;
-    static constexpr float TORSO_BOTTOM = 1.0f;
-    static constexpr float TORSO_LEFT   = 0.0f;
-    static constexpr float TORSO_RIGHT  = 0.0f;
+    // Crop extraction parameters: torso sub-region (matches Python pipeline/analyzer.py)
+    static constexpr float TORSO_TOP    = 0.10f;
+    static constexpr float TORSO_BOTTOM = 0.40f;
+    static constexpr float TORSO_LEFT   = 0.20f;
+    static constexpr float TORSO_RIGHT  = 0.20f;
 
     /**
      * Compute torso ROI from person bounding box.

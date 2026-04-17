@@ -139,7 +139,6 @@ class FusionEngine:
                              accepted=True, reason="ok")
 
                 horse.raw_position_m = raw_pos
-                horse.last_seen_time = now
                 horse.last_camera = cam_id_str
                 horse.observation_count += 1
                 horse.missing_frames = 0
@@ -149,13 +148,15 @@ class FusionEngine:
                 if horse.observation_count <= 1:
                     horse.position_m = raw_pos
                 else:
-                    dt = max(now - horse.last_seen_time, 0.01)
+                    dt = max(now - horse.last_seen_time, 0.01)  # last_seen_time is still the previous value
                     # Adaptive alpha: faster updates for larger changes
                     delta = abs(raw_pos - horse.position_m)
                     alpha = min(self.ema_alpha * (1 + delta / 50.0), 0.8)
                     old_pos = horse.position_m
                     horse.position_m += alpha * (raw_pos - horse.position_m)
                     horse.speed_mps = abs(horse.position_m - old_pos) / dt
+
+                horse.last_seen_time = now  # update AFTER EMA so dt uses previous timestamp
 
             # Compute ranking (higher position_m = further ahead = lower rank number)
             visible = [h for h in self._horses.values()

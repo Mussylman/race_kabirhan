@@ -237,6 +237,9 @@ class DeepStreamPipeline:
         self._inference_thread: Optional[threading.Thread] = None
         self._running = False
 
+        # Per-track EMA color smoother — filters 1-2 frame color flips
+        self._color_tracker = ColorTracker()
+
         # Buffer between SHM Reader and Inference
         self._detection_buffer = DetectionBuffer()
 
@@ -278,6 +281,22 @@ class DeepStreamPipeline:
         os.makedirs(os.path.dirname(self._jsonl_path), exist_ok=True)
         self._jsonl_file = open(self._jsonl_path, "w")
         log.info("Detection JSONL logger: %s", self._jsonl_path)
+
+    def _smooth_detections(self, cam_id: str, detections: list) -> list:
+        """Apply ColorTracker EMA smoothing to raw detections."""
+        result = []
+        for d in detections:
+            raw_color = d.get("color", "?")
+            raw_conf = round(d.get("conf", 0) * 100)
+            track_id = d.get("track_id", 0)
+            smoothed_color, smoothed_conf = self._color_tracker.update(cam_id, track_id, raw_color, raw_conf)
+            result.append({
+                "color": smoothed_color,
+                "conf": smoothed_conf,
+                "track_id": track_id,
+                "bbox": d.get("bbox", (0, 0, 0, 0)),
+            })
+        return result
 
     def _get_vote_engine(self, cam_id: str):
         from pipeline.vote_engine import VoteEngine
@@ -347,15 +366,7 @@ class DeepStreamPipeline:
                         "frame_h": cam_det.frame_height,
                         "ts_capture": cam_det.timestamp,  # seconds since epoch from C++ SHM
                         "frame_seq": cam_det.frame_seq,   # SHM write_seq — cross-layer tracing key
-                        "detections": [
-                            {
-                                "color": d.get("color", "?"),
-                                "conf": round(d.get("conf", 0) * 100),
-                                "track_id": d.get("track_id", 0),
-                                "bbox": d.get("bbox", (0, 0, 0, 0)),
-                            }
-                            for d in cam_det.detections
-                        ],
+                        "detections": self._smooth_detections(cam_det.cam_id, cam_det.detections),
                     }
                     # LIVE_UPDATE log — throttled
                     if throttle.allow(f"LIVE_UPDATE:{cam_det.cam_id}", interval=2.0):
