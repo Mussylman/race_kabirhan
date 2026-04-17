@@ -256,6 +256,9 @@ class DeepStreamPipeline:
         self.max_analysis_sec: float = 8.0
         self.grace_period_sec: float = 2.0
 
+        # Last known positions per color (for always-show-5 logic)
+        self._last_known_positions: dict[str, float] = {}
+
         # Stats
         self.frames_processed = 0
         self.cycles = 0
@@ -315,7 +318,7 @@ class DeepStreamPipeline:
         fps_counter = 0
         fps_timer = time.monotonic()
         stale_counter = 0
-        STALE_THRESHOLD = 30  # ~6 sec at 200ms timeout
+        STALE_THRESHOLD = 500  # ~10 sec at 20ms polling timeout
 
         while self._running:
             # Read detections from shared memory
@@ -439,7 +442,7 @@ class DeepStreamPipeline:
                 # Track when all 5 colors become visible
                 if weight > 0:
                     visible_colors = set(d['color'] for d in assigned)
-                    if len(visible_colors) >= 5 and cam_id not in self._cam_all_visible_time:
+                    if len(visible_colors) >= len(ALL_COLORS) and cam_id not in self._cam_all_visible_time:
                         self._cam_all_visible_time[cam_id] = now
 
                 # Check completion conditions
@@ -509,24 +512,30 @@ class DeepStreamPipeline:
             self.last_cycle_time = time.monotonic() - t0
 
     def _build_rankings(self, fusion_ranking: list[dict]) -> list:
-        """Convert fusion ranking to frontend format (same as MultiCameraPipeline)."""
-        rankings = []
+        """Convert fusion ranking to frontend format.
+        Always returns all 5 horses — detected ones get real positions,
+        undetected ones keep their last known position or default."""
+        # Build detected horses
+        detected = {}
         for entry in fusion_ranking:
             color = entry["color"]
             horse_info = COLOR_TO_HORSE.get(color)
             if not horse_info:
                 continue
+            detected[color] = {
+                "distance": entry.get("position_m", 0),
+                "rank": entry.get("rank", 0),
+                "speed": entry.get("speed_mps", 0),
+                "last_camera": entry.get("last_camera", ""),
+            }
 
-            distance = entry.get("position_m", 0)
-            rank = entry.get("rank", 0)
-
-            # Compute gap to leader
-            if rankings:
-                leader_dist = rankings[0]["distanceCovered"]
-                gap = abs(leader_dist - distance) / max(TRACK_LENGTH, 1) * 60.0
-            else:
-                gap = 0.0
-
+        # Always emit all 5 horses
+        rankings = []
+        rank_counter = 1
+        # First: detected horses sorted by distance (descending = leading)
+        sorted_detected = sorted(detected.items(), key=lambda x: -x[1]["distance"])
+        for color, data in sorted_detected:
+            horse_info = COLOR_TO_HORSE[color]
             rankings.append({
                 "id": horse_info["id"],
                 "number": int(horse_info["number"]),
@@ -534,14 +543,48 @@ class DeepStreamPipeline:
                 "color": horse_info["color"],
                 "jockeyName": horse_info["jockeyName"],
                 "silkId": int(horse_info["silkId"]),
-                "position": rank,
-                "distanceCovered": round(float(distance), 1),
+                "position": rank_counter,
+                "distanceCovered": round(float(data["distance"]), 1),
                 "currentLap": 1,
                 "timeElapsed": 0,
-                "speed": round(entry.get("speed_mps", 0), 2),  # m/s — frontend converts to km/h
-                "gapToLeader": round(float(gap), 2),
-                "lastCameraId": entry.get("last_camera", ""),
+                "speed": round(data["speed"], 2),
+                "gapToLeader": 0.0,
+                "lastCameraId": data["last_camera"],
             })
+            rank_counter += 1
+
+        # Then: undetected horses with last known or default position
+        for color, horse_info in COLOR_TO_HORSE.items():
+            if color in detected:
+                continue
+            last = self._last_known_positions.get(color, 0)
+            rankings.append({
+                "id": horse_info["id"],
+                "number": int(horse_info["number"]),
+                "name": horse_info["name"],
+                "color": horse_info["color"],
+                "jockeyName": horse_info["jockeyName"],
+                "silkId": int(horse_info["silkId"]),
+                "position": rank_counter,
+                "distanceCovered": round(float(last), 1),
+                "currentLap": 1,
+                "timeElapsed": 0,
+                "speed": 0,
+                "gapToLeader": 0.0,
+                "lastCameraId": "",
+            })
+            rank_counter += 1
+
+        # Update last known positions
+        for color, data in detected.items():
+            self._last_known_positions[color] = data["distance"]
+
+        # Compute gaps
+        if rankings:
+            leader_dist = rankings[0]["distanceCovered"]
+            for r in rankings:
+                gap = abs(leader_dist - r["distanceCovered"]) / max(TRACK_LENGTH, 1) * 60.0
+                r["gapToLeader"] = round(gap, 2)
 
         return rankings
 
