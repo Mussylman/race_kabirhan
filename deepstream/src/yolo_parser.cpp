@@ -22,7 +22,7 @@ static constexpr int TARGET_CLASS = 0;
 // Number of bbox params (cx, cy, w, h)
 static constexpr int BBOX_PARAMS = 4;
 // NMS IoU threshold
-static constexpr float NMS_IOU_THRESH = 0.45f;
+static constexpr float NMS_IOU_THRESH = 0.50f;
 
 struct RawDetection {
     float x1, y1, x2, y2;

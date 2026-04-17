@@ -107,7 +107,7 @@ private:
 
     // Detection filtering (same thresholds as single pipeline)
     static constexpr int   MIN_BBOX_HEIGHT   = 65;
-    static constexpr float MIN_ASPECT_RATIO  = 1.2f;
+    static constexpr float MIN_ASPECT_RATIO  = 0.8f;
     static constexpr int   EDGE_MARGIN       = 10;
     static constexpr int   MIN_CROP_PIXELS   = 400;
     static constexpr int   MAX_CROP_PIXELS   = 15000;

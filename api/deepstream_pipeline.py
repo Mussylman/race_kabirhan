@@ -249,7 +249,7 @@ class DeepStreamPipeline:
 
         # Frame skip: ~25fps from DeepStream → ~4fps effective
         self._cam_frame_count: dict[str, int] = {}
-        self.frame_skip: int = 6
+        self.frame_skip: int = 2
 
         # One-result-per-camera state
         self._cam_first_analysis: dict[str, float] = {}
@@ -536,7 +536,7 @@ class DeepStreamPipeline:
             detected[color] = {
                 "distance": entry.get("position_m", 0),
                 "rank": entry.get("rank", 0),
-                "speed": entry.get("speed_mps", 0),
+                "speed": entry.get("speed_mps", 0) * 3.6,
                 "last_camera": entry.get("last_camera", ""),
             }
 
@@ -558,7 +558,7 @@ class DeepStreamPipeline:
                 "distanceCovered": round(float(data["distance"]), 1),
                 "currentLap": 1,
                 "timeElapsed": 0,
-                "speed": round(data["speed"], 2),
+                "speed": round(data["speed"], 1),
                 "gapToLeader": 0.0,
                 "lastCameraId": data["last_camera"],
             })
