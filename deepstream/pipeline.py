@@ -42,11 +42,22 @@ from deepstream.rv_plugin import (
     make_detection,
 )
 
-REPO_ROOT       = Path(__file__).resolve().parent.parent
-DEFAULT_CONFIG  = REPO_ROOT / "deepstream" / "configs" / "nvinfer_racevision.txt"
-DEFAULT_CAMERAS = REPO_ROOT / "configs"   / "cameras_test_files.json"
+REPO_ROOT        = Path(__file__).resolve().parent.parent
+DEFAULT_CONFIG   = REPO_ROOT / "deepstream" / "configs" / "nvinfer_racevision.txt"
+DEFAULT_SGIE     = REPO_ROOT / "deepstream" / "configs" / "sgie_color.txt"
+DEFAULT_CAMERAS  = REPO_ROOT / "configs"   / "cameras_test_files.json"
 
 PERSON_CLASS_ID = 0
+
+# Color label → SHM color id (matches deepstream/src/config.h ColorId enum
+# and deepstream/configs/labels_color.txt order).
+_COLOR_NAME_TO_ID = {
+    "blue":   0,
+    "green":  1,
+    "purple": 2,
+    "red":    3,
+    "yellow": 4,
+}
 
 
 @dataclass
@@ -104,6 +115,27 @@ class DetectionProbe(BatchMetadataOperator):
         self.det_counts   = [0] * len(cam_ids)
         self.total_frames = 0
 
+    @staticmethod
+    def _extract_color(obj) -> tuple[int, float]:
+        """Pull color label from sgie classifier_meta.
+
+        pyservicemaker's ClassifierMetadata only exposes label name strings
+        (get_n_label), not per-label probabilities — so color_conf is set to
+        1.0 when a label was emitted (i.e. it passed classifier-threshold)
+        and 0.0 when no classification was attached to this object.
+        """
+        cls_items = getattr(obj, "classifier_items", None)
+        if not cls_items:
+            return COLOR_UNKNOWN, 0.0
+        for cls_meta in cls_items:
+            n = int(getattr(cls_meta, "n_labels", 0))
+            for j in range(n):
+                label = (cls_meta.get_n_label(j) or "").strip().lower()
+                cid = _COLOR_NAME_TO_ID.get(label)
+                if cid is not None:
+                    return cid, 1.0
+        return COLOR_UNKNOWN, 0.0
+
     def _passes_filters(self, x1, y1, x2, y2) -> bool:
         w = x2 - x1
         h = y2 - y1
@@ -135,11 +167,12 @@ class DetectionProbe(BatchMetadataOperator):
                 y2 = y1 + rp.height
                 if not self._passes_filters(x1, y1, x2, y2):
                     continue
+                color_id, color_conf = self._extract_color(obj)
                 dets.append(make_detection(
                     x1=x1, y1=y1, x2=x2, y2=y2,
                     det_conf=obj.confidence,
-                    color_id=COLOR_UNKNOWN,
-                    color_conf=0.0,
+                    color_id=color_id,
+                    color_conf=color_conf,
                     track_id=getattr(obj, "object_id", 0) or 0,
                 ))
                 if len(dets) >= MAX_DETECTIONS:
@@ -186,6 +219,7 @@ class DetectionProbe(BatchMetadataOperator):
 
 def build_pipeline(cameras: list[CameraEntry], nvinfer_config: Path,
                    plugin: RVPlugin,
+                   sgie_config: Path | None = None,
                    mux_width: int = 800, mux_height: int = 800,
                    batched_push_timeout_us: int = 40000):
     n = len(cameras)
@@ -218,8 +252,19 @@ def build_pipeline(cameras: list[CameraEntry], nvinfer_config: Path,
         "batch-size":       n,
     })
     pipe.add("fakesink", "sink", {"sync": False, "async": False})
-    pipe.link("mux", "infer", "sink")
-    pipe.attach("infer", Probe("rv_probe", probe_op))
+
+    probe_attach_id = "infer"
+    if sgie_config is not None:
+        pipe.add("nvinfer", "sgie_color", {
+            "config-file-path": str(sgie_config),
+            "unique-id":        2,
+        })
+        pipe.link("mux", "infer", "sgie_color", "sink")
+        probe_attach_id = "sgie_color"
+    else:
+        pipe.link("mux", "infer", "sink")
+
+    pipe.attach(probe_attach_id, Probe("rv_probe", probe_op))
 
     return pipe, probe_op, shm_handle
 
@@ -235,8 +280,10 @@ def main(args):
     plugin = RVPlugin.load()
     print(f"[pipeline] plugin loaded: {plugin.lib._name}")
 
+    sgie = Path(args.sgie) if (args.sgie and args.sgie.strip()) else None
     pipe, probe_op, shm_handle = build_pipeline(
         cameras, Path(args.config), plugin,
+        sgie_config=sgie,
         mux_width=args.mux_width, mux_height=args.mux_height,
     )
 
@@ -257,6 +304,8 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--cameras",     default=str(DEFAULT_CAMERAS))
     ap.add_argument("--config",      default=str(DEFAULT_CONFIG))
+    ap.add_argument("--sgie",        default=str(DEFAULT_SGIE),
+                    help="path to SGIE color classifier config (empty string = disable)")
     ap.add_argument("--limit",       type=int, default=None,  help="max cameras to use")
     ap.add_argument("--mux-width",   type=int, default=800)
     ap.add_argument("--mux-height",  type=int, default=800)

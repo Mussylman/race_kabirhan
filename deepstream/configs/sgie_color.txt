@@ -1,0 +1,50 @@
+# SGIE secondary classifier — color of jockey torso (5 classes).
+#
+# Input: 3x128x128 (color_classifier_v4 architecture)
+# Output: 5 logits → blue, green, purple, red, yellow
+#
+# Net is trained with ImageNet normalization:
+#   x = (pixel/255 - mean) / std,  mean=[0.485,0.456,0.406], std=[0.229,0.224,0.225]
+# nvinfer only supports x = (pixel - offsets) * net-scale-factor,
+# so we approximate with channel-averaged std (0.226):
+#   net-scale-factor = 1/(255*0.226) = 0.01735
+#   offsets          = mean*255       = [123.675, 116.28, 103.53]   (RGB)
+# This is the same approximation used by all sample resnet sgies.
+
+[property]
+gpu-id=0
+
+# Model
+onnx-file=/home/ipodrom/Рабочий стол/Ipodrom-Project/user/race_vision/models/color_classifier_v4.onnx
+model-engine-file=/home/ipodrom/Рабочий стол/Ipodrom-Project/user/race_vision/models/color_classifier_v4.engine
+labelfile-path=/home/ipodrom/Рабочий стол/Ipodrom-Project/user/race_vision/deepstream/configs/labels_color.txt
+
+# 0=FP32, 1=INT8, 2=FP16
+network-mode=2
+batch-size=64
+
+# Preprocessing — approximate ImageNet normalization (RGB)
+net-scale-factor=0.01735
+offsets=123.675;116.28;103.53
+model-color-format=0
+
+# Network type: 1 = classifier
+network-type=1
+process-mode=2
+
+# Operate on primary (gie-unique-id=1), class 0 (person)
+gie-unique-id=2
+operate-on-gie-id=1
+operate-on-class-ids=0
+
+# Filters (very permissive — Race Vision jockey bboxes can be tiny in 800x800 mux)
+input-object-min-width=4
+input-object-min-height=10
+
+# Synchronous so the probe downstream of sgie sees the classification result
+classifier-async-mode=0
+classifier-threshold=0.30
+
+# Tensor I/O
+infer-dims=3;128;128
+output-blob-names=output
