@@ -1,4 +1,60 @@
-fastapi
-uvicorn[standard]
-opencv-python-headless
-numpy
+# ─────────────────────────────────────────────────────────────────────
+# Race Vision — DeepStream Python pipeline runtime requirements
+# ─────────────────────────────────────────────────────────────────────
+#
+# Scope: minimal deps needed to run the new hybrid pipeline:
+#   - deepstream/pipeline.py        (pyservicemaker orchestration)
+#   - deepstream/rv_plugin.py       (ctypes binding to .so)
+#   - api/server.py + pipeline/shm_reader.py  (reader side)
+#
+# System prerequisites (NOT pip-installable — must be on the host):
+#   - Ubuntu 24.04, x86_64
+#   - NVIDIA driver >= 580 (required for CUDA 13)
+#   - CUDA 13.0 at /usr/local/cuda-13.0
+#   - TensorRT 10.16 (libnvinfer.so.10)
+#   - DeepStream SDK 9.0 at /opt/nvidia/deepstream/deepstream-9.0
+#   - GPU: RTX 5070 Ti (Blackwell, compute capability sm_120)
+#   - Python 3.12 (for cp312 wheels)
+#
+# Manual installs (run once per environment, NOT covered by this file):
+#
+#   1) pyservicemaker (DeepStream 9.0 Python service-maker API):
+#      pip install /opt/nvidia/deepstream/deepstream-9.0/service-maker/python/\
+#        pyservicemaker-0.0.1-cp312-cp312-linux_x86_64.whl
+#
+#   2) Combined nvinfer plugin (.so):
+#      cd deepstream && mkdir -p build && cd build && \
+#        cmake .. -DCMAKE_CUDA_COMPILER=/usr/local/cuda-13.0/bin/nvcc \
+#                 -DCMAKE_CUDA_ARCHITECTURES=120 && \
+#        make nvdsinfer_racevision -j4
+#
+#   3) (Optional) PyTorch nightly — training only, NOT a runtime dep:
+#      pip install --pre torch torchvision torchaudio \
+#        --index-url https://download.pytorch.org/whl/nightly/cu130
+#
+# Install runtime deps:
+#   pip install -r requirements_deepstream.txt
+# ─────────────────────────────────────────────────────────────────────
+
+# ── Core: DeepStream Python API (installed manually, see above) ─────
+# pyservicemaker==0.0.1   # from /opt/nvidia/deepstream/.../service-maker/python/*.whl
+
+# ── Core numeric / ctypes layout (rv_plugin.py) ─────────────────────
+numpy==2.4.4
+
+# ── FastAPI server (api/server.py) + WebSocket to the React frontend
+fastapi==0.136.0
+uvicorn==0.44.0
+starlette==1.0.0
+websockets==16.0
+pydantic==2.13.2
+pydantic_core==2.46.2
+python-multipart==0.0.26
+aiofiles==25.1.0
+
+# ── POSIX shared memory reader (pipeline/shm_reader.py) ─────────────
+posix_ipc==1.3.2
+
+# ── Config + utils ──────────────────────────────────────────────────
+PyYAML==6.0.3
+psutil==7.2.2

@@ -22,18 +22,21 @@ later steps (5.2 = SHM, 5.3 = color).
 
 from __future__ import annotations
 
-import json
-import os
 import sys
 import time
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
 from pyservicemaker import BatchMetadataOperator, Pipeline, Probe
 
-# Local plugin binding
+# Local imports
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from deepstream.config import (
+    CameraEntry,
+    DEFAULT_BATCHED_PUSH_TIMEOUT,
+    DEFAULT_MUX_HEIGHT,
+    DEFAULT_MUX_WIDTH,
+)
 from deepstream.rv_plugin import (
     RVPlugin,
     COLOR_UNKNOWN,
@@ -41,11 +44,6 @@ from deepstream.rv_plugin import (
     make_camera_slot,
     make_detection,
 )
-
-REPO_ROOT        = Path(__file__).resolve().parent.parent
-DEFAULT_CONFIG   = REPO_ROOT / "deepstream" / "configs" / "nvinfer_racevision.txt"
-DEFAULT_SGIE     = REPO_ROOT / "deepstream" / "configs" / "sgie_color.txt"
-DEFAULT_CAMERAS  = REPO_ROOT / "configs"   / "cameras_test_files.json"
 
 PERSON_CLASS_ID = 0
 
@@ -58,35 +56,6 @@ _COLOR_NAME_TO_ID = {
     "red":    3,
     "yellow": 4,
 }
-
-
-@dataclass
-class CameraEntry:
-    cam_id: str
-    uri: str
-    track_start: float = 0.0
-    track_end: float   = 100.0
-
-
-def load_cameras(config_path: Path, limit: Optional[int] = None) -> list[CameraEntry]:
-    with open(config_path) as fp:
-        cfg = json.load(fp)
-    raw = cfg.get("analytics", cfg if isinstance(cfg, list) else [])
-    cams: list[CameraEntry] = []
-    for entry in raw:
-        url = entry["url"]
-        # Accept both file:// URIs and bare paths
-        if not (url.startswith("rtsp://") or url.startswith("file://") or url.startswith("http://")):
-            url = f"file://{os.path.abspath(url)}"
-        cams.append(CameraEntry(
-            cam_id=entry["id"],
-            uri=url,
-            track_start=float(entry.get("track_start", 0)),
-            track_end=float(entry.get("track_end", 100)),
-        ))
-    if limit is not None:
-        cams = cams[:limit]
-    return cams
 
 
 class DetectionProbe(BatchMetadataOperator):
@@ -220,8 +189,9 @@ class DetectionProbe(BatchMetadataOperator):
 def build_pipeline(cameras: list[CameraEntry], nvinfer_config: Path,
                    plugin: RVPlugin,
                    sgie_config: Path | None = None,
-                   mux_width: int = 800, mux_height: int = 800,
-                   batched_push_timeout_us: int = 40000):
+                   mux_width: int = DEFAULT_MUX_WIDTH,
+                   mux_height: int = DEFAULT_MUX_HEIGHT,
+                   batched_push_timeout_us: int = DEFAULT_BATCHED_PUSH_TIMEOUT):
     n = len(cameras)
     if n == 0:
         raise ValueError("no cameras configured")
@@ -269,51 +239,7 @@ def build_pipeline(cameras: list[CameraEntry], nvinfer_config: Path,
     return pipe, probe_op, shm_handle
 
 
-def main(args):
-    cameras = load_cameras(Path(args.cameras), limit=args.limit)
-    print(f"[pipeline] cameras: {len(cameras)}")
-    for c in cameras[:3]:
-        print(f"  - {c.cam_id}: {c.uri[:80]}")
-    if len(cameras) > 3:
-        print(f"  ... and {len(cameras) - 3} more")
-
-    plugin = RVPlugin.load()
-    print(f"[pipeline] plugin loaded: {plugin.lib._name}")
-
-    sgie = Path(args.sgie) if (args.sgie and args.sgie.strip()) else None
-    pipe, probe_op, shm_handle = build_pipeline(
-        cameras, Path(args.config), plugin,
-        sgie_config=sgie,
-        mux_width=args.mux_width, mux_height=args.mux_height,
-    )
-
-    print(f"[pipeline] starting ({len(cameras)} cameras, mux {args.mux_width}x{args.mux_height})")
-    try:
-        pipe.start().wait()
-    except KeyboardInterrupt:
-        print("\n[pipeline] interrupted")
-    finally:
-        probe_op.report()
-        plugin.destroy_shm(shm_handle)
-
-
 if __name__ == "__main__":
-    import argparse
-    from multiprocessing import Process
-
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--cameras",     default=str(DEFAULT_CAMERAS))
-    ap.add_argument("--config",      default=str(DEFAULT_CONFIG))
-    ap.add_argument("--sgie",        default=str(DEFAULT_SGIE),
-                    help="path to SGIE color classifier config (empty string = disable)")
-    ap.add_argument("--limit",       type=int, default=None,  help="max cameras to use")
-    ap.add_argument("--mux-width",   type=int, default=800)
-    ap.add_argument("--mux-height",  type=int, default=800)
-    args = ap.parse_args()
-
-    p = Process(target=main, args=(args,))
-    try:
-        p.start()
-        p.join()
-    except KeyboardInterrupt:
-        p.terminate()
+    # Use deepstream/main.py as the production entry point.
+    print("Use: python -m deepstream.main  (see deepstream/main.py)", file=sys.stderr)
+    sys.exit(2)

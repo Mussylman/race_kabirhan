@@ -5,6 +5,19 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CUDA_STANDARD 17)
 
+# ── Build options ──────────────────────────────────────────────────
+#
+# Phase 7 (Hybrid migration): the GStreamer pipeline orchestration moved
+# from C++ to Python (deepstream/pipeline.py via pyservicemaker). The
+# only build artifact required at runtime is libnvdsinfer_racevision.so.
+#
+# Set BUILD_LEGACY_BINARY=ON to also build the historical
+# race_vision_deepstream executable + libnvdsinfer_yolov8_parser.so.
+# Useful as a fallback while the Python pipeline is still bedding in;
+# can be removed once the Python pipeline has soaked in production.
+
+option(BUILD_LEGACY_BINARY "Build the pre-Phase 4 C++ executable (deprecated)" OFF)
+
 # ── DeepStream SDK ──────────────────────────────────────────────────
 
 set(DEEPSTREAM_SDK "/opt/nvidia/deepstream/deepstream" CACHE PATH "DeepStream SDK path")
@@ -74,80 +87,73 @@ include_directories(
 
 # ── Source files ───────────────────────────────────────────────────
 
-set(SOURCES
-    src/main.cpp
-    src/pipeline.cpp
-    src/trigger_pipeline.cpp
-    src/analysis_pipeline.cpp
-    src/dual_pipeline.cpp
-    src/trigger_shm.cpp
-    src/yolo_parser.cpp
-    src/color_infer.cpp
-    src/shm_writer.cpp
-    src/diag_logger.cpp
-)
+# ── Legacy executable (pre-Phase 4) ────────────────────────────────
 
-# color_infer.cpp contains CUDA kernels — compile as .cu
-set_source_files_properties(src/color_infer.cpp PROPERTIES LANGUAGE CUDA)
+if(BUILD_LEGACY_BINARY)
+    set(SOURCES
+        src/main.cpp
+        src/pipeline.cpp
+        src/trigger_pipeline.cpp
+        src/analysis_pipeline.cpp
+        src/dual_pipeline.cpp
+        src/trigger_shm.cpp
+        src/yolo_parser.cpp
+        src/color_infer.cpp
+        src/shm_writer.cpp
+        src/diag_logger.cpp
+    )
 
-# ── Executable ─────────────────────────────────────────────────────
+    set_source_files_properties(src/color_infer.cpp PROPERTIES LANGUAGE CUDA)
 
-add_executable(race_vision_deepstream ${SOURCES})
+    add_executable(race_vision_deepstream ${SOURCES})
 
-target_link_directories(race_vision_deepstream PRIVATE
-    ${DEEPSTREAM_SDK}/lib
-    /usr/local/cuda/lib64/stubs
-    /usr/local/cuda/lib64
-)
+    target_link_directories(race_vision_deepstream PRIVATE
+        ${DEEPSTREAM_SDK}/lib
+        /usr/local/cuda/lib64/stubs
+        /usr/local/cuda/lib64
+    )
 
-target_link_libraries(race_vision_deepstream PRIVATE
-    # GStreamer
-    ${GSTREAMER_LIBRARIES}
-    ${GLIB_LIBRARIES}
+    target_link_libraries(race_vision_deepstream PRIVATE
+        ${GSTREAMER_LIBRARIES}
+        ${GLIB_LIBRARIES}
+        nvdsgst_meta
+        nvds_meta
+        nvds_infer
+        nvbufsurface
+        nvbufsurftransform
+        ${TENSORRT_LIB}
+        ${CUDA_LIBRARIES}
+        cudart
+        cuda
+        rt
+        pthread
+        stdc++fs
+    )
 
-    # DeepStream
-    nvdsgst_meta
-    nvds_meta
-    nvds_infer
-    nvbufsurface
-    nvbufsurftransform
+    if(JSON_TARGET)
+        target_link_libraries(race_vision_deepstream PRIVATE ${JSON_TARGET})
+    endif()
 
-    # TensorRT + CUDA
-    ${TENSORRT_LIB}
-    ${CUDA_LIBRARIES}
-    cudart
-    cuda
+    add_library(nvdsinfer_yolov8_parser SHARED
+        src/yolo_parser.cpp
+    )
 
-    # POSIX shared memory
-    rt
-    pthread
+    target_include_directories(nvdsinfer_yolov8_parser PRIVATE
+        ${DS_INCLUDE_DIRS}
+        ${CMAKE_SOURCE_DIR}/src
+    )
 
-    # Filesystem (C++17)
-    stdc++fs
-)
+    target_link_directories(nvdsinfer_yolov8_parser PRIVATE
+        ${DEEPSTREAM_SDK}/lib
+    )
 
-if(JSON_TARGET)
-    target_link_libraries(race_vision_deepstream PRIVATE ${JSON_TARGET})
+    target_link_libraries(nvdsinfer_yolov8_parser PRIVATE
+        nvds_infer
+    )
+
+    install(TARGETS race_vision_deepstream  DESTINATION bin)
+    install(TARGETS nvdsinfer_yolov8_parser DESTINATION lib)
 endif()
-
-# ── Custom parser shared library (for nvinfer plugin) ──────────────
-
-add_library(nvdsinfer_yolov8_parser SHARED
-    src/yolo_parser.cpp
-)
-
-target_include_directories(nvdsinfer_yolov8_parser PRIVATE
-    ${DS_INCLUDE_DIRS}
-    ${CMAKE_SOURCE_DIR}/src
-)
-
-target_link_directories(nvdsinfer_yolov8_parser PRIVATE
-    ${DEEPSTREAM_SDK}/lib
-)
-
-target_link_libraries(nvdsinfer_yolov8_parser PRIVATE
-    nvds_infer
-)
 
 # ── Race Vision combined plugin (Phase 4: Python pipeline binding) ──
 #
@@ -198,15 +204,11 @@ target_link_libraries(nvdsinfer_racevision PRIVATE
 
 install(TARGETS nvdsinfer_racevision DESTINATION lib)
 
-# ── Install ────────────────────────────────────────────────────────
-
-install(TARGETS race_vision_deepstream DESTINATION bin)
-install(TARGETS nvdsinfer_yolov8_parser DESTINATION lib)
-
 message(STATUS "")
 message(STATUS "Race Vision DeepStream Configuration:")
-message(STATUS "  DeepStream SDK: ${DEEPSTREAM_SDK}")
-message(STATUS "  CUDA:           ${CUDA_TOOLKIT_ROOT_DIR}")
-message(STATUS "  TensorRT:       ${TENSORRT_LIB}")
-message(STATUS "  GStreamer:       ${GSTREAMER_VERSION}")
+message(STATUS "  DeepStream SDK:      ${DEEPSTREAM_SDK}")
+message(STATUS "  CUDA:                ${CUDA_TOOLKIT_ROOT_DIR}")
+message(STATUS "  TensorRT:            ${TENSORRT_LIB}")
+message(STATUS "  GStreamer:           ${GSTREAMER_VERSION}")
+message(STATUS "  BUILD_LEGACY_BINARY: ${BUILD_LEGACY_BINARY}")
 message(STATUS "")
