@@ -149,6 +149,55 @@ target_link_libraries(nvdsinfer_yolov8_parser PRIVATE
     nvds_infer
 )
 
+# ── Race Vision combined plugin (Phase 4: Python pipeline binding) ──
+#
+# Single shared library exposing:
+#   - NvDsInferParseYoloV8 (nvinfer custom bbox parser)
+#   - rv_color_*  (Python ctypes API for color classification)
+#   - rv_shm_*    (Python ctypes API for SHM writer)
+#
+# Loaded by:
+#   1. nvinfer plugin (parse-bbox-func-name=NvDsInferParseYoloV8)
+#   2. Python via ctypes.CDLL("libnvdsinfer_racevision.so")
+
+set(PLUGIN_SOURCES
+    src/yolo_parser.cpp
+    src/color_infer.cpp
+    src/shm_writer.cpp
+    src/plugin.cpp
+)
+
+set_source_files_properties(src/color_infer.cpp PROPERTIES LANGUAGE CUDA)
+
+add_library(nvdsinfer_racevision SHARED ${PLUGIN_SOURCES})
+
+target_include_directories(nvdsinfer_racevision PRIVATE
+    ${DS_INCLUDE_DIRS}
+    ${CMAKE_SOURCE_DIR}/src
+    ${CUDA_INCLUDE_DIRS}
+    ${TENSORRT_INCLUDE_DIR}
+)
+
+target_link_directories(nvdsinfer_racevision PRIVATE
+    ${DEEPSTREAM_SDK}/lib
+    /usr/local/cuda/lib64/stubs
+    /usr/local/cuda/lib64
+)
+
+target_link_libraries(nvdsinfer_racevision PRIVATE
+    nvds_infer
+    nvbufsurface
+    nvbufsurftransform
+    ${TENSORRT_LIB}
+    ${CUDA_LIBRARIES}
+    cudart
+    cuda
+    rt
+    pthread
+)
+
+install(TARGETS nvdsinfer_racevision DESTINATION lib)
+
 # ── Install ────────────────────────────────────────────────────────
 
 install(TARGETS race_vision_deepstream DESTINATION bin)
