@@ -1,0 +1,156 @@
+{
+  "track_length": 2500,
+  "max_active": 25,
+  "analytics": [
+    {
+      "id": "cam-01",
+      "url": "file:///home/ipodrom/Рабочий стол/Ipodrom-Project/user/recordings/yaris_20260303_164835/kamera_01_164835_END165759.mp4",
+      "track_start": 0.0,
+      "track_end": 100.0
+    },
+    {
+      "id": "cam-02",
+      "url": "file:///home/ipodrom/Рабочий стол/Ipodrom-Project/user/recordings/yaris_20260303_164835/kamera_02_164836_END165759.mp4",
+      "track_start": 0.0,
+      "track_end": 100.0
+    },
+    {
+      "id": "cam-03",
+      "url": "file:///home/ipodrom/Рабочий стол/Ipodrom-Project/user/recordings/yaris_20260303_164835/kamera_03_164836_END165759.mp4",
+      "track_start": 0.0,
+      "track_end": 100.0
+    },
+    {
+      "id": "cam-04",
+      "url": "file:///home/ipodrom/Рабочий стол/Ipodrom-Project/user/recordings/yaris_20260303_164835/kamera_04_164837_END165759.mp4",
+      "track_start": 0.0,
+      "track_end": 100.0
+    },
+    {
+      "id": "cam-05",
+      "url": "file:///home/ipodrom/Рабочий стол/Ipodrom-Project/user/recordings/yaris_20260303_164835/kamera_05_164837_END165759.mp4",
+      "track_start": 0.0,
+      "track_end": 100.0
+    },
+    {
+      "id": "cam-06",
+      "url": "file:///home/ipodrom/Рабочий стол/Ipodrom-Project/user/recordings/yaris_20260303_164835/kamera_06_164838_END165759.mp4",
+      "track_start": 0.0,
+      "track_end": 100.0
+    },
+    {
+      "id": "cam-07",
+      "url": "file:///home/ipodrom/Рабочий стол/Ipodrom-Project/user/recordings/yaris_20260303_164835/kamera_07_164838_END165759.mp4",
+      "track_start": 0.0,
+      "track_end": 100.0
+    },
+    {
+      "id": "cam-08",
+      "url": "file:///home/ipodrom/Рабочий стол/Ipodrom-Project/user/recordings/yaris_20260303_164835/kamera_08_164839_END165759.mp4",
+      "track_start": 0.0,
+      "track_end": 100.0
+    },
+    {
+      "id": "cam-09",
+      "url": "file:///home/ipodrom/Рабочий стол/Ipodrom-Project/user/recordings/yaris_20260303_164835/kamera_09_164839_END165759.mp4",
+      "track_start": 0.0,
+      "track_end": 100.0
+    },
+    {
+      "id": "cam-10",
+      "url": "file:///home/ipodrom/Рабочий стол/Ipodrom-Project/user/recordings/yaris_20260303_164835/kamera_10_164840_END165759.mp4",
+      "track_start": 0.0,
+      "track_end": 100.0
+    },
+    {
+      "id": "cam-11",
+      "url": "file:///home/ipodrom/Рабочий стол/Ipodrom-Project/user/recordings/yaris_20260303_164835/kamera_11_164840_END165759.mp4",
+      "track_start": 0.0,
+      "track_end": 100.0
+    },
+    {
+      "id": "cam-12",
+      "url": "file:///home/ipodrom/Рабочий стол/Ipodrom-Project/user/recordings/yaris_20260303_164835/kamera_12_164841_END165759.mp4",
+      "track_start": 0.0,
+      "track_end": 100.0
+    },
+    {
+      "id": "cam-13",
+      "url": "file:///home/ipodrom/Рабочий стол/Ipodrom-Project/user/recordings/yaris_20260303_164835/kamera_13_164841_END165759.mp4",
+      "track_start": 0.0,
+      "track_end": 100.0
+    },
+    {
+      "id": "cam-14",
+      "url": "file:///home/ipodrom/Рабочий стол/Ipodrom-Project/user/recordings/yaris_20260303_164835/kamera_14_164842_END165759.mp4",
+      "track_start": 0.0,
+      "track_end": 100.0
+    },
+    {
+      "id": "cam-15",
+      "url": "file:///home/ipodrom/Рабочий стол/Ipodrom-Project/user/recordings/yaris_20260303_164835/kamera_15_164842_END165759.mp4",
+      "track_start": 0.0,
+      "track_end": 100.0
+    },
+    {
+      "id": "cam-16",
+      "url": "file:///home/ipodrom/Рабочий стол/Ipodrom-Project/user/recordings/yaris_20260303_164835/kamera_16_164843_END165759.mp4",
+      "track_start": 0.0,
+      "track_end": 100.0
+    },
+    {
+      "id": "cam-17",
+      "url": "file:///home/ipodrom/Рабочий стол/Ipodrom-Project/user/recordings/yaris_20260303_164835/kamera_17_164843_END165759.mp4",
+      "track_start": 0.0,
+      "track_end": 100.0
+    },
+    {
+      "id": "cam-18",
+      "url": "file:///home/ipodrom/Рабочий стол/Ipodrom-Project/user/recordings/yaris_20260303_164835/kamera_18_164844_END165759.mp4",
+      "track_start": 0.0,
+      "track_end": 100.0
+    },
+    {
+      "id": "cam-19",
+      "url": "file:///home/ipodrom/Рабочий стол/Ipodrom-Project/user/recordings/yaris_20260303_164835/kamera_19_164844_END165759.mp4",
+      "track_start": 0.0,
+      "track_end": 100.0
+    },
+    {
+      "id": "cam-20",
+      "url": "file:///home/ipodrom/Рабочий стол/Ipodrom-Project/user/recordings/yaris_20260303_164835/kamera_20_164845_END165759.mp4",
+      "track_start": 0.0,
+      "track_end": 100.0
+    },
+    {
+      "id": "cam-21",
+      "url": "file:///home/ipodrom/Рабочий стол/Ipodrom-Project/user/recordings/yaris_20260303_164835/kamera_21_164845_END165759.mp4",
+      "track_start": 0.0,
+      "track_end": 100.0
+    },
+    {
+      "id": "cam-22",
+      "url": "file:///home/ipodrom/Рабочий стол/Ipodrom-Project/user/recordings/yaris_20260303_164835/kamera_22_164846_END165759.mp4",
+      "track_start": 0.0,
+      "track_end": 100.0
+    },
+    {
+      "id": "cam-23",
+      "url": "file:///home/ipodrom/Рабочий стол/Ipodrom-Project/user/recordings/yaris_20260303_164835/kamera_23_164846_END165759.mp4",
+      "track_start": 0.0,
+      "track_end": 100.0
+    },
+    {
+      "id": "cam-24",
+      "url": "file:///home/ipodrom/Рабочий стол/Ipodrom-Project/user/recordings/yaris_20260303_164835/kamera_24_164847_END165759.mp4",
+      "track_start": 0.0,
+      "track_end": 100.0
+    },
+    {
+      "id": "cam-25",
+      "url": "file:///home/ipodrom/Рабочий стол/Ipodrom-Project/user/recordings/yaris_20260303_164835/kamera_25_164847_END165759.mp4",
+      "track_start": 0.0,
+      "track_end": 100.0
+    }
+  ]
+}
