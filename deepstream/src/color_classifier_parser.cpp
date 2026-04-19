@@ -64,13 +64,20 @@ extern "C" bool NvDsInferClassiferParseCustomColor(
         fflush(stderr);
     }
 
+    // Encode confidence into the label string ("red|0.95") because
+    // pyservicemaker does NOT expose attr.attributeConfidence via Python.
+    // Probe splits on '|' and strips before OSD.
+    char labelbuf[32];
+    std::snprintf(labelbuf, sizeof(labelbuf), "%s|%.3f",
+                  kColorLabels[best], probs[best]);
+
     NvDsInferAttribute attr;
     attr.attributeIndex = 0;
     attr.attributeValue = static_cast<unsigned int>(best);
     attr.attributeConfidence = probs[best];
-    attr.attributeLabel = strdup(kColorLabels[best]);
+    attr.attributeLabel = strdup(labelbuf);
     attrList.emplace_back(attr);
-    descString = kColorLabels[best];
+    descString = kColorLabels[best];  // clean label for OSD/descString
     return true;
 }
 

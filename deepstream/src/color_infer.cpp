@@ -22,7 +22,7 @@ namespace rv {
 // ImageNet normalization constants
 static __device__ __constant__ float MEAN[3] = {0.485f, 0.456f, 0.406f};
 static __device__ __constant__ float STD[3]  = {0.229f, 0.224f, 0.225f};
-static constexpr int CROP_SIZE = 64;  // v1: SimpleColorCNN expects 64x64
+static constexpr int CROP_SIZE = 128;  // v4: SimpleColorCNN expects 128x128
 
 /**
  * CUDA kernel: crop + resize + NV12→RGB + ImageNet normalize.

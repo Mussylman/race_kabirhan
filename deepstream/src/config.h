@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <cstring>
 #include <string>
+#include <vector>
 
 namespace rv {
 
@@ -96,11 +97,16 @@ static constexpr size_t TRIGGER_SHM_SIZE = sizeof(TriggerShmHeader);
 
 // ── Camera configuration ──────────────────────────────────────────────
 
+struct Point2f {
+    float x = 0, y = 0;
+};
+
 struct CameraConfig {
     std::string id;
     std::string url;
     float track_start = 0.0f;
     float track_end   = 100.0f;
+    std::vector<std::vector<Point2f>> roi_zones;  // normalized 0-1 polygons
 };
 
 // ── Helpers ─────────────────────────────────────────────────────────
