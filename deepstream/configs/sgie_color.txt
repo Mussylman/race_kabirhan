@@ -32,19 +32,23 @@ model-color-format=0
 network-type=1
 process-mode=2
 
-# Operate on primary (gie-unique-id=1), class 0 (person)
+# Operate on any upstream GIE (−1), class 0 (person). -1 avoids silent miss
+# if PGIE gie-unique-id isn't explicitly propagated.
 gie-unique-id=2
-operate-on-gie-id=1
+operate-on-gie-id=-1
 operate-on-class-ids=0
 
 # Filters (very permissive — Race Vision jockey bboxes can be tiny in 800x800 mux)
 input-object-min-width=4
 input-object-min-height=10
 
-# Synchronous so the probe downstream of sgie sees the classification result
 classifier-async-mode=0
-classifier-threshold=0.30
+classifier-threshold=0.01
 
 # Tensor I/O
 infer-dims=3;128;128
 output-blob-names=output
+
+# Custom classifier parser (built-in auto-parse does not work with our 2D output)
+parse-classifier-func-name=NvDsInferClassiferParseCustomColor
+custom-lib-path=/home/ipodrom/Рабочий стол/Ipodrom-Project/user/race_vision/deepstream/build/libnvdsinfer_racevision.so

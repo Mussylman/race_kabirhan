@@ -23,12 +23,16 @@ PLUGIN_LIB_PATH    = DEEPSTREAM_DIR / "build" / "libnvdsinfer_racevision.so"
 
 DEFAULT_PGIE       = CONFIGS_DIR / "nvinfer_racevision.txt"
 DEFAULT_SGIE       = CONFIGS_DIR / "sgie_color.txt"
+DEFAULT_TRACKER    = CONFIGS_DIR / "tracker_iou.yml"
 DEFAULT_CAMERAS    = REPO_ROOT / "configs" / "cameras_live.json"
 TEST_CAMERAS_FILES = REPO_ROOT / "configs" / "cameras_test_files.json"
 
+# nvtracker low-level library — shipped with DeepStream 9.0
+TRACKER_LL_LIB_FILE = "/opt/nvidia/deepstream/deepstream/lib/libnvds_nvmultiobjecttracker.so"
+
 # ── Pipeline tuning ────────────────────────────────────────────────
-DEFAULT_MUX_WIDTH              = 800
-DEFAULT_MUX_HEIGHT             = 800
+DEFAULT_MUX_WIDTH              = 1280
+DEFAULT_MUX_HEIGHT             = 720
 DEFAULT_BATCHED_PUSH_TIMEOUT   = 40_000   # microseconds
 
 

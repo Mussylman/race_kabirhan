@@ -6,6 +6,9 @@
 [property]
 gpu-id=0
 
+# Explicit gie-unique-id so downstream SGIE can bind via operate-on-gie-id
+gie-unique-id=1
+
 # Model paths — absolute, for this server
 onnx-file=/home/ipodrom/Рабочий стол/Ipodrom-Project/user/race_vision/models/yolo11s_person_960.onnx
 model-engine-file=/home/ipodrom/Рабочий стол/Ipodrom-Project/user/race_vision/models/yolo11s_person_960.engine
