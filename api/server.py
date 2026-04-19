@@ -538,6 +538,10 @@ def load_camera_config(config_path: str) -> tuple[CameraManager, TrackTopology]:
     mgr = CameraManager(max_active=config.get("max_active", 8))
     topo = TrackTopology(track_length=track_length)
 
+    # RV_INVERT_TRACK=1: jockeys move right-to-left on screen; leftmost =
+    # leader. Default inverted for Ipodrome feeds.
+    invert_default = os.environ.get("RV_INVERT_TRACK", "1") == "1"
+
     for cam in config.get("analytics", []):
         mgr.add_analytics(
             cam["id"],
@@ -549,6 +553,7 @@ def load_camera_config(config_path: str) -> tuple[CameraManager, TrackTopology]:
             cam["id"],
             cam.get("track_start", 0),
             cam.get("track_end", 100),
+            inverted=cam.get("inverted", invert_default),
         )
 
     for cam in config.get("display", []):

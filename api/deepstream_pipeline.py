@@ -512,6 +512,20 @@ class DeepStreamPipeline:
                         "vote_frames": engine.vote_frames,
                     })
 
+            # --- Live fusion (continuous position updates, 5 Hz) ---
+            # Separate from the vote-complete fusion above: runs on EVERY
+            # inference cycle with raw detections so state.rankings has a
+            # real-time positions for the frontend, not just post-race order.
+            now_live = time.monotonic()
+            if now_live - getattr(self, "_live_fusion_last", 0) >= 0.2:
+                self._live_fusion_last = now_live
+                live_inputs = [c for c in cam_results if c.n_detections > 0]
+                if live_inputs:
+                    self.fusion.update(live_inputs)
+                    live_ranking = self.fusion.get_ranking()
+                    if live_ranking:
+                        state.set_rankings(self._build_rankings(live_ranking))
+
             # Inference FPS tracking
             fps_counter += 1
             elapsed_fps = time.monotonic() - fps_timer

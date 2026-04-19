@@ -60,6 +60,13 @@ _COLOR_NAME_TO_ID = {
 }
 _COLOR_ID_TO_NAME = {v: k for k, v in _COLOR_NAME_TO_ID.items()}
 
+# Race-specific: today only these colors exist on the track; everything else
+# is a spectator / false positive. Override with env RV_ACTIVE_COLORS.
+_ACTIVE_COLORS = set(
+    os.environ.get("RV_ACTIVE_COLORS", "green,red,yellow").split(",")
+)
+_ACTIVE_IDS = {cid for name, cid in _COLOR_NAME_TO_ID.items() if name in _ACTIVE_COLORS}
+
 # RGB (0-1) for OSD border_color — bright so it shows well on video
 _COLOR_RGB_NORMALISED = {
     "blue":   (0.1, 0.4, 1.0),
@@ -128,6 +135,12 @@ class DetectionProbe(BatchMetadataOperator):
         self.debug_mode   = os.environ.get("RV_DEBUG_PROBE", "0") == "1"
         self.debug_budget = 60  # detailed lines for the first N detections, then quiet
         self.debug_frames = 0   # detailed header lines for the first N frames
+        # CSV dump of every classified detection — for offline analysis
+        self.csv_path     = os.environ.get("RV_DUMP_CSV") or None
+        self.csv_fp       = None
+        if self.csv_path:
+            self.csv_fp = open(self.csv_path, "w", buffering=1)
+            self.csv_fp.write("frame,cam_id,x1,y1,w,h,yolo_conf,color,color_conf\n")
 
     @staticmethod
     def _extract_color(obj) -> tuple[int, float]:
@@ -199,25 +212,28 @@ class DetectionProbe(BatchMetadataOperator):
                     continue
                 n_passed += 1
 
-                # Extract color — prefer obj.label (set via descString), else
-                # walk classifier_items as a fallback.
+                # Extract color + confidence. Our custom parser encodes
+                # label as "red|0.95" because pyservicemaker hides
+                # attr.attributeConfidence.
                 color_id, color_conf = COLOR_UNKNOWN, 0.0
-                obj_label = getattr(obj, "label", "") or ""
-                if obj_label:
-                    cid = _COLOR_NAME_TO_ID.get(obj_label.strip().lower())
-                    if cid is not None:
-                        color_id, color_conf = cid, 1.0
-                if color_id == COLOR_UNKNOWN:
-                    for cls_meta in obj.classifier_items:
-                        n_lab = int(getattr(cls_meta, "n_labels", 0))
-                        for j in range(n_lab):
-                            raw = cls_meta.get_n_label(j) or ""
-                            cid = _COLOR_NAME_TO_ID.get(raw.strip().lower())
-                            if cid is not None:
-                                color_id, color_conf = cid, 1.0
-                                break
-                        if color_id != COLOR_UNKNOWN:
+                for cls_meta in obj.classifier_items:
+                    n_lab = int(getattr(cls_meta, "n_labels", 0))
+                    for j in range(n_lab):
+                        raw = cls_meta.get_n_label(j) or ""
+                        if "|" in raw:
+                            lbl, _, conf_s = raw.partition("|")
+                            try:
+                                prob = float(conf_s)
+                            except ValueError:
+                                prob = 0.0
+                        else:
+                            lbl, prob = raw, 1.0
+                        cid = _COLOR_NAME_TO_ID.get(lbl.strip().lower())
+                        if cid is not None:
+                            color_id, color_conf = cid, prob
                             break
+                    if color_id != COLOR_UNKNOWN:
+                        break
 
                 verbose = self.debug_mode and self.debug_budget > 0
                 if verbose:
@@ -228,31 +244,32 @@ class DetectionProbe(BatchMetadataOperator):
                           flush=True)
                     self.debug_budget -= 1
 
+                # Drop classifications for colors not active in today's race
+                # (blue/purple would be spectators — no jockeys wear them today).
+                if color_id != COLOR_UNKNOWN and color_id not in _ACTIVE_IDS:
+                    color_id, color_conf = COLOR_UNKNOWN, 0.0
+
                 if color_id != COLOR_UNKNOWN:
                     n_with_cls += 1
 
+                # CSV dump: every PGIE detection that passed bbox filter,
+                # whether classified or not
+                if self.csv_fp is not None:
+                    color_name = _COLOR_ID_TO_NAME.get(color_id, "UNK")
+                    self.csv_fp.write(
+                        f"{self.frame_counts[pad]},{self.cam_ids[pad]},"
+                        f"{int(x1)},{int(y1)},{int(x2-x1)},{int(y2-y1)},"
+                        f"{obj.confidence:.3f},{color_name},{color_conf:.3f}\n"
+                    )
+
                 track_id = getattr(obj, "object_id", 0) or 0
 
-                # OSD recolor + label: only when NOT in debug mode
+                # OSD recolor only — text comes from classifier_meta (auto-rendered by nvosd)
                 if dm is not None:
                     color_name = _COLOR_ID_TO_NAME.get(color_id, "?")
                     r, g, b = _COLOR_RGB_NORMALISED.get(color_name, (0.5, 0.5, 0.5))
                     rp.border_color = osd.Color(r, g, b, 1.0)
                     rp.border_width = 3
-
-                    label_text = color_name
-                    if track_id and track_id != 0xFFFFFFFFFFFFFFFF:
-                        label_text += f" #{track_id}"
-                    lbl = osd.Text()
-                    lbl.display_text     = label_text.encode("ascii", "ignore")
-                    lbl.x_offset         = int(x1)
-                    lbl.y_offset         = max(int(y1) - 18, 0)
-                    lbl.font.name        = osd.FontFamily.Serif
-                    lbl.font.size        = 11
-                    lbl.font.color       = osd.Color(1.0, 1.0, 1.0, 1.0)
-                    lbl.set_bg_color     = True
-                    lbl.bg_color         = osd.Color(0.0, 0.0, 0.0, 0.7)
-                    dm.add_text(lbl)
 
                 dets.append(make_detection(
                     x1=x1, y1=y1, x2=x2, y2=y2,
