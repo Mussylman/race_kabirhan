@@ -125,6 +125,27 @@ cd Kabirhan-Frontend && npm run dev
 - MJPEG preview: `http://localhost:8000/stream/cam1`
 - REST stats: `http://localhost:8000/api/stats`
 
+### 3a. Форсировать разрешение Hikvision-камер (в составе API)
+
+API-сервер может сам через ISAPI держать главный поток на заданном разрешении
+(проверка и re-apply каждые N секунд). Credentials берутся из RTSP-URL:
+
+```bash
+python3 -m api.server --config configs/cameras_live_ordered.json \
+                     --deepstream --auto-start \
+                     --enforce-resolution 2560x1440 \
+                     --resolution-interval 60
+```
+
+| Флаг | По умолчанию | Что делает |
+|---|---|---|
+| `--enforce-resolution WxH` | отключён | целевое разрешение (например `2560x1440`) |
+| `--resolution-channel` | `101` | `101`=main, `102`=sub |
+| `--resolution-interval` | `60` | как часто перепроверять (сек, min 10) |
+
+Работает только на RTSP-конфигах (`file://` игнорируется). Для одноразового
+применения без API: `python3 tools/set_camera_resolution.py` (тот же протокол).
+
 ---
 
 ## 4. Env-vars (для конкретной гонки)
