@@ -583,9 +583,13 @@ def _shutdown_handler(signum, frame):
     sys.exit(0)
 
 
+_resolution_enforcer = None
+
+
 def main():
     global _grabber, _pipeline, _deepstream_subprocess, _deepstream_pipeline
     global _legacy_detector, _camera_manager, _go2rtc_monitor, _go2rtc_keeper
+    global _resolution_enforcer
 
     parser = argparse.ArgumentParser(description="Race Vision Backend Server")
     parser.add_argument("--url", default=None, help="Single RTSP stream URL (legacy mode)")
@@ -614,6 +618,13 @@ def main():
                         help="Show video grid with OSD (requires X11 DISPLAY)")
     parser.add_argument("--go2rtc-url", default="http://localhost:1984",
                         help="go2rtc API URL for stream health monitoring")
+    parser.add_argument("--enforce-resolution", default=None,
+                        help="Force Hikvision main stream to WIDTHxHEIGHT (e.g. 2560x1440) "
+                             "and re-apply periodically. Empty = disabled.")
+    parser.add_argument("--resolution-channel", type=int, default=101,
+                        help="ISAPI channel to enforce (101=main, 102=sub)")
+    parser.add_argument("--resolution-interval", type=int, default=60,
+                        help="Re-check/re-apply every N seconds (min 10)")
     args = parser.parse_args()
 
     # Environment variable override (for Docker: DEEPSTREAM=1)
@@ -752,6 +763,34 @@ def main():
         state.race_active = True
         log.info("Race auto-started")
 
+    # ── Resolution enforcer (Hikvision ISAPI) ─────────────────────────
+    if args.enforce_resolution:
+        try:
+            w_s, h_s = args.enforce_resolution.lower().split("x")
+            w, h = int(w_s), int(h_s)
+        except Exception:
+            log.error("Bad --enforce-resolution value %r (expected WIDTHxHEIGHT)",
+                      args.enforce_resolution)
+        else:
+            from api.camera_control import ResolutionEnforcer, load_cameras_from_analytics
+            if args.config:
+                import json as _json
+                with open(args.config) as _f:
+                    _analytics = _json.load(_f).get("analytics", [])
+                cams = load_cameras_from_analytics(_analytics)
+                if cams:
+                    _resolution_enforcer = ResolutionEnforcer(
+                        cams,
+                        channel=args.resolution_channel,
+                        width=w, height=h,
+                        interval_s=args.resolution_interval,
+                    )
+                    _resolution_enforcer.start()
+                else:
+                    log.info("Resolution enforcer: no RTSP cameras in config, skipping")
+            else:
+                log.warning("--enforce-resolution requires --config; skipping")
+
     # ── Run server ────────────────────────────────────────────────────
 
     import uvicorn
@@ -759,6 +798,8 @@ def main():
         uvicorn.run(app, host=args.host, port=args.port, log_level="info")
     finally:
         log.info("Shutting down...")
+        if _resolution_enforcer:
+            _resolution_enforcer.stop()
         if _go2rtc_keeper:
             _go2rtc_keeper.stop()
         if _go2rtc_monitor:
