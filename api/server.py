@@ -625,6 +625,9 @@ def main():
                         help="ISAPI channel to enforce (101=main, 102=sub)")
     parser.add_argument("--resolution-interval", type=int, default=60,
                         help="Re-check/re-apply every N seconds (min 10)")
+    parser.add_argument("--bitrate", type=int, default=None,
+                        help="Also enforce bitrate (kbps). Sets constantBitRate "
+                             "and vbrUpperCap. Typical max=16384.")
     args = parser.parse_args()
 
     # Environment variable override (for Docker: DEEPSTREAM=1)
@@ -784,6 +787,7 @@ def main():
                         channel=args.resolution_channel,
                         width=w, height=h,
                         interval_s=args.resolution_interval,
+                        bitrate_kbps=args.bitrate,
                     )
                     _resolution_enforcer.start()
                 else:

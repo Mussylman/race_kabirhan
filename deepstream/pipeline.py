@@ -254,6 +254,10 @@ class DetectionProbe(BatchMetadataOperator):
                 x2 = x1 + rp.width
                 y2 = y1 + rp.height
                 if not self._passes_filters(x1, y1, x2, y2):
+                    rp.border_width = 0  # hide OSD bbox for filter-rejected
+                    tp = getattr(obj, "text_params", None)
+                    if tp is not None:
+                        tp.display_text = b""
                     continue
 
                 # ROI: if polygons defined for this cam, bbox centre must
@@ -263,6 +267,10 @@ class DetectionProbe(BatchMetadataOperator):
                     cx_n = (x1 + x2) * 0.5 / self.mux_width
                     cy_n = (y1 + y2) * 0.5 / self.mux_height
                     if not any(_point_in_polygon(cx_n, cy_n, p) for p in polys):
+                        rp.border_width = 0  # hide OSD bbox for ROI-rejected
+                        tp = getattr(obj, "text_params", None)
+                        if tp is not None:
+                            tp.display_text = b""  # hide auto "green/red/..." label
                         continue
 
                 n_passed += 1
@@ -368,11 +376,23 @@ class DetectionProbe(BatchMetadataOperator):
             self.plugin.commit(self.shm_handle)
 
     def _log_snapshot(self):
+        # FPS since last snapshot (infer batch rate × batch-size ≈ per-cam fps)
+        now = time.time()
+        last = getattr(self, "_last_snap_t", now)
+        last_n = getattr(self, "_last_snap_n", 0)
+        dt = max(1e-6, now - last)
+        batches_per_s = (self.total_frames - last_n) / dt
+        self._last_snap_t = now
+        self._last_snap_n = self.total_frames
+        per_cam_fps = batches_per_s / max(1, len(self.cam_ids))
+
         live = [(self.cam_ids[i], self.det_counts[i], self.frame_counts[i])
                 for i in range(len(self.cam_ids)) if self.det_counts[i] > 0]
         live.sort(key=lambda x: -x[1])
         head = ", ".join(f"{cid}:{d}/{f}" for cid, d, f in live[:6])
-        print(f"[probe] frames={self.total_frames}  active={len(live)}  top: {head}")
+        print(f"[probe] frames={self.total_frames}  "
+              f"batch_fps={batches_per_s:.1f}  per_cam_fps={per_cam_fps:.1f}  "
+              f"active={len(live)}  top: {head}")
 
     def report(self):
         print("\n" + "=" * 60)

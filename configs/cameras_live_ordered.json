@@ -4,151 +4,151 @@
   "analytics": [
     {
       "id": "cam-13",
-      "url": "rtsp://admin:Zxcv2Zxcv2@10.223.70.21:554/Streaming/Channels/101",
+      "url": "rtsp://admin:Zxcv2Zxcv2@10.223.70.21:554/Streaming/Channels/102",
       "track_start": 1200,
       "track_end": 1310
     },
     {
       "id": "cam-08",
-      "url": "rtsp://admin:Zxcv2Zxcv2@10.223.70.34:554/Streaming/Channels/101",
+      "url": "rtsp://admin:Zxcv2Zxcv2@10.223.70.34:554/Streaming/Channels/102",
       "track_start": 700,
       "track_end": 810
     },
     {
       "id": "cam-14",
-      "url": "rtsp://admin:Zxcv2Zxcv2@10.223.70.27:554/Streaming/Channels/101",
+      "url": "rtsp://admin:Zxcv2Zxcv2@10.223.70.27:554/Streaming/Channels/102",
       "track_start": 1300,
       "track_end": 1410
     },
     {
       "id": "cam-11",
-      "url": "rtsp://admin:Zxcv2Zxcv2@10.223.70.31:554/Streaming/Channels/101",
+      "url": "rtsp://admin:Zxcv2Zxcv2@10.223.70.31:554/Streaming/Channels/102",
       "track_start": 1000,
       "track_end": 1110
     },
     {
       "id": "cam-15",
-      "url": "rtsp://admin:Zxcv2Zxcv2@10.223.70.30:554/Streaming/Channels/101",
+      "url": "rtsp://admin:Zxcv2Zxcv2@10.223.70.30:554/Streaming/Channels/102",
       "track_start": 1400,
       "track_end": 1510
     },
     {
       "id": "cam-16",
-      "url": "rtsp://admin:Zxcv2Zxcv2@10.223.70.20:554/Streaming/Channels/101",
+      "url": "rtsp://admin:Zxcv2Zxcv2@10.223.70.20:554/Streaming/Channels/102",
       "track_start": 1500,
       "track_end": 1610
     },
     {
       "id": "cam-17",
-      "url": "rtsp://admin:Zxcv2Zxcv2@10.223.70.19:554/Streaming/Channels/101",
+      "url": "rtsp://admin:Zxcv2Zxcv2@10.223.70.19:554/Streaming/Channels/102",
       "track_start": 1600,
       "track_end": 1710
     },
     {
       "id": "cam-18",
-      "url": "rtsp://admin:Zxcv2Zxcv2@10.223.70.28:554/Streaming/Channels/101",
+      "url": "rtsp://admin:Zxcv2Zxcv2@10.223.70.28:554/Streaming/Channels/102",
       "track_start": 1700,
       "track_end": 1810
     },
     {
       "id": "cam-19",
-      "url": "rtsp://admin:Zxcv2Zxcv2@10.223.70.15:554/Streaming/Channels/101",
+      "url": "rtsp://admin:Zxcv2Zxcv2@10.223.70.15:554/Streaming/Channels/102",
       "track_start": 1800,
       "track_end": 1910
     },
     {
       "id": "cam-20",
-      "url": "rtsp://admin:Zxcv2Zxcv2@10.223.70.22:554/Streaming/Channels/101",
+      "url": "rtsp://admin:Zxcv2Zxcv2@10.223.70.22:554/Streaming/Channels/102",
       "track_start": 1900,
       "track_end": 2010
     },
     {
       "id": "cam-21",
-      "url": "rtsp://admin:Zxcv2Zxcv2@10.223.70.48:554/Streaming/Channels/101",
+      "url": "rtsp://admin:Zxcv2Zxcv2@10.223.70.48:554/Streaming/Channels/102",
       "track_start": 2000,
       "track_end": 2110
     },
     {
       "id": "cam-22",
-      "url": "rtsp://admin:Zxcv2Zxcv2@10.223.70.24:554/Streaming/Channels/101",
+      "url": "rtsp://admin:Zxcv2Zxcv2@10.223.70.24:554/Streaming/Channels/102",
       "track_start": 2100,
       "track_end": 2210
     },
     {
       "id": "cam-23",
-      "url": "rtsp://admin:Zxcv2Zxcv2@10.223.70.29:554/Streaming/Channels/101",
+      "url": "rtsp://admin:Zxcv2Zxcv2@10.223.70.29:554/Streaming/Channels/102",
       "track_start": 2200,
       "track_end": 2310
     },
     {
       "id": "cam-24",
-      "url": "rtsp://admin:Zxcv2Zxcv2@10.223.70.45:554/Streaming/Channels/101",
+      "url": "rtsp://admin:Zxcv2Zxcv2@10.223.70.45:554/Streaming/Channels/102",
       "track_start": 2300,
       "track_end": 2410
     },
     {
       "id": "cam-01",
-      "url": "rtsp://admin:Zxcv2Zxcv2@10.223.70.32:554/Streaming/Channels/101",
+      "url": "rtsp://admin:Zxcv2Zxcv2@10.223.70.32:554/Streaming/Channels/102",
       "track_start": 0,
       "track_end": 110
     },
     {
       "id": "cam-02",
-      "url": "rtsp://admin:Zxcv2Zxcv2@10.223.70.16:554/Streaming/Channels/101",
+      "url": "rtsp://admin:Zxcv2Zxcv2@10.223.70.16:554/Streaming/Channels/102",
       "track_start": 100,
       "track_end": 210
     },
     {
       "id": "cam-03",
-      "url": "rtsp://admin:Zxcv2Zxcv2@10.223.70.46:554/Streaming/Channels/101",
+      "url": "rtsp://admin:Zxcv2Zxcv2@10.223.70.46:554/Streaming/Channels/102",
       "track_start": 200,
       "track_end": 310
     },
     {
       "id": "cam-04",
-      "url": "rtsp://admin:Zxcv2Zxcv2@10.223.70.44:554/Streaming/Channels/101",
+      "url": "rtsp://admin:Zxcv2Zxcv2@10.223.70.44:554/Streaming/Channels/102",
       "track_start": 300,
       "track_end": 410
     },
     {
       "id": "cam-05",
-      "url": "rtsp://admin:Zxcv2Zxcv2@10.223.70.17:554/Streaming/Channels/101",
+      "url": "rtsp://admin:Zxcv2Zxcv2@10.223.70.17:554/Streaming/Channels/102",
       "track_start": 400,
       "track_end": 510
     },
     {
       "id": "cam-06",
-      "url": "rtsp://admin:Zxcv2Zxcv2@10.223.70.18:554/Streaming/Channels/101",
+      "url": "rtsp://admin:Zxcv2Zxcv2@10.223.70.18:554/Streaming/Channels/102",
       "track_start": 500,
       "track_end": 610
     },
     {
       "id": "cam-07",
-      "url": "rtsp://admin:Zxcv2Zxcv2@10.223.70.25:554/Streaming/Channels/101",
+      "url": "rtsp://admin:Zxcv2Zxcv2@10.223.70.25:554/Streaming/Channels/102",
       "track_start": 600,
       "track_end": 710
     },
     {
       "id": "cam-09",
-      "url": "rtsp://admin:Zxcv2Zxcv2@10.223.70.26:554/Streaming/Channels/101",
+      "url": "rtsp://admin:Zxcv2Zxcv2@10.223.70.26:554/Streaming/Channels/102",
       "track_start": 800,
       "track_end": 910
     },
     {
       "id": "cam-10",
-      "url": "rtsp://admin:Zxcv2Zxcv2@10.223.70.33:554/Streaming/Channels/101",
+      "url": "rtsp://admin:Zxcv2Zxcv2@10.223.70.33:554/Streaming/Channels/102",
       "track_start": 900,
       "track_end": 1010
     },
     {
       "id": "cam-12",
-      "url": "rtsp://admin:Zxcv2Zxcv2@10.223.70.42:554/Streaming/Channels/101",
+      "url": "rtsp://admin:Zxcv2Zxcv2@10.223.70.42:554/Streaming/Channels/102",
       "track_start": 1100,
       "track_end": 1210
     },
     {
       "id": "cam-25",
-      "url": "rtsp://admin:Zxcv2Zxcv2@10.223.70.23:554/Streaming/Channels/101",
+      "url": "rtsp://admin:Zxcv2Zxcv2@10.223.70.23:554/Streaming/Channels/102",
       "track_start": 2400,
       "track_end": 2500
     }

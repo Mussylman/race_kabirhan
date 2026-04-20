@@ -38,9 +38,12 @@ gie-unique-id=2
 operate-on-gie-id=-1
 operate-on-class-ids=0
 
-# Filters (very permissive — Race Vision jockey bboxes can be tiny in 800x800 mux)
-input-object-min-width=4
-input-object-min-height=10
+# Filters — jockey bbox at 1280x720 mux is ~25x60
+# Lower bound = reject YOLO noise; upper bound = reject spectators/staff
+input-object-min-width=12
+input-object-min-height=40
+input-object-max-width=80
+input-object-max-height=180
 
 classifier-async-mode=0
 classifier-threshold=0.01

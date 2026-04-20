@@ -20,7 +20,7 @@ network-mode=2
 network-input-order=0
 
 # GPU optimization flags
-interval=0
+interval=2
 output-tensor-meta=0
 
 # Input dimensions

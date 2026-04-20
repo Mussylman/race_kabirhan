@@ -77,12 +77,16 @@ def put_stream_xml(auth: HTTPDigestAuth, host: str, channel: int, xml_body: str)
     return r.text
 
 
-def apply_resolution(xml_body: str, width: int, height: int) -> tuple[str, tuple[int, int] | None]:
-    """Rewrite <videoResolutionWidth>/<videoResolutionHeight> in the XML.
-    Returns (new_xml, old_resolution_or_None)."""
+def apply_resolution(xml_body: str, width: int, height: int,
+                     bitrate_kbps: int | None = None
+                    ) -> tuple[str, tuple[int, int] | None, int | None]:
+    """Rewrite resolution (and optionally bitrate) fields in Hikvision
+    StreamingChannel XML. Returns (new_xml, old_resolution, old_vbr_upper)."""
     m_w = re.search(r"<videoResolutionWidth>(\d+)</videoResolutionWidth>", xml_body)
     m_h = re.search(r"<videoResolutionHeight>(\d+)</videoResolutionHeight>", xml_body)
-    old = (int(m_w.group(1)), int(m_h.group(1))) if (m_w and m_h) else None
+    m_vu = re.search(r"<vbrUpperCap>(\d+)</vbrUpperCap>", xml_body)
+    old_res = (int(m_w.group(1)), int(m_h.group(1))) if (m_w and m_h) else None
+    old_vu  = int(m_vu.group(1)) if m_vu else None
 
     new = re.sub(
         r"<videoResolutionWidth>\d+</videoResolutionWidth>",
@@ -94,11 +98,23 @@ def apply_resolution(xml_body: str, width: int, height: int) -> tuple[str, tuple
         f"<videoResolutionHeight>{height}</videoResolutionHeight>",
         new, count=1,
     )
-    return new, old
+    if bitrate_kbps is not None:
+        new = re.sub(
+            r"<constantBitRate>\d+</constantBitRate>",
+            f"<constantBitRate>{bitrate_kbps}</constantBitRate>",
+            new, count=1,
+        )
+        new = re.sub(
+            r"<vbrUpperCap>\d+</vbrUpperCap>",
+            f"<vbrUpperCap>{bitrate_kbps}</vbrUpperCap>",
+            new, count=1,
+        )
+    return new, old_res, old_vu
 
 
 def set_one_camera(cam: dict, channel: int, width: int, height: int,
-                   dry_run: bool, dump_xml: Path | None = None) -> str:
+                   bitrate_kbps: int | None, dry_run: bool,
+                   dump_xml: Path | None = None) -> str:
     """Handle one camera. Returns a status string for logging."""
     creds = parse_rtsp_url(cam["url"])
     if not creds["host"]:
@@ -115,18 +131,31 @@ def set_one_camera(cam: dict, channel: int, width: int, height: int,
         dump_xml.write_text(xml)
         print(f"    dumped GET XML ({len(xml)} bytes) → {dump_xml}")
 
-    new_xml, old_res = apply_resolution(xml, width, height)
-    if old_res == (width, height):
-        return f"already {width}x{height}"
+    new_xml, old_res, old_vu = apply_resolution(xml, width, height, bitrate_kbps)
+    res_same = (old_res == (width, height))
+    br_same  = (bitrate_kbps is None) or (old_vu == bitrate_kbps)
+    if res_same and br_same:
+        return f"already {width}x{height}" + (f" @ {bitrate_kbps}kbps" if bitrate_kbps else "")
 
     if dry_run:
-        return f"DRY would change {old_res} → {width}x{height}"
+        parts = []
+        if not res_same:
+            parts.append(f"res {old_res} → {width}x{height}")
+        if not br_same:
+            parts.append(f"bitrate {old_vu} → {bitrate_kbps}kbps")
+        return f"DRY would change: {' + '.join(parts)}"
 
+    # Make sure no RTSP clients are holding the stream (otherwise Hikvision
+    # accepts PUT with 200 but silently refuses to apply). Best-effort — we
+    # can't actually disconnect; just warn.
     try:
         resp_text = put_stream_xml(auth, creds["host"], channel, new_xml)
+        m_code = re.search(r"<statusCode>(\d+)</statusCode>", resp_text)
+        m_str  = re.search(r"<statusString>([^<]+)</statusString>", resp_text)
+        if m_code and m_code.group(1) != "1":
+            return f"PUT REJECTED ({m_str.group(1) if m_str else 'status!=1'})"
     except requests.HTTPError as e:
         msg = f"PUT FAIL ({e.response.status_code})"
-        # Save response body on first 500 so we can read the real error
         if dump_xml is not None:
             (dump_xml.parent / (dump_xml.stem + "_put_response.xml")).write_text(
                 e.response.text or "<empty>")
@@ -137,7 +166,25 @@ def set_one_camera(cam: dict, channel: int, width: int, height: int,
         return msg
     except Exception as e:
         return f"PUT FAIL ({type(e).__name__}: {e})"
-    return f"OK {old_res} → {width}x{height}"
+
+    # Verify by re-GETting — Hikvision sometimes returns 200 but silently
+    # refuses to apply (e.g. stream is in use, or value rejected by encoder).
+    try:
+        verify = get_stream_xml(auth, creds["host"], channel)
+        _, cur_res, cur_vu = apply_resolution(verify, width, height, bitrate_kbps)
+        if cur_res != (width, height):
+            return f"PUT LIED — still {cur_res} (camera rejected silently)"
+        if bitrate_kbps is not None and cur_vu is not None and cur_vu != bitrate_kbps:
+            return f"PUT partially LIED — bitrate still {cur_vu}"
+    except Exception:
+        pass  # verify is best-effort
+
+    parts = []
+    if not res_same:
+        parts.append(f"res {old_res} → {width}x{height}")
+    if not br_same:
+        parts.append(f"bitrate {old_vu} → {bitrate_kbps}kbps")
+    return f"OK: {' + '.join(parts)}"
 
 
 def main():
@@ -150,6 +197,9 @@ def main():
     # 2560x1440 sounds right but is NOT in their capability list.
     ap.add_argument("--width",   type=int, default=2688)
     ap.add_argument("--height",  type=int, default=1520)
+    ap.add_argument("--bitrate", type=int, default=None,
+                    help="bitrate in kbps — sets BOTH constantBitRate and "
+                         "vbrUpperCap. Typical max=16384 (16 Mbps).")
     ap.add_argument("--watch",   type=int, default=0,
                     help="if > 0, re-apply every N seconds instead of exiting")
     ap.add_argument("--dry-run", action="store_true")
@@ -243,7 +293,7 @@ def main():
         for i, cam in enumerate(cams):
             dump = Path(args.dump) if (args.dump and i == 0) else None
             status = set_one_camera(cam, args.channel, args.width, args.height,
-                                    args.dry_run, dump_xml=dump)
+                                    args.bitrate, args.dry_run, dump_xml=dump)
             creds = parse_rtsp_url(cam["url"])
             print(f"  {cam['id']:8s} {creds['host']:15s}  {status}")
 

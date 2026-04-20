@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>ROI Editor - Race Vision</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #1a1a2e; color: #eee; font-family: monospace; }
+  .header { padding: 10px 20px; background: #16213e; display: flex; align-items: center; gap: 20px; }
+  .header h2 { color: #0f0; }
+  .header button { padding: 8px 16px; font-size: 14px; cursor: pointer; border: none; border-radius: 4px; font-family: monospace; }
+  .btn-nav { background: #0a3d62; color: #fff; }
+  .btn-nav:hover { background: #3c6382; }
+  .btn-danger { background: #c0392b; color: #fff; }
+  .btn-save { background: #27ae60; color: #fff; font-weight: bold; }
+  .btn-save:hover { background: #2ecc71; }
+  .info { color: #aaa; font-size: 13px; }
+  .cam-label { font-size: 20px; color: #0f0; font-weight: bold; min-width: 80px; }
+  .container { display: flex; height: calc(100vh - 50px); }
+  .canvas-wrap { flex: 1; display: flex; align-items: center; justify-content: center; padding: 10px; }
+  canvas { cursor: crosshair; border: 2px solid #333; }
+  .sidebar { width: 280px; background: #16213e; padding: 15px; overflow-y: auto; }
+  .sidebar h3 { color: #0f0; margin-bottom: 10px; }
+  .roi-list { font-size: 12px; }
+  .roi-item { padding: 5px; margin: 3px 0; background: #0a3d62; border-radius: 3px; display: flex; justify-content: space-between; }
+  .roi-item .pts { color: #aaa; }
+  .roi-item .del { color: #e74c3c; cursor: pointer; }
+  .instructions { margin-top: 15px; font-size: 12px; color: #888; line-height: 1.6; }
+  .progress { color: #f39c12; }
+</style>
+</head>
+<body>
+<div class="header">
+  <h2>ROI Editor</h2>
+  <span class="cam-label" id="camLabel">cam-01</span>
+  <button class="btn-nav" onclick="prevCam()">&lt; Prev</button>
+  <button class="btn-nav" onclick="nextCam()">Next &gt;</button>
+  <button class="btn-danger" onclick="undoPoint()">Undo Point</button>
+  <button class="btn-danger" onclick="clearROI()">Clear ROI</button>
+  <button class="btn-nav" onclick="closePolygon()">Close Polygon</button>
+  <button class="btn-save" onclick="saveAll()">SAVE JSON</button>
+  <span class="info" id="status"></span>
+  <span class="progress" id="progress"></span>
+</div>
+<div class="container">
+  <div class="canvas-wrap">
+    <canvas id="canvas" width="1280" height="720"></canvas>
+  </div>
+  <div class="sidebar">
+    <h3>ROI Zones</h3>
+    <div id="roiList" class="roi-list"></div>
+    <div class="instructions">
+      <b>Instructions:</b><br>
+      1. Click to add polygon points<br>
+      2. "Close Polygon" to finish zone<br>
+      3. Can add multiple zones per cam<br>
+      4. Navigate with Prev/Next<br>
+      5. SAVE JSON when done<br><br>
+      <b>Detections outside ROI will be ignored</b>
+    </div>
+  </div>
+</div>
+
+<script>
+const CAMERAS = [];
+const allROI = {};  // {cam_id: [[{x,y},...], ...]}
+let currentIdx = 0;
+let currentPoints = [];
+let img = new Image();
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+
+// Load camera list from server
+async function init() {
+  const r = await fetch('/api/cameras');
+  const cams = await r.json();
+  cams.forEach(c => {
+    CAMERAS.push(c);
+    if (!allROI[c]) allROI[c] = [];
+  });
+
+  // Load existing ROI if available
+  try {
+    const r2 = await fetch('/api/roi');
+    const existing = await r2.json();
+    Object.assign(allROI, existing);
+  } catch(e) {}
+
+  loadCamera(0);
+  updateProgress();
+}
+
+function loadCamera(idx) {
+  currentIdx = idx;
+  currentPoints = [];
+  const camId = CAMERAS[idx];
+  document.getElementById('camLabel').textContent = camId;
+  img = new Image();
+  img.onload = () => {
+    canvas.width = img.width;
+    canvas.height = img.height;
+    draw();
+  };
+  img.src = '/frames/' + camId + '.jpg?' + Date.now();
+  updateROIList();
+  updateProgress();
+}
+
+function draw() {
+  ctx.drawImage(img, 0, 0);
+
+  // Draw saved polygons
+  const camId = CAMERAS[currentIdx];
+  (allROI[camId] || []).forEach((poly, i) => {
+    ctx.beginPath();
+    ctx.moveTo(poly[0].x, poly[0].y);
+    poly.forEach(p => ctx.lineTo(p.x, p.y));
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(0, 255, 0, 0.15)';
+    ctx.fill();
+    ctx.strokeStyle = '#0f0';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    // Label
+    ctx.fillStyle = '#0f0';
+    ctx.font = '16px monospace';
+    ctx.fillText('Zone ' + (i+1), poly[0].x + 5, poly[0].y - 5);
+    // Points
+    poly.forEach(p => {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
+      ctx.fillStyle = '#0f0';
+      ctx.fill();
+    });
+  });
+
+  // Draw current (in-progress) polygon
+  if (currentPoints.length > 0) {
+    ctx.beginPath();
+    ctx.moveTo(currentPoints[0].x, currentPoints[0].y);
+    currentPoints.forEach(p => ctx.lineTo(p.x, p.y));
+    ctx.strokeStyle = '#ff0';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    currentPoints.forEach(p => {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
+      ctx.fillStyle = '#ff0';
+      ctx.fill();
+    });
+  }
+
+  document.getElementById('status').textContent =
+    currentPoints.length > 0 ? currentPoints.length + ' points (click more or Close)' : 'Click to start polygon';
+}
+
+canvas.addEventListener('click', (e) => {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  const x = Math.round((e.clientX - rect.left) * scaleX);
+  const y = Math.round((e.clientY - rect.top) * scaleY);
+  currentPoints.push({x, y});
+  draw();
+});
+
+function closePolygon() {
+  if (currentPoints.length < 3) {
+    alert('Need at least 3 points');
+    return;
+  }
+  const camId = CAMERAS[currentIdx];
+  if (!allROI[camId]) allROI[camId] = [];
+  allROI[camId].push([...currentPoints]);
+  currentPoints = [];
+  draw();
+  updateROIList();
+  updateProgress();
+}
+
+function undoPoint() {
+  currentPoints.pop();
+  draw();
+}
+
+function clearROI() {
+  const camId = CAMERAS[currentIdx];
+  allROI[camId] = [];
+  currentPoints = [];
+  draw();
+  updateROIList();
+  updateProgress();
+}
+
+function deleteZone(idx) {
+  const camId = CAMERAS[currentIdx];
+  allROI[camId].splice(idx, 1);
+  draw();
+  updateROIList();
+}
+
+function prevCam() {
+  if (currentPoints.length > 0 && !confirm('Discard current polygon?')) return;
+  currentPoints = [];
+  loadCamera((currentIdx - 1 + CAMERAS.length) % CAMERAS.length);
+}
+
+function nextCam() {
+  if (currentPoints.length > 0 && !confirm('Discard current polygon?')) return;
+  currentPoints = [];
+  loadCamera((currentIdx + 1) % CAMERAS.length);
+}
+
+function updateROIList() {
+  const camId = CAMERAS[currentIdx];
+  const zones = allROI[camId] || [];
+  let html = '';
+  zones.forEach((poly, i) => {
+    html += '<div class="roi-item"><span>Zone ' + (i+1) + '</span><span class="pts">' +
+            poly.length + ' pts</span><span class="del" onclick="deleteZone(' + i + ')">X</span></div>';
+  });
+  if (zones.length === 0) html = '<div style="color:#666">No zones yet</div>';
+  document.getElementById('roiList').innerHTML = html;
+}
+
+function updateProgress() {
+  const done = CAMERAS.filter(c => (allROI[c] || []).length > 0).length;
+  document.getElementById('progress').textContent = done + '/' + CAMERAS.length + ' cameras done';
+}
+
+async function saveAll() {
+  const r = await fetch('/api/roi', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(allROI)
+  });
+  const res = await r.json();
+  alert('Saved: ' + res.path);
+}
+
+// Keyboard shortcuts
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowRight' || e.key === 'n') nextCam();
+  if (e.key === 'ArrowLeft' || e.key === 'p') prevCam();
+  if (e.key === 'Enter' || e.key === 'c') closePolygon();
+  if (e.key === 'z') undoPoint();
+  if (e.key === 'Escape') { currentPoints = []; draw(); }
+  if (e.key === 's' && e.ctrlKey) { e.preventDefault(); saveAll(); }
+});
+
+init();
+</script>
+</body>
+</html>
