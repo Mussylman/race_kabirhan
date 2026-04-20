@@ -46,7 +46,7 @@ input-object-max-width=80
 input-object-max-height=180
 
 classifier-async-mode=0
-classifier-threshold=0.01
+classifier-threshold=0.5
 
 # Tensor I/O
 infer-dims=3;128;128

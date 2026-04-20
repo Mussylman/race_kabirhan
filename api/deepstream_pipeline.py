@@ -18,6 +18,7 @@ from api.shared import (
     COLOR_TO_HORSE, ALL_COLORS, TRACK_LENGTH,
 )
 from pipeline.log_utils import slog, throttle, agg
+from pipeline.time_tracker import TimeTracker
 
 
 # ============================================================
@@ -232,6 +233,23 @@ class DeepStreamPipeline:
         self.topology = topology
         self.fusion = FusionEngine(topology, colors=ALL_COLORS)
 
+        # Time-based tracker — physical camera order from CameraManager
+        # (insertion order matches the order in cameras_live_ordered.json).
+        cam_order = [c.cam_id for c in camera_manager.get_analytics_cameras()]
+        self.time_tracker = TimeTracker(
+            cam_order=cam_order,
+            topology=topology,
+            confirm_frames=int(os.environ.get("RV_TT_CONFIRM_FRAMES", "3")),
+            confirm_window_sec=float(os.environ.get("RV_TT_WINDOW_SEC", "1.0")),
+            pack_min_colors=int(os.environ.get("RV_TT_PACK_MIN", "2")),
+        )
+        log.info("TimeTracker initialized with %d cameras "
+                 "(confirm=%d frames / %ss, pack_min=%d)",
+                 len(cam_order),
+                 self.time_tracker.confirm_frames,
+                 self.time_tracker.confirm_window,
+                 self.time_tracker.pack_min_colors)
+
         self._reader = SharedMemoryReader(timeout_ms=200)
         self._shm_thread: Optional[threading.Thread] = None
         self._inference_thread: Optional[threading.Thread] = None
@@ -425,6 +443,28 @@ class DeepStreamPipeline:
             if not state.race_active:
                 continue
 
+            # --- TimeTracker ingest: feed every raw detection event ---
+            # Tracker has its own confirm-frames/window debouncing, independent
+            # of frame_skip (which is only for VoteEngine cost control).
+            tracker_ts = time.time()
+            tt_new_passes = []
+            for cam_det in cam_results:
+                if cam_det.n_detections == 0:
+                    continue
+                for d in cam_det.detections:
+                    color = d.get("color", "")
+                    if color not in ALL_COLORS:
+                        continue
+                    if self.time_tracker.ingest(tracker_ts, cam_det.cam_id, color):
+                        tt_new_passes.append((cam_det.cam_id, color))
+            if tt_new_passes:
+                for cid, col in tt_new_passes:
+                    log.info("TT pass  %s  %s  ts=%.2f", cid, col, tracker_ts)
+                # Publish ranking immediately on any confirmed pass
+                tt_ranking = self.time_tracker.get_ranking()
+                if tt_ranking:
+                    state.set_rankings(self._build_rankings(tt_ranking))
+
             # Process through vote engines with frame skip + one-result-per-camera
             for cam_det in cam_results:
                 cam_id = cam_det.cam_id
@@ -492,16 +532,10 @@ class DeepStreamPipeline:
                     log.info("CAMERA COMPLETE  %s  order=[%s]  (%s, %d vote frames)",
                              cam_id, " > ".join(vote_result), reason, engine.vote_frames)
 
-                    # Build single-camera CameraDetections and update fusion ONCE
-                    voted = CameraDetections(cam_id, cam_det.frame_width, cam_det.frame_height)
-                    voted.timestamp = cam_det.timestamp
-                    for d in assigned:
-                        voted.add(d)
-                    self.fusion.update([voted])
-
-                    # Build rankings and update state
-                    fusion_ranking = self.fusion.get_ranking()
-                    rankings = self._build_rankings(fusion_ranking)
+                    # Rankings now come from TimeTracker (see ingest above).
+                    # We still emit the per-camera vote result for the UI
+                    # but the global ranking is time-based, not fusion-based.
+                    rankings = self._build_rankings(self.time_tracker.get_ranking())
                     state.set_rankings(rankings)
 
                     # Queue camera_result for broadcast
@@ -512,19 +546,15 @@ class DeepStreamPipeline:
                         "vote_frames": engine.vote_frames,
                     })
 
-            # --- Live fusion (continuous position updates, 5 Hz) ---
-            # Separate from the vote-complete fusion above: runs on EVERY
-            # inference cycle with raw detections so state.rankings has a
-            # real-time positions for the frontend, not just post-race order.
+            # --- Periodic TimeTracker snapshot (5 Hz) ---
+            # Keeps state.rankings fresh even when no new pass was confirmed
+            # (e.g. speed/ts timestamps in UI).
             now_live = time.monotonic()
             if now_live - getattr(self, "_live_fusion_last", 0) >= 0.2:
                 self._live_fusion_last = now_live
-                live_inputs = [c for c in cam_results if c.n_detections > 0]
-                if live_inputs:
-                    self.fusion.update(live_inputs)
-                    live_ranking = self.fusion.get_ranking()
-                    if live_ranking:
-                        state.set_rankings(self._build_rankings(live_ranking))
+                tt_ranking = self.time_tracker.get_ranking()
+                if tt_ranking:
+                    state.set_rankings(self._build_rankings(tt_ranking))
 
             # Inference FPS tracking
             fps_counter += 1
@@ -623,6 +653,7 @@ class DeepStreamPipeline:
     def reset(self):
         """Reset for new race."""
         self.fusion.reset()
+        self.time_tracker.reset()
         self._vote_engines.clear()
         self._cam_frame_count.clear()
         self._cam_first_analysis.clear()

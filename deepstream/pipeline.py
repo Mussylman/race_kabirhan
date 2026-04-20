@@ -24,8 +24,11 @@ from __future__ import annotations
 
 import json
 import os
+import queue
 import sys
+import threading
 import time
+import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -63,7 +66,7 @@ _COLOR_ID_TO_NAME = {v: k for k, v in _COLOR_NAME_TO_ID.items()}
 # Race-specific: today only these colors exist on the track; everything else
 # is a spectator / false positive. Override with env RV_ACTIVE_COLORS.
 _ACTIVE_COLORS = set(
-    os.environ.get("RV_ACTIVE_COLORS", "green,red,yellow").split(",")
+    os.environ.get("RV_ACTIVE_COLORS", "blue,green,purple,red,yellow").split(",")
 )
 _ACTIVE_IDS = {cid for name, cid in _COLOR_NAME_TO_ID.items() if name in _ACTIVE_COLORS}
 
@@ -99,6 +102,84 @@ def _point_in_polygon(x: float, y: float, poly: list[tuple[float, float]]) -> bo
             inside = not inside
         j = i
     return inside
+
+# ── FrameSaver: snapshot когда на камере ≥N классифицированных жокеев ──
+_SNAP_MIN_COUNT  = int(os.environ.get("RV_SNAP_MIN", "3"))
+_SNAP_RATE_SEC   = float(os.environ.get("RV_SNAP_RATE_SEC", "2.0"))
+_SNAP_GO2RTC_API = os.environ.get("RV_GO2RTC_API", "http://localhost:1984")
+_SNAP_INVERT     = os.environ.get("RV_INVERT_TRACK", "1") == "1"
+
+
+def _make_exp_dir() -> Path:
+    """Create runs/exp_NNN_YYYYMMDD_HHMMSS/ with next sequential N."""
+    base = REPO_ROOT / "runs"
+    base.mkdir(exist_ok=True)
+    nums = []
+    for p in base.iterdir():
+        if p.is_dir() and p.name.startswith("exp_"):
+            parts = p.name.split("_")
+            if len(parts) >= 2 and parts[1].isdigit():
+                nums.append(int(parts[1]))
+    next_num = (max(nums) + 1) if nums else 1
+    ts = time.strftime("%Y%m%d_%H%M%S")
+    d = base / f"exp_{next_num:03d}_{ts}"
+    d.mkdir()
+    return d
+
+
+class FrameSaver:
+    """Async snapshot saver. Non-blocking for the probe thread: puts jobs
+    on a bounded queue; a worker thread fetches JPEG from go2rtc and writes
+    to disk. Rate-limited per camera."""
+
+    def __init__(self, exp_dir: Path, min_count: int, rate_sec: float):
+        self.exp_dir   = exp_dir
+        self.min_count = min_count
+        self.rate_sec  = rate_sec
+        self.last_save = {}   # cam_id -> monotonic ts
+        self.q         = queue.Queue(maxsize=50)
+        self.stop      = threading.Event()
+        self.thread    = threading.Thread(target=self._worker, daemon=True)
+        self.thread.start()
+        print(f"[saver] experiment dir: {exp_dir}  trigger ≥{min_count} jockeys, rate {rate_sec}s/cam",
+              flush=True)
+
+    def maybe_trigger(self, cam_id: str, classified: list[tuple[float, str]]):
+        """classified = [(x1, color_name), ...] — only active-color dets."""
+        if len(classified) < self.min_count:
+            return
+        now = time.monotonic()
+        if now - self.last_save.get(cam_id, 0) < self.rate_sec:
+            return
+        self.last_save[cam_id] = now
+        try:
+            self.q.put_nowait((cam_id, list(classified), time.time()))
+        except queue.Full:
+            pass  # drop: under overload we'd rather skip than block
+
+    def _worker(self):
+        while not self.stop.is_set():
+            try:
+                cam_id, dets, ts = self.q.get(timeout=0.5)
+            except queue.Empty:
+                continue
+            try:
+                url = f"{_SNAP_GO2RTC_API}/api/frame.jpeg?src={cam_id}"
+                with urllib.request.urlopen(url, timeout=3) as r:
+                    jpg = r.read()
+                # ranking within this frame: leader = leftmost if inverted
+                ordered = sorted(dets, key=lambda d: d[0], reverse=not _SNAP_INVERT)
+                seq = "-".join(f"{i+1}{c[:3]}" for i, (_, c) in enumerate(ordered))
+                tstr = time.strftime("%H%M%S", time.localtime(ts))
+                fname = f"{cam_id}_{tstr}_{len(ordered)}j_{seq}.jpg"
+                (self.exp_dir / fname).write_bytes(jpg)
+            except Exception as e:
+                # silent-ish: one line per failure, no stack spam
+                print(f"[saver] {cam_id}: {e}", flush=True)
+
+    def close(self):
+        self.stop.set()
+
 
 # RGB (0-1) for OSD border_color — bright so it shows well on video
 _COLOR_RGB_NORMALISED = {
@@ -187,6 +268,13 @@ class DetectionProbe(BatchMetadataOperator):
             self.csv_fp = open(self.csv_path, "w", buffering=1)
             self.csv_fp.write("frame,cam_id,x1,y1,w,h,yolo_conf,color,color_conf\n")
 
+        # Frame saver (async snapshots when ≥N classified jockeys on a frame).
+        # Disable by setting RV_SNAP_MIN=0.
+        self.frame_saver: FrameSaver | None = None
+        if _SNAP_MIN_COUNT > 0:
+            exp_dir = Path(os.environ["RV_EXP_DIR"]) if os.environ.get("RV_EXP_DIR") else _make_exp_dir()
+            self.frame_saver = FrameSaver(exp_dir, _SNAP_MIN_COUNT, _SNAP_RATE_SEC)
+
     @staticmethod
     def _extract_color(obj) -> tuple[int, float]:
         """Pull color label via obj.label — populated by SGIE custom parser's
@@ -242,6 +330,7 @@ class DetectionProbe(BatchMetadataOperator):
             n_passed   = 0
             n_with_cls = 0
 
+            classified_in_frame: list[tuple[float, str]] = []
             dets = []
             for obj in frame_meta.object_items:
                 n_all_objs += 1
@@ -302,7 +391,7 @@ class DetectionProbe(BatchMetadataOperator):
                 if verbose:
                     print(f"  [det cam={self.cam_ids[pad]} conf={obj.confidence:.2f} "
                           f"bbox={int(x2-x1)}x{int(y2-y1)}] "
-                          f"obj.label={obj_label!r} "
+                          f"obj.label={getattr(obj, 'label', '')!r} "
                           f"resolved={_COLOR_ID_TO_NAME.get(color_id, '?')}",
                           flush=True)
                     self.debug_budget -= 1
@@ -314,6 +403,7 @@ class DetectionProbe(BatchMetadataOperator):
 
                 if color_id != COLOR_UNKNOWN:
                     n_with_cls += 1
+                    classified_in_frame.append((float(x1), _COLOR_ID_TO_NAME[color_id]))
 
                 # CSV dump: every PGIE detection that passed bbox filter,
                 # whether classified or not
@@ -350,6 +440,10 @@ class DetectionProbe(BatchMetadataOperator):
                       f"all_objs={n_all_objs} persons={n_persons} "
                       f"filter_pass={n_passed} classified={n_with_cls}", flush=True)
                 self.debug_frames += 1
+
+            # Snapshot trigger: ≥N classified jockeys on this camera frame
+            if self.frame_saver is not None and classified_in_frame:
+                self.frame_saver.maybe_trigger(self.cam_ids[pad], classified_in_frame)
 
             # All texts for this frame are ready — now append the display_meta
             if dm is not None:
@@ -524,6 +618,8 @@ def main(args):
         print("\n[pipeline] interrupted")
     finally:
         probe_op.report()
+        if getattr(probe_op, "frame_saver", None):
+            probe_op.frame_saver.close()
         plugin.destroy_shm(shm_handle)
 
 

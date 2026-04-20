@@ -181,6 +181,8 @@ def run(args: argparse.Namespace) -> None:
         log.warning("interrupted by user")
     finally:
         probe_op.report()
+        if getattr(probe_op, "frame_saver", None):
+            probe_op.frame_saver.close()
         plugin.destroy_shm(shm_handle)
         log.info("shutdown complete")
 

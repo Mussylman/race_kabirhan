@@ -26,7 +26,7 @@ RES_H="${RV_RES_H:-720}"
 RES_CHANNEL="${RV_RES_CHANNEL:-102}"   # Hikvision substream
 BITRATE="${RV_BITRATE:-8192}"          # kbps
 RES_INTERVAL="${RV_RES_INTERVAL:-60}"  # seconds
-ACTIVE_COLORS="${RV_ACTIVE_COLORS:-green,red,yellow}"
+ACTIVE_COLORS="${RV_ACTIVE_COLORS:-blue,green,purple,red,yellow}"
 FRONTEND_DIR="${RV_FRONTEND_DIR:-Kabirhan-Frontend}"
 GO2RTC_BIN="${RV_GO2RTC_BIN:-bin/go2rtc}"
 GO2RTC_CFG="${RV_GO2RTC_CFG:-configs/go2rtc_live.yaml}"
@@ -101,9 +101,13 @@ start_ds() {
         return
     fi
     rm -f /dev/shm/rv_detections /dev/shm/sem.rv_detections_sem 2>/dev/null || true
+    local ds_extra=""
+    if [[ -n "${RV_DS_LIMIT:-}" ]]; then
+        ds_extra="--limit $RV_DS_LIMIT"
+    fi
     RV_ACTIVE_COLORS="$ACTIVE_COLORS" \
       setsid python3 -m deepstream.main \
-        --cameras "$CAMERAS_CFG" \
+        --cameras "$CAMERAS_CFG" $ds_extra \
         >"$(svc_log ds)" 2>&1 &
     echo $! > "$PID_DIR/ds.pid"
     echo "  ds      $(color_green started) PID=$! log=$(svc_log ds)"
