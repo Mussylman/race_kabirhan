@@ -98,7 +98,7 @@ def apply_resolution(xml_body: str, width: int, height: int) -> tuple[str, tuple
 
 
 def set_one_camera(cam: dict, channel: int, width: int, height: int,
-                   dry_run: bool) -> str:
+                   dry_run: bool, dump_xml: Path | None = None) -> str:
     """Handle one camera. Returns a status string for logging."""
     creds = parse_rtsp_url(cam["url"])
     if not creds["host"]:
@@ -111,6 +111,10 @@ def set_one_camera(cam: dict, channel: int, width: int, height: int,
     except Exception as e:
         return f"GET FAIL ({type(e).__name__}: {e})"
 
+    if dump_xml is not None:
+        dump_xml.write_text(xml)
+        print(f"    dumped GET XML ({len(xml)} bytes) → {dump_xml}")
+
     new_xml, old_res = apply_resolution(xml, width, height)
     if old_res == (width, height):
         return f"already {width}x{height}"
@@ -119,9 +123,18 @@ def set_one_camera(cam: dict, channel: int, width: int, height: int,
         return f"DRY would change {old_res} → {width}x{height}"
 
     try:
-        put_stream_xml(auth, creds["host"], channel, new_xml)
+        resp_text = put_stream_xml(auth, creds["host"], channel, new_xml)
     except requests.HTTPError as e:
-        return f"PUT FAIL ({e.response.status_code})"
+        msg = f"PUT FAIL ({e.response.status_code})"
+        # Save response body on first 500 so we can read the real error
+        if dump_xml is not None:
+            (dump_xml.parent / (dump_xml.stem + "_put_response.xml")).write_text(
+                e.response.text or "<empty>")
+            try:
+                (dump_xml.parent / (dump_xml.stem + "_put_sent.xml")).write_text(new_xml)
+            except Exception:
+                pass
+        return msg
     except Exception as e:
         return f"PUT FAIL ({type(e).__name__}: {e})"
     return f"OK {old_res} → {width}x{height}"
@@ -133,11 +146,23 @@ def main():
                     help="cameras_live.json-style config")
     ap.add_argument("--channel", type=int, default=101,
                     help="ISAPI streaming channel (101=main, 102=sub)")
-    ap.add_argument("--width",   type=int, default=2560)
-    ap.add_argument("--height",  type=int, default=1440)
+    # 2688x1520 = native 4MP Hikvision; supported by all our cameras.
+    # 2560x1440 sounds right but is NOT in their capability list.
+    ap.add_argument("--width",   type=int, default=2688)
+    ap.add_argument("--height",  type=int, default=1520)
     ap.add_argument("--watch",   type=int, default=0,
                     help="if > 0, re-apply every N seconds instead of exiting")
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--dump", default=None,
+                    help="on failure/first pass, dump GET XML and PUT response "
+                         "for the FIRST camera to this file (for debugging).")
+    ap.add_argument("--show-caps", action="store_true",
+                    help="Query /ISAPI/Streaming/channels/{ch}/capabilities for "
+                         "each camera and print supported resolutions. "
+                         "Nothing is modified.")
+    ap.add_argument("--auto", action="store_true",
+                    help="Pick the HIGHEST resolution supported by ALL cameras "
+                         "(queries /capabilities first). Overrides --width/--height.")
     args = ap.parse_args()
 
     cfg = json.loads(Path(args.cameras).read_text())
@@ -146,13 +171,79 @@ def main():
     if only:
         cams = [c for c in cams if c["id"] in only]
 
+    if args.show_caps:
+        print(f"Querying capabilities on channel {args.channel} ...")
+        for cam in cams:
+            creds = parse_rtsp_url(cam["url"])
+            if not creds["host"]:
+                continue
+            auth = HTTPDigestAuth(creds["user"], creds["password"])
+            url = f"http://{creds['host']}/ISAPI/Streaming/channels/{args.channel}/capabilities"
+            try:
+                r = requests.get(url, auth=auth, timeout=5)
+                r.raise_for_status()
+                body = r.text
+            except Exception as e:
+                print(f"  {cam['id']:8s} {creds['host']:15s}  FAIL ({type(e).__name__})")
+                continue
+            # Parse <videoResolutionWidth opt="W1,W2,..."> and height equivalent
+            w_opt = re.search(r'videoResolutionWidth[^>]*opt="([^"]+)"', body)
+            h_opt = re.search(r'videoResolutionHeight[^>]*opt="([^"]+)"', body)
+            codec  = re.search(r'videoCodecType[^>]*opt="([^"]+)"', body)
+            if w_opt and h_opt:
+                widths  = w_opt.group(1).split(",")
+                heights = h_opt.group(1).split(",")
+                combos  = set()
+                for w, h in zip(widths, heights):
+                    combos.add((w.strip(), h.strip()))
+                pairs = sorted({(int(w), int(h)) for w, h in combos}, reverse=True)
+                pair_str = ", ".join(f"{w}x{h}" for w, h in pairs)
+                codec_s = codec.group(1) if codec else "?"
+                print(f"  {cam['id']:8s} {creds['host']:15s}  codec={codec_s}  resolutions: {pair_str}")
+            else:
+                print(f"  {cam['id']:8s} {creds['host']:15s}  opt attr missing — dumping:")
+                print(body[:500])
+        return
+
+    if args.auto:
+        # Intersect supported resolutions across all reachable cameras
+        common = None
+        for cam in cams:
+            creds = parse_rtsp_url(cam["url"])
+            if not creds["host"]:
+                continue
+            auth = HTTPDigestAuth(creds["user"], creds["password"])
+            url = f"http://{creds['host']}/ISAPI/Streaming/channels/{args.channel}/capabilities"
+            try:
+                r = requests.get(url, auth=auth, timeout=5)
+                r.raise_for_status()
+            except Exception:
+                continue
+            w_opt = re.search(r'videoResolutionWidth[^>]*opt="([^"]+)"', r.text)
+            h_opt = re.search(r'videoResolutionHeight[^>]*opt="([^"]+)"', r.text)
+            if not (w_opt and h_opt):
+                continue
+            combos = {(int(w.strip()), int(h.strip()))
+                      for w, h in zip(w_opt.group(1).split(","),
+                                      h_opt.group(1).split(","))}
+            common = combos if common is None else (common & combos)
+        if not common:
+            print("AUTO: couldn't build a common resolution set; falling back to "
+                  f"{args.width}x{args.height}")
+        else:
+            # Pick largest by total pixels; tie-break by width
+            best = max(common, key=lambda p: (p[0] * p[1], p[0]))
+            args.width, args.height = best
+            print(f"AUTO picked {args.width}x{args.height} (common to {len(cams)} cams)")
+
     print(f"Target: channel={args.channel}  resolution={args.width}x{args.height}")
     print(f"Cameras: {len(cams)}  (dry_run={args.dry_run}, watch={args.watch}s)")
 
     def pass_once():
-        for cam in cams:
+        for i, cam in enumerate(cams):
+            dump = Path(args.dump) if (args.dump and i == 0) else None
             status = set_one_camera(cam, args.channel, args.width, args.height,
-                                    args.dry_run)
+                                    args.dry_run, dump_xml=dump)
             creds = parse_rtsp_url(cam["url"])
             print(f"  {cam['id']:8s} {creds['host']:15s}  {status}")
 
