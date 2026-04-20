@@ -133,8 +133,58 @@ cd Kabirhan-Frontend && npm run dev
 |---|---|---|
 | `RV_ACTIVE_COLORS` | `green,red,yellow` | Цвета силков сегодня. Остальное → UNK (фильтр зрителей). |
 | `RV_INVERT_TRACK` | `1` | Инвертировать ось трассы (leftmost = лидер). `0` если жокеи движутся слева→направо. |
+| `RV_ROI_FILE` | `configs/camera_roi_normalized.json` | JSON с полигонами ROI (нормализованные 0-1). Детекция центром вне ROI → отбрасывается. Если файла нет — фильтр не применяется. |
 | `RV_DEBUG_PROBE` | `0` | Verbose probe, отключает OSD (диагностика). |
 | `RV_DUMP_CSV` | unset | Путь к CSV для всех детекций. Для оффлайн-анализа. |
+
+## 4a. Редактирование ROI (каждая камера → полигон "где трасса")
+
+Инструмент-редактор рисует полигон поверх реального стоп-кадра с каждой камеры.
+
+```bash
+cd ~/"Рабочий стол/Ipodrom-Project/user/race_vision"
+python3 tools/roi_server.py
+# Автоматически снимет по 1 кадру с каждой RTSP-камеры в /tmp/roi_frames/
+# и запустит HTTP-редактор на http://localhost:8899
+```
+
+В браузере: ← / → переключение камер, клик = точка, Enter = закрыть полигон,
+Ctrl+S = сохранить в `configs/camera_roi.json`. Для нормализации (чтобы
+ROI работала на любом mux resolution):
+
+```bash
+python3 -c "
+import json
+from pathlib import Path
+r = json.loads(Path('configs/camera_roi.json').read_text())
+# frame size: 1280x720 for our recorded files, 2688x1520 for live Hik cams.
+# roi_editor сохраняет в оригинальных пикселях кадра. Вот нормализация:
+sizes = {}  # fill per cam: {'cam-01': (1280, 720), ...}
+import subprocess
+for cam_id in r:
+    # Read frame size from saved JPEG
+    try:
+        out = subprocess.check_output(['identify', '-format', '%wx%h',
+                                       f'/tmp/roi_frames/{cam_id}.jpg'])
+        w, h = map(int, out.decode().strip().split('x'))
+        sizes[cam_id] = (w, h)
+    except Exception:
+        sizes[cam_id] = (1280, 720)
+norm = {}
+for cam_id, polys in r.items():
+    w, h = sizes[cam_id]
+    norm[cam_id] = [[{'x': p['x']/w, 'y': p['y']/h} for p in poly] for poly in polys]
+Path('configs/camera_roi_normalized.json').write_text(json.dumps(norm, indent=2))
+print(f'wrote normalized ROI for {len(norm)} cameras')
+"
+```
+
+ROI применяется автоматически при следующем запуске DS pipeline. Если надо
+переопределить путь:
+
+```bash
+RV_ROI_FILE=/path/to/my_roi.json python3 -m deepstream.main --cameras ...
+```
 
 Пример боевого запуска:
 

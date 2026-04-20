@@ -67,6 +67,39 @@ _ACTIVE_COLORS = set(
 )
 _ACTIVE_IDS = {cid for name, cid in _COLOR_NAME_TO_ID.items() if name in _ACTIVE_COLORS}
 
+
+def _load_roi_polygons(path: Path) -> dict[str, list[list[tuple[float, float]]]]:
+    """Load normalized ROI polygons from JSON. Returns
+    {cam_id: [polygon1, polygon2, ...]} where each polygon is a list of
+    (x_norm, y_norm) pairs in [0, 1]."""
+    if not path.is_file():
+        return {}
+    data = json.loads(path.read_text())
+    out: dict[str, list[list[tuple[float, float]]]] = {}
+    for cam_id, polys in data.items():
+        cam_polys = []
+        for p in polys:
+            pts = [(float(pt["x"]), float(pt["y"])) for pt in p]
+            if len(pts) >= 3:
+                cam_polys.append(pts)
+        if cam_polys:
+            out[cam_id] = cam_polys
+    return out
+
+
+def _point_in_polygon(x: float, y: float, poly: list[tuple[float, float]]) -> bool:
+    """Ray-casting point-in-polygon test."""
+    n = len(poly)
+    inside = False
+    j = n - 1
+    for i in range(n):
+        xi, yi = poly[i]
+        xj, yj = poly[j]
+        if ((yi > y) != (yj > y)) and (x < (xj - xi) * (y - yi) / ((yj - yi) or 1e-12) + xi):
+            inside = not inside
+        j = i
+    return inside
+
 # RGB (0-1) for OSD border_color — bright so it shows well on video
 _COLOR_RGB_NORMALISED = {
     "blue":   (0.1, 0.4, 1.0),
@@ -135,6 +168,18 @@ class DetectionProbe(BatchMetadataOperator):
         self.debug_mode   = os.environ.get("RV_DEBUG_PROBE", "0") == "1"
         self.debug_budget = 60  # detailed lines for the first N detections, then quiet
         self.debug_frames = 0   # detailed header lines for the first N frames
+
+        # ROI: per-camera polygons in NORMALIZED coords. Detections whose
+        # bbox centre falls outside all polygons are dropped (treated as
+        # not-a-jockey, e.g. spectator in stands).
+        roi_path = Path(
+            os.environ.get("RV_ROI_FILE",
+                           str(REPO_ROOT / "configs" / "camera_roi_normalized.json"))
+        )
+        self.roi_polygons = _load_roi_polygons(roi_path)
+        if self.roi_polygons:
+            print(f"[probe] ROI loaded for {len(self.roi_polygons)} cameras from {roi_path.name}",
+                  flush=True)
         # CSV dump of every classified detection — for offline analysis
         self.csv_path     = os.environ.get("RV_DUMP_CSV") or None
         self.csv_fp       = None
@@ -210,6 +255,16 @@ class DetectionProbe(BatchMetadataOperator):
                 y2 = y1 + rp.height
                 if not self._passes_filters(x1, y1, x2, y2):
                     continue
+
+                # ROI: if polygons defined for this cam, bbox centre must
+                # lie inside at least one polygon (normalized coords).
+                polys = self.roi_polygons.get(self.cam_ids[pad])
+                if polys:
+                    cx_n = (x1 + x2) * 0.5 / self.mux_width
+                    cy_n = (y1 + y2) * 0.5 / self.mux_height
+                    if not any(_point_in_polygon(cx_n, cy_n, p) for p in polys):
+                        continue
+
                 n_passed += 1
 
                 # Extract color + confidence. Our custom parser encodes
