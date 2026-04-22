@@ -203,6 +203,49 @@ class TrackTopology:
                 result.append(cam_id)
         return result
 
+    def camera_center(self, cam_id: str) -> Optional[float]:
+        """Midpoint of a camera's track coverage (meters)."""
+        seg = self._segments.get(cam_id)
+        if seg is None:
+            return None
+        return 0.5 * (seg.track_start_m + seg.track_end_m)
+
+    def distance_along(self, cam_a: str, cam_b: str,
+                       direction: str = "forward") -> Optional[float]:
+        """Signed distance along the track from cam_a's center to cam_b's center.
+
+        Args:
+            cam_a, cam_b: camera ids
+            direction: "forward"  → positive if cam_b is ahead of cam_a
+                       "shortest" → always positive, wraps around track
+                       "signed"   → simple (cam_b - cam_a), can be negative
+
+        Returns None if either camera is unknown.
+
+        Used by IdentityResolver's spatio-temporal mask:
+            dt = now - last_seen.ts
+            dx = topo.distance_along(last_seen.cam, current_cam, "forward")
+            reachable = 0 <= dx <= v_max * (dt + slack)
+        """
+        a = self.camera_center(cam_a)
+        b = self.camera_center(cam_b)
+        if a is None or b is None:
+            return None
+        raw = b - a
+        if direction == "signed":
+            return raw
+        if direction == "shortest":
+            L = self.track_length
+            if L <= 0:
+                return abs(raw)
+            d = raw % L
+            return min(d, L - d)
+        # forward (default): positive ahead, wraps around for an oval track
+        L = self.track_length
+        if L <= 0:
+            return raw
+        return raw % L
+
     @property
     def cameras(self) -> dict[str, CameraSegment]:
         return dict(self._segments)

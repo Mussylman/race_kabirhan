@@ -87,6 +87,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Analytics router (post-hoc detection browsing + ReID labeler).
+# Safe to mount regardless of pipeline state: all endpoints are read-only
+# against on-disk JSONL/MP4 recordings.
+try:
+    from api.analytics.router import build_analytics_router
+    app.include_router(build_analytics_router())
+except Exception as _e:  # pragma: no cover - non-fatal if optional deps missing
+    import logging as _logging
+    _logging.getLogger(__name__).warning(
+        "Analytics router not mounted: %s", _e
+    )
+
 ws_clients: set[WebSocket] = set()
 
 # Global pipeline references

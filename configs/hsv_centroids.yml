@@ -1,0 +1,54 @@
+# HSV centroids for silk color classification.
+#
+# Each color has one or more Hue centroids (OpenCV H ∈ [0, 180]) measured
+# on real footage. A detection is assigned to the nearest centroid by
+# circular distance in H space. S/V are used only for masking (filter out
+# background, shadows, highlights) — not for classification itself.
+#
+# Calibration procedure (tools/calibrate_hsv.py):
+#   1. Pick 50+ bbox crops per color with conf > 90% from ground truth
+#   2. Mask: S > min_saturation AND V ∈ [min_value, max_value]
+#   3. Take median H of masked pixels from upper-half central-width region
+#   4. Aggregate median across crops → centroid
+#
+# Initial values are rough estimates from OpenCV standard color ranges.
+# REPLACE with calibrated values after running tools/calibrate_hsv.py
+# on recordings 1 and 2.
+
+version: 1
+
+# Masking thresholds (applied before H extraction)
+mask:
+  min_saturation: 80      # 0-255, ignore desaturated (shadows, background)
+  min_value: 40           # 0-255, ignore near-black (shadows)
+  max_value: 240          # 0-255, ignore near-white (highlights, sun)
+  min_pixels: 30          # minimum masked pixels to classify; else return null
+
+# Crop region (fraction of bbox) — torso/silk area only
+region:
+  y_start: 0.10           # skip hat/head
+  y_end: 0.55             # skip pants/saddle/legs
+  x_start: 0.25
+  x_end: 0.75
+
+# Tolerance in Hue-degrees before confidence drops below acceptable
+tolerance_h: 18           # ± this many H units = full confidence
+max_distance_h: 30        # beyond this = return null (unknown)
+
+# Color centroids. For red (wraps around H=0), multiple centroids allowed.
+colors:
+  red:
+    hue_centroids: [0, 175]   # wraps around 0/180 boundary
+    notes: "Pure red wraps around H=0; calibrate against actual silks"
+  yellow:
+    hue_centroids: [25]
+    notes: "Yellow silks, sometimes pick up orange in sunlight"
+  green:
+    hue_centroids: [55]
+    notes: "Green silks"
+  blue:
+    hue_centroids: [110]
+    notes: "Blue silks (careful: shade of sky can read similar)"
+  purple:
+    hue_centroids: [140]
+    notes: "Purple/violet silks"
