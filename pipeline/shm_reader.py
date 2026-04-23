@@ -97,7 +97,7 @@ class _Timespec(ctypes.Structure):
 class SharedMemoryReader:
     """Reads detection results from POSIX shared memory written by DeepStream C++."""
 
-    def __init__(self, timeout_ms: int = 20):
+    def __init__(self, timeout_ms: int = 200):
         """
         Args:
             timeout_ms: sem_timedwait timeout in milliseconds.
@@ -190,123 +190,103 @@ class SharedMemoryReader:
 
         Blocks up to timeout_ms. Returns None if no new data.
         Returns list of CameraDetections if new data is available.
-
-        Uses a seqlock-style retry: re-reads write_seq after parsing all slots
-        and retries if the writer committed mid-parse (torn snapshot). After
-        MAX_TORN_RETRIES, accepts the last snapshot to avoid starvation.
         """
         if not self._attached:
             return None
 
-        # sem_timedwait (best-effort — fall through to poll write_seq even on timeout)
-        self._wait_semaphore()
+        # sem_timedwait
+        if not self._wait_semaphore():
+            return None
 
-        MAX_TORN_RETRIES = 4
-        results: list[CameraDetections] = []
-        pending_logs: list[tuple] = []
-        seq_before = 0
-        seq_after = 0
+        # Check if sequence changed
+        self._shm_buf.seek(0)
+        header_data = self._shm_buf.read(SHM_HEADER_SIZE)
+        write_seq, num_cameras, _ = struct.unpack(SHM_HEADER_FMT, header_data)
 
-        for attempt in range(MAX_TORN_RETRIES + 1):
-            # Read header → seq_before
-            self._shm_buf.seek(0)
-            header_data = self._shm_buf.read(SHM_HEADER_SIZE)
-            seq_before, num_cameras, _ = struct.unpack(SHM_HEADER_FMT, header_data)
+        if write_seq == self._last_seq:
+            return None  # No new data
 
-            if seq_before == self._last_seq:
-                return None  # No new data
+        self._last_seq = write_seq
 
-            results = []
-            pending_logs = []
-            num_cameras = min(num_cameras, MAX_CAMERAS)
+        # Parse camera slots
+        results = []
+        num_cameras = min(num_cameras, MAX_CAMERAS)
 
-            for i in range(num_cameras):
-                offset = SHM_HEADER_SIZE + i * CAMERA_SLOT_SIZE
-                self._shm_buf.seek(offset)
+        for i in range(num_cameras):
+            offset = SHM_HEADER_SIZE + i * CAMERA_SLOT_SIZE
+            self._shm_buf.seek(offset)
 
-                slot_header = self._shm_buf.read(CAMERA_SLOT_HEADER_SIZE)
-                (cam_id_raw, timestamp_us, frame_w, frame_h,
-                 num_dets, _pad) = struct.unpack(CAMERA_SLOT_HEADER_FMT, slot_header)
+            # Read camera slot header
+            slot_header = self._shm_buf.read(CAMERA_SLOT_HEADER_SIZE)
+            (cam_id_raw, timestamp_us, frame_w, frame_h,
+             num_dets, _pad) = struct.unpack(CAMERA_SLOT_HEADER_FMT, slot_header)
 
-                cam_id = cam_id_raw.rstrip(b'\x00').decode('ascii', errors='replace')
-                num_dets = min(num_dets, MAX_DETECTIONS)
-                ts_capture = timestamp_us / 1e6
+            cam_id = cam_id_raw.rstrip(b'\x00').decode('ascii', errors='replace')
+            num_dets = min(num_dets, MAX_DETECTIONS)
 
+            ts_capture = timestamp_us / 1e6
+
+            if num_dets == 0:
+                # No detections — still create empty CameraDetections for stale tracking
                 cam_result = CameraDetections(cam_id, frame_w, frame_h)
                 cam_result.timestamp = ts_capture
-                cam_result.frame_seq = seq_before
-
-                for j in range(num_dets):
-                    det_data = self._shm_buf.read(DETECTION_SIZE)
-                    (x1, y1, x2, y2, center_x, det_conf,
-                     color_id, color_conf,
-                     p0, p1, p2, p3, p4,
-                     track_id) = struct.unpack(DETECTION_FMT, det_data)
-
-                    if color_id < NUM_COLORS:
-                        color = COLOR_NAMES[color_id]
-                    else:
-                        color = "unknown"
-
-                    prob_dict = {
-                        COLOR_NAMES[k]: round(p, 4)
-                        for k, p in enumerate([p0, p1, p2, p3, p4])
-                    }
-
-                    det = {
-                        'bbox': (int(x1), int(y1), int(x2), int(y2)),
-                        'center_x': float(center_x),
-                        'det_conf': float(det_conf),
-                        'color': color,
-                        'conf': float(color_conf),
-                        'prob_dict': prob_dict,
-                        'cam_id': cam_id,
-                        'track_id': int(track_id),
-                    }
-                    cam_result.add(det)
-
-                if num_dets > 0:
-                    pending_logs.append((cam_id, ts_capture, num_dets, cam_result))
-
+                cam_result.frame_seq = write_seq
                 results.append(cam_result)
+                continue
 
-            # Re-read write_seq AFTER parsing — detect torn snapshot
-            self._shm_buf.seek(0)
-            seq_after, _, _ = struct.unpack(
-                SHM_HEADER_FMT, self._shm_buf.read(SHM_HEADER_SIZE)
-            )
+            cam_result = CameraDetections(cam_id, frame_w, frame_h)
+            cam_result.timestamp = ts_capture
+            cam_result.frame_seq = write_seq
 
-            if seq_after == seq_before:
-                self._last_seq = seq_before
-                self._emit_read_logs(pending_logs, seq_before)
-                agg.flush_if_due()
-                return results if results else None
+            # Read detections
+            for j in range(num_dets):
+                det_data = self._shm_buf.read(DETECTION_SIZE)
+                (x1, y1, x2, y2, center_x, det_conf,
+                 color_id, color_conf,
+                 p0, p1, p2, p3, p4,
+                 track_id) = struct.unpack(DETECTION_FMT, det_data)
 
-            # Torn read — writer committed mid-parse, retry
+                # Map color_id to color name
+                if color_id < NUM_COLORS:
+                    color = COLOR_NAMES[color_id]
+                else:
+                    color = "unknown"
 
-        log.warning(
-            "shm_reader: torn read after %d retries (writer outpacing reader); "
-            "accepting last snapshot with seq=%d",
-            MAX_TORN_RETRIES, seq_after,
-        )
-        self._last_seq = seq_after
-        self._emit_read_logs(pending_logs, seq_after)
+                # Build prob_dict
+                prob_dict = {
+                    COLOR_NAMES[k]: round(p, 4)
+                    for k, p in enumerate([p0, p1, p2, p3, p4])
+                }
+
+                det = {
+                    'bbox': (int(x1), int(y1), int(x2), int(y2)),
+                    'center_x': float(center_x),
+                    'det_conf': float(det_conf),
+                    'color': color,
+                    'conf': float(color_conf),
+                    'prob_dict': prob_dict,
+                    'cam_id': cam_id,
+                    'track_id': int(track_id),
+                }
+                cam_result.add(det)
+
+            # SHM_READ log — throttled to 1/2s per camera (every frame when LOG_TIMING)
+            if num_dets > 0:
+                now = time.time()
+                age_ms = (now - ts_capture) * 1000
+                agg.record_shm(cam_id, age_ms)
+                key = f"SHM_READ:{cam_id}"
+                extra: dict = {"dets": num_dets, "ts_capture": ts_capture, "age_ms": age_ms}
+                if LOG_GEOMETRY and cam_result.detections:
+                    first = cam_result.detections[0]
+                    extra["bbox0"] = str(first.get("bbox", "?"))
+                if throttle.allow(key, interval=2.0):
+                    slog("SHM_READ", cam_id, write_seq, now, **extra)
+
+            results.append(cam_result)
+
         agg.flush_if_due()
         return results if results else None
-
-    def _emit_read_logs(self, pending_logs: list[tuple], write_seq: int) -> None:
-        # SHM_READ log — throttled to 1/2s per camera (every frame when LOG_TIMING)
-        now = time.time()
-        for cam_id, ts_capture, num_dets, cam_result in pending_logs:
-            age_ms = (now - ts_capture) * 1000
-            agg.record_shm(cam_id, age_ms)
-            key = f"SHM_READ:{cam_id}"
-            extra: dict = {"dets": num_dets, "ts_capture": ts_capture, "age_ms": age_ms}
-            if LOG_GEOMETRY and cam_result.detections:
-                first = cam_result.detections[0]
-                extra["bbox0"] = str(first.get("bbox", "?"))
-            if throttle.allow(key, interval=2.0):
-                slog("SHM_READ", cam_id, write_seq, now, **extra)
 
     def _wait_semaphore(self) -> bool:
         """Wait on semaphore with timeout. Returns True if signaled."""
