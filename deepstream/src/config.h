@@ -63,7 +63,7 @@ struct __attribute__((packed)) CameraSlot {
     uint32_t frame_width;
     uint32_t frame_height;
     uint32_t num_detections;       // 0..MAX_DETECTIONS
-    uint32_t _pad;
+    uint32_t source_frame_num;     // per-source decoder frame index (GstBuffer PTS-derived)
     Detection detections[MAX_DETECTIONS];
 };
 static_assert(sizeof(CameraSlot) == 16 + 8 + 4 + 4 + 4 + 4 + 56 * MAX_DETECTIONS,

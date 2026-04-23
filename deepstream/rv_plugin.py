@@ -65,13 +65,13 @@ assert ctypes.sizeof(Detection) == 56, f"Detection size {ctypes.sizeof(Detection
 class CameraSlot(ctypes.Structure):
     _pack_ = 1
     _fields_ = [
-        ("cam_id",         ctypes.c_char * CAM_ID_LEN),
-        ("timestamp_us",   ctypes.c_uint64),
-        ("frame_width",    ctypes.c_uint32),
-        ("frame_height",   ctypes.c_uint32),
-        ("num_detections", ctypes.c_uint32),
-        ("_pad",           ctypes.c_uint32),
-        ("detections",     Detection * MAX_DETECTIONS),
+        ("cam_id",           ctypes.c_char * CAM_ID_LEN),
+        ("timestamp_us",     ctypes.c_uint64),
+        ("frame_width",      ctypes.c_uint32),
+        ("frame_height",     ctypes.c_uint32),
+        ("num_detections",   ctypes.c_uint32),
+        ("source_frame_num", ctypes.c_uint32),
+        ("detections",       Detection * MAX_DETECTIONS),
     ]
 
 
@@ -207,7 +207,8 @@ def make_detection(x1: float, y1: float, x2: float, y2: float,
 
 def make_camera_slot(cam_id: str, frame_w: int, frame_h: int,
                      timestamp_us: int,
-                     detections: Sequence[Detection]) -> CameraSlot:
+                     detections: Sequence[Detection],
+                     source_frame_num: int = 0) -> CameraSlot:
     slot = CameraSlot()
     enc = cam_id.encode("ascii")[:CAM_ID_LEN - 1]
     slot.cam_id = enc.ljust(CAM_ID_LEN, b"\x00")
@@ -216,6 +217,7 @@ def make_camera_slot(cam_id: str, frame_w: int, frame_h: int,
     slot.frame_height = frame_h
     n = min(len(detections), MAX_DETECTIONS)
     slot.num_detections = n
+    slot.source_frame_num = int(source_frame_num) & 0xFFFFFFFF
     for i in range(n):
         slot.detections[i] = detections[i]
     return slot

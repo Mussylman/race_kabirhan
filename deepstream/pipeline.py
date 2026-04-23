@@ -66,7 +66,7 @@ _COLOR_ID_TO_NAME = {v: k for k, v in _COLOR_NAME_TO_ID.items()}
 # Race-specific: today only these colors exist on the track; everything else
 # is a spectator / false positive. Override with env RV_ACTIVE_COLORS.
 _ACTIVE_COLORS = set(
-    os.environ.get("RV_ACTIVE_COLORS", "blue,green,purple,red,yellow").split(",")
+    os.environ.get("RV_ACTIVE_COLORS", "blue,green,red,yellow").split(",")
 )
 _ACTIVE_IDS = {cid for name, cid in _COLOR_NAME_TO_ID.items() if name in _ACTIVE_COLORS}
 
@@ -229,17 +229,31 @@ class DetectionProbe(BatchMetadataOperator):
     place to call rv_color_classify.
     """
 
-    # Detection filters (relaxed compared to old C++ defaults for jockeys)
-    MIN_BBOX_HEIGHT  = 40
-    MIN_ASPECT_RATIO = 0.2
-    EDGE_MARGIN      = 5
+    # Detection filters (env-tunable for distant jockeys on substream).
+    MIN_BBOX_HEIGHT  = int(os.environ.get("RV_MIN_BBOX_H", "20"))
+    MIN_ASPECT_RATIO = float(os.environ.get("RV_MIN_AR", "0.2"))
+    EDGE_MARGIN      = int(os.environ.get("RV_EDGE_MARGIN", "5"))
+
+    # Temporal stability: color must be seen N consecutive times on same
+    # track_id before ingesting to TimeTracker. Filters 1-off false classifications.
+    MIN_CONSEC = int(os.environ.get("RV_MIN_CONSEC", "3"))
 
     def __init__(self, plugin: RVPlugin, shm_handle, cam_ids: list[str],
-                 mux_width: int, mux_height: int, log_every: int = 50):
+                 mux_width: int, mux_height: int, log_every: int = 50,
+                 cam_uris: list[str] | None = None):
         super().__init__()
         self.plugin       = plugin
         self.shm_handle   = shm_handle
         self.cam_ids      = cam_ids
+        self.cam_uris: list[str] = list(cam_uris or [""] * len(cam_ids))
+        # Stability state: (cam_id, track_id) -> {color, count}
+        self._stability: dict[tuple[str, int], dict] = {}
+        # Extract last IP octet per cam for OSD display
+        import re as _re
+        self.cam_ips: list[str] = []
+        for u in self.cam_uris:
+            m = _re.search(r'@10\.223\.70\.(\d+)', u or "")
+            self.cam_ips.append(m.group(1) if m else "")
         self.mux_width    = mux_width
         self.mux_height   = mux_height
         self.log_every    = log_every
@@ -275,6 +289,46 @@ class DetectionProbe(BatchMetadataOperator):
             exp_dir = Path(os.environ["RV_EXP_DIR"]) if os.environ.get("RV_EXP_DIR") else _make_exp_dir()
             self.frame_saver = FrameSaver(exp_dir, _SNAP_MIN_COUNT, _SNAP_RATE_SEC)
 
+        # Audit logger — activated by RV_AUDIT=1. No-op otherwise.
+        try:
+            import sys
+            sys.path.insert(0, str(REPO_ROOT))
+            from api.audit_logger import AuditLogger
+            self.audit = AuditLogger.get()
+            if self.audit.enabled:
+                self.audit.set_roi_polygons(self.roi_polygons)
+                print(f"[probe] AUDIT enabled → {self.audit.audit_dir}", flush=True)
+        except Exception as e:
+            print(f"[probe] audit init failed: {e}", flush=True)
+            self.audit = None
+
+        # Standalone TimeTracker — horse-gated per-color first-arrival.
+        try:
+            from pipeline.time_tracker import TimeTracker
+            self.tracker = TimeTracker(cam_order=list(self.cam_ids))
+            print(f"[probe] TimeTracker active ({len(self.cam_ids)} cams, "
+                  f"horse-gated per-color first-arrival)", flush=True)
+        except Exception as e:
+            print(f"[probe] tracker init failed: {e}", flush=True)
+            self.tracker = None
+
+        # PASS snapshot saver: whenever a new color registers on a cam,
+        # grab the source video frame + draw bbox → output/pass_snaps/.
+        self._pass_snap_dir = Path(os.environ.get(
+            "RV_PASS_SNAP_DIR", str(REPO_ROOT / "output" / "pass_snaps")))
+        self._pass_snap_q: "queue.Queue" = queue.Queue(maxsize=100)
+        self._pass_snap_stop = threading.Event()
+        self._pass_snap_thread = threading.Thread(
+            target=self._pass_snap_worker, daemon=True,
+            name="PassSnapWorker",
+        )
+        try:
+            self._pass_snap_dir.mkdir(parents=True, exist_ok=True)
+            self._pass_snap_thread.start()
+            print(f"[probe] pass-snap saver → {self._pass_snap_dir}", flush=True)
+        except Exception as e:
+            print(f"[probe] pass-snap disabled: {e}", flush=True)
+
     @staticmethod
     def _extract_color(obj) -> tuple[int, float]:
         """Pull color label via obj.label — populated by SGIE custom parser's
@@ -286,6 +340,87 @@ class DetectionProbe(BatchMetadataOperator):
         if cid is not None:
             return cid, 1.0
         return COLOR_UNKNOWN, 0.0
+
+    def _pass_snap_worker(self):
+        """Async: pop snapshot jobs, extract frame from source mp4, draw bbox."""
+        try:
+            import cv2
+        except ImportError:
+            print("[probe] cv2 missing — pass-snap disabled", flush=True)
+            return
+        while not self._pass_snap_stop.is_set():
+            try:
+                job = self._pass_snap_q.get(timeout=0.5)
+            except queue.Empty:
+                continue
+            try:
+                cam_id = job["cam_id"]
+                uri    = job["uri"]
+                frame_idx = job["frame_idx"]
+                color  = job["color"]
+                bbox   = job["bbox"]           # mux coords
+                mux_w, mux_h = job["mux"]
+                cls    = job["cls"]
+                lg     = job["lg"]
+                path   = uri.replace("file://", "")
+                cap = cv2.VideoCapture(path)
+                if not cap.isOpened():
+                    continue
+                cap.set(cv2.CAP_PROP_POS_FRAMES, max(0, frame_idx))
+                ok, frame = cap.read()
+                cap.release()
+                if not ok or frame is None:
+                    continue
+                fh, fw = frame.shape[:2]
+                sx = fw / max(1, mux_w)
+                sy = fh / max(1, mux_h)
+                x1, y1, x2, y2 = bbox
+                x1, x2 = int(x1 * sx), int(x2 * sx)
+                y1, y2 = int(y1 * sy), int(y2 * sy)
+                col_bgr = {"red":(40,40,255),"blue":(255,100,30),
+                           "green":(50,220,50),"yellow":(30,220,255),
+                           "purple":(200,50,180)}.get(color,(200,200,200))
+                cv2.rectangle(frame, (x1,y1), (x2,y2), col_bgr, 3)
+                cv2.putText(frame, f"{color} cls{cls:.2f} lgt{lg:.1f}",
+                            (x1, max(30,y1-8)), cv2.FONT_HERSHEY_SIMPLEX,
+                            0.7, col_bgr, 2)
+                cv2.putText(frame, f"{cam_id}  frame {frame_idx}",
+                            (12, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.0,
+                            (255,255,255), 2)
+                cam_dir = self._pass_snap_dir / cam_id
+                cam_dir.mkdir(exist_ok=True)
+                out = cam_dir / f"{color}_{frame_idx:06d}.jpg"
+                cv2.imwrite(str(out), frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+            except Exception as e:
+                print(f"[pass-snap] {e}", flush=True)
+
+    @staticmethod
+    def _iou(a, b) -> float:
+        """IoU between two (x1,y1,x2,y2) bboxes."""
+        ix1 = max(a[0], b[0]); iy1 = max(a[1], b[1])
+        ix2 = min(a[2], b[2]); iy2 = min(a[3], b[3])
+        iw = max(0.0, ix2 - ix1); ih = max(0.0, iy2 - iy1)
+        inter = iw * ih
+        aw = max(0.0, a[2]-a[0]) * max(0.0, a[3]-a[1])
+        bw = max(0.0, b[2]-b[0]) * max(0.0, b[3]-b[1])
+        u = aw + bw - inter
+        return inter / u if u > 0 else 0.0
+
+    def _has_horse_overlap(self, person_bbox, horses) -> bool:
+        """Return True if person bbox overlaps any horse bbox (IoU ≥ 0.05
+        OR person's bottom-center inside horse rect — rider-on-horse prior)."""
+        px1, py1, px2, py2 = person_bbox
+        pcx = 0.5 * (px1 + px2)
+        pby = py2  # bottom of person
+        for h in horses:
+            hx1, hy1, hx2, hy2 = h
+            # a) bottom-center inside horse
+            if hx1 <= pcx <= hx2 and hy1 <= pby <= hy2:
+                return True
+            # b) general IoU fallback
+            if self._iou(person_bbox, h) >= 0.05:
+                return True
+        return False
 
     def _passes_filters(self, x1, y1, x2, y2) -> bool:
         w = x2 - x1
@@ -299,6 +434,14 @@ class DetectionProbe(BatchMetadataOperator):
         return True
 
     def handle_metadata(self, batch_meta):
+        try:
+            self._handle_metadata_impl(batch_meta)
+        except Exception as e:
+            import traceback
+            print(f"[probe] EXC: {e}", flush=True)
+            print(traceback.format_exc(), flush=True)
+
+    def _handle_metadata_impl(self, batch_meta):
         ts_us = int(time.time() * 1_000_000)
         wrote_any = False
 
@@ -319,19 +462,75 @@ class DetectionProbe(BatchMetadataOperator):
                 cam_label.x_offset     = 8
                 cam_label.y_offset     = 8
                 cam_label.font.name    = osd.FontFamily.Serif
-                cam_label.font.size    = 14
+                cam_label.font.size    = 6
                 cam_label.font.color   = osd.Color(1.0, 1.0, 0.0, 1.0)
                 cam_label.set_bg_color = True
                 cam_label.bg_color     = osd.Color(0.0, 0.0, 0.0, 0.7)
                 dm.add_text(cam_label)
 
+                # IP (last octet) — green label right of cam-id
+                ip_last = self.cam_ips[pad] if pad < len(self.cam_ips) else ""
+                if ip_last:
+                    ip_lbl = osd.Text()
+                    ip_lbl.display_text = f".{ip_last}".encode("ascii")
+                    ip_lbl.x_offset = 52
+                    ip_lbl.y_offset = 8
+                    ip_lbl.font.name = osd.FontFamily.Serif
+                    ip_lbl.font.size = 6
+                    ip_lbl.font.color = osd.Color(0.2, 1.0, 0.2, 1.0)
+                    ip_lbl.set_bg_color = True
+                    ip_lbl.bg_color = osd.Color(0.0, 0.0, 0.0, 0.7)
+                    dm.add_text(ip_lbl)
+
+                # ROI polygon — draw on a SEPARATE display_meta so it doesn't
+                # evict text/rect items from the primary dm (~16 item limit).
+                polys = self.roi_polygons.get(self.cam_ids[pad], [])
+                if polys:
+                    try:
+                        dm_roi = batch_meta.acquire_display_meta()
+                    except Exception:
+                        dm_roi = None
+                    if dm_roi is not None:
+                        drawn = 0
+                        for poly in polys:
+                            if drawn >= 14:
+                                break
+                            if len(poly) < 2:
+                                continue
+                            for k in range(len(poly)):
+                                if drawn >= 14:
+                                    break
+                                a = poly[k]
+                                b = poly[(k + 1) % len(poly)]
+                                line = osd.Line()
+                                line.x1 = int(a[0] * self.mux_width)
+                                line.y1 = int(a[1] * self.mux_height)
+                                line.x2 = int(b[0] * self.mux_width)
+                                line.y2 = int(b[1] * self.mux_height)
+                                line.width = 2
+                                line.color = osd.Color(0.0, 1.0, 0.0, 0.8)
+                                try:
+                                    dm_roi.add_line(line)
+                                    drawn += 1
+                                except Exception:
+                                    pass
+                        if drawn:
+                            frame_meta.append(dm_roi)
+
             n_all_objs = 0
             n_persons  = 0
+            n_horses   = 0
             n_passed   = 0
             n_with_cls = 0
+            n_horse_gate_rej = 0
 
             classified_in_frame: list[tuple[float, str]] = []
             dets = []
+            ts_now = time.time()
+
+            # Single pass — with horse-emission disabled in C++, all objects
+            # are persons. Keep horse-gate code dormant (empty list).
+            horse_bboxes: list[tuple[float, float, float, float]] = []
             for obj in frame_meta.object_items:
                 n_all_objs += 1
                 if obj.class_id != PERSON_CLASS_ID:
@@ -342,47 +541,76 @@ class DetectionProbe(BatchMetadataOperator):
                 y1 = rp.top
                 x2 = x1 + rp.width
                 y2 = y1 + rp.height
-                if not self._passes_filters(x1, y1, x2, y2):
-                    rp.border_width = 0  # hide OSD bbox for filter-rejected
+
+                passed_filters = self._passes_filters(x1, y1, x2, y2)
+                polys = self.roi_polygons.get(self.cam_ids[pad])
+                inside_roi = True
+                if polys:
+                    cx_n = (x1 + x2) * 0.5 / self.mux_width
+                    cy_n = (y1 + y2) * 0.5 / self.mux_height
+                    inside_roi = any(_point_in_polygon(cx_n, cy_n, p) for p in polys)
+
+                # Horse-gate only if horses detected (YOLO class 17 would populate
+                # horse_bboxes). With person-only emission it stays empty → gate skipped.
+                has_horse = True if not horse_bboxes else self._has_horse_overlap(
+                    (x1, y1, x2, y2), horse_bboxes)
+                if not has_horse:
+                    n_horse_gate_rej += 1
+
+                reject_reason = ""
+                if not passed_filters:
+                    reject_reason = "bbox_filter"
+                elif not inside_roi:
+                    reject_reason = "roi_outside"
+                elif not has_horse:
+                    reject_reason = "no_horse"
+
+                # Audit: log even rejects (for diagnosis)
+                if self.audit is not None and self.audit.enabled and reject_reason:
+                    self.audit.log_detection(
+                        cam_id=self.cam_ids[pad], ts=ts_now,
+                        frame_idx=self.frame_counts[pad],
+                        bbox=(x1, y1, x2, y2),
+                        frame_w=self.mux_width, frame_h=self.mux_height,
+                        color="", color_conf=0.0,
+                        det_conf=float(obj.confidence),
+                        passed_filters=passed_filters, inside_roi=inside_roi,
+                        written_to_shm=False,
+                        track_id=int(getattr(obj, "object_id", 0) or 0),
+                        reject_reason=reject_reason,
+                    )
+
+                if not passed_filters or not inside_roi or not has_horse:
+                    rp.border_width = 0
                     tp = getattr(obj, "text_params", None)
                     if tp is not None:
                         tp.display_text = b""
                     continue
-
-                # ROI: if polygons defined for this cam, bbox centre must
-                # lie inside at least one polygon (normalized coords).
-                polys = self.roi_polygons.get(self.cam_ids[pad])
-                if polys:
-                    cx_n = (x1 + x2) * 0.5 / self.mux_width
-                    cy_n = (y1 + y2) * 0.5 / self.mux_height
-                    if not any(_point_in_polygon(cx_n, cy_n, p) for p in polys):
-                        rp.border_width = 0  # hide OSD bbox for ROI-rejected
-                        tp = getattr(obj, "text_params", None)
-                        if tp is not None:
-                            tp.display_text = b""  # hide auto "green/red/..." label
-                        continue
 
                 n_passed += 1
 
                 # Extract color + confidence. Our custom parser encodes
                 # label as "red|0.95" because pyservicemaker hides
                 # attr.attributeConfidence.
-                color_id, color_conf = COLOR_UNKNOWN, 0.0
+                color_id, color_conf, color_logit = COLOR_UNKNOWN, 0.0, 0.0
                 for cls_meta in obj.classifier_items:
                     n_lab = int(getattr(cls_meta, "n_labels", 0))
                     for j in range(n_lab):
                         raw = cls_meta.get_n_label(j) or ""
-                        if "|" in raw:
-                            lbl, _, conf_s = raw.partition("|")
-                            try:
-                                prob = float(conf_s)
-                            except ValueError:
-                                prob = 0.0
-                        else:
-                            lbl, prob = raw, 1.0
+                        # Format from parser: "color|prob|logit"
+                        parts = raw.split("|")
+                        lbl = parts[0]
+                        prob = 1.0
+                        logit = 0.0
+                        if len(parts) >= 2:
+                            try: prob = float(parts[1])
+                            except ValueError: prob = 0.0
+                        if len(parts) >= 3:
+                            try: logit = float(parts[2])
+                            except ValueError: logit = 0.0
                         cid = _COLOR_NAME_TO_ID.get(lbl.strip().lower())
                         if cid is not None:
-                            color_id, color_conf = cid, prob
+                            color_id, color_conf, color_logit = cid, prob, logit
                             break
                     if color_id != COLOR_UNKNOWN:
                         break
@@ -403,7 +631,11 @@ class DetectionProbe(BatchMetadataOperator):
 
                 if color_id != COLOR_UNKNOWN:
                     n_with_cls += 1
-                    classified_in_frame.append((float(x1), _COLOR_ID_TO_NAME[color_id]))
+                    cx = float((x1 + x2) * 0.5)
+                    classified_in_frame.append(
+                        (cx, _COLOR_ID_TO_NAME[color_id],
+                         float(color_conf), float(color_logit))
+                    )
 
                 # CSV dump: every PGIE detection that passed bbox filter,
                 # whether classified or not
@@ -417,12 +649,47 @@ class DetectionProbe(BatchMetadataOperator):
 
                 track_id = getattr(obj, "object_id", 0) or 0
 
-                # OSD recolor only — text comes from classifier_meta (auto-rendered by nvosd)
-                if dm is not None:
+                # OSD: hide the default nvosd bbox (forced red) and draw our own
+                # via display_meta Rect so it actually takes our color.
+                rp.border_width = 0  # hide default
+                if dm is not None and color_id != COLOR_UNKNOWN:
                     color_name = _COLOR_ID_TO_NAME.get(color_id, "?")
                     r, g, b = _COLOR_RGB_NORMALISED.get(color_name, (0.5, 0.5, 0.5))
-                    rp.border_color = osd.Color(r, g, b, 1.0)
-                    rp.border_width = 3
+                    box = osd.Rect()
+                    box.left = int(x1)
+                    box.top = int(y1)
+                    box.width = int(x2 - x1)
+                    box.height = int(y2 - y1)
+                    box.border_width = 3
+                    box.border_color = osd.Color(r, g, b, 1.0)
+                    box.has_bg_color = False
+                    try:
+                        dm.add_rect(box)
+                    except Exception:
+                        pass
+
+                    tp = getattr(obj, "text_params", None)
+                    if tp is not None:
+                        if color_id == COLOR_UNKNOWN:
+                            tp.display_text = b""
+                        else:
+                            tid = int(getattr(obj, "object_id", 0) or 0)
+                            tid_str = f" #{tid}" if 0 < tid < 1_000_000 else ""
+                            label = (f"{color_name} cls{float(color_conf):.2f}"
+                                     f" lgt{float(color_logit):.1f}{tid_str}")
+                            tp.display_text = label.encode("ascii")
+                            fp = getattr(tp, "font", None) or getattr(tp, "font_params", None)
+                            if fp is not None:
+                                try:
+                                    fp.color = osd.Color(r, g, b, 1.0)
+                                    fp.size = 6
+                                except Exception:
+                                    pass
+                            try:
+                                tp.set_bg_color = True
+                                tp.bg_color = osd.Color(0, 0, 0, 0.7)
+                            except Exception:
+                                pass
 
                 dets.append(make_detection(
                     x1=x1, y1=y1, x2=x2, y2=y2,
@@ -431,19 +698,158 @@ class DetectionProbe(BatchMetadataOperator):
                     color_conf=color_conf,
                     track_id=track_id,
                 ))
+
+                # Audit: log passed detection
+                if self.audit is not None and self.audit.enabled:
+                    self.audit.log_detection(
+                        cam_id=self.cam_ids[pad], ts=ts_now,
+                        frame_idx=self.frame_counts[pad],
+                        bbox=(x1, y1, x2, y2),
+                        frame_w=self.mux_width, frame_h=self.mux_height,
+                        color=_COLOR_ID_TO_NAME.get(color_id, ""),
+                        color_conf=float(color_conf),
+                        det_conf=float(obj.confidence),
+                        passed_filters=True, inside_roi=True,
+                        written_to_shm=True,
+                        track_id=int(track_id),
+                        reject_reason="",
+                    )
+
                 if len(dets) >= MAX_DETECTIONS:
                     break
 
             # Per-frame summary in debug mode
             if self.debug_mode and self.debug_frames < 20:
                 print(f"[frame cam={self.cam_ids[pad]} idx={self.frame_counts[pad]}] "
-                      f"all_objs={n_all_objs} persons={n_persons} "
-                      f"filter_pass={n_passed} classified={n_with_cls}", flush=True)
+                      f"all_objs={n_all_objs} persons={n_persons} horses={n_horses} "
+                      f"horse_rej={n_horse_gate_rej} filter_pass={n_passed} "
+                      f"classified={n_with_cls}", flush=True)
                 self.debug_frames += 1
 
             # Snapshot trigger: ≥N classified jockeys on this camera frame
             if self.frame_saver is not None and classified_in_frame:
-                self.frame_saver.maybe_trigger(self.cam_ids[pad], classified_in_frame)
+                self.frame_saver.maybe_trigger(
+                    self.cam_ids[pad],
+                    [(cx, c) for cx, c, _, _ in classified_in_frame],
+                )
+
+            # Feed TimeTracker with temporal stability check:
+            #   a color must be classified on the SAME track_id MIN_CONSEC
+            #   times in a row before it counts.
+            if self.tracker is not None and dets:
+                cam = self.cam_ids[pad]
+                now = ts_us / 1_000_000.0
+                stable_colors: list[tuple[float, str, float, float, tuple]] = []
+                for d in dets:
+                    cname = _COLOR_ID_TO_NAME.get(d.color_id)
+                    if not cname:
+                        continue
+                    tid = int(d.track_id or 0)
+                    if tid <= 0 or tid >= 1_000_000_000:
+                        # no tracker → accept immediately (fallback)
+                        stable_colors.append(
+                            (d.center_x if hasattr(d,"center_x") else 0.5*(d.x1+d.x2),
+                             cname, float(d.color_conf), 0.0,
+                             (d.x1, d.y1, d.x2, d.y2)))
+                        continue
+                    key = (cam, tid)
+                    st = self._stability.get(key)
+                    if st is None or st["color"] != cname:
+                        self._stability[key] = {"color": cname, "count": 1}
+                        continue
+                    st["count"] += 1
+                    if st["count"] == self.MIN_CONSEC:
+                        cx = 0.5 * (d.x1 + d.x2)
+                        stable_colors.append(
+                            (cx, cname, float(d.color_conf), 0.0,
+                             (d.x1, d.y1, d.x2, d.y2)))
+
+                if stable_colors:
+                    # Rightmost first for same-frame ties
+                    ordered = sorted(stable_colors, key=lambda t: -t[0])
+                    new_arrivals = []
+                    for rank_idx, (cx, c, cf, lg, bb) in enumerate(ordered):
+                        res = self.tracker.ingest(now + rank_idx * 1e-6, cam, c)
+                        if res:
+                            new_arrivals.extend(res)
+                            if hasattr(self, "_pass_snap_q"):
+                                try:
+                                    self._pass_snap_q.put_nowait({
+                                        "cam_id": cam,
+                                        "uri": (self.cam_uris[pad]
+                                                if pad < len(self.cam_uris) else ""),
+                                        "frame_idx": self.frame_counts[pad],
+                                        "color": c,
+                                        "bbox": bb,
+                                        "mux": (self.mux_width, self.mux_height),
+                                        "cls": cf,
+                                        "lg": lg,
+                                    })
+                                except queue.Full:
+                                    pass
+                if new_arrivals:
+                    for c in new_arrivals:
+                        print(f"[PASS] {cam}  {c}  ts={now:.2f}", flush=True)
+                    rk = self.tracker.get_ranking()
+                    line = "  ".join(f"{r['rank']}:{r['color']}@{r['last_camera']}"
+                                     for r in rk[:6])
+                    print(f"[RANK] {line}", flush=True)
+
+            # Global ranking overlay — large, top-center of every camera tile.
+            # Who's #1 across the whole track.
+            if dm is not None and self.tracker is not None:
+                global_rk = self.tracker.get_ranking()
+                if global_rk:
+                    header = osd.Text()
+                    header.display_text = b"GLOBAL"
+                    header.x_offset = self.mux_width // 2 - 40
+                    header.y_offset = 6
+                    header.font.name = osd.FontFamily.Serif
+                    header.font.size = 10
+                    header.font.color = osd.Color(1, 1, 1, 1.0)
+                    header.set_bg_color = True
+                    header.bg_color = osd.Color(0, 0, 0, 0.85)
+                    dm.add_text(header)
+                    for idx, r in enumerate(global_rk[:5]):
+                        line_txt = f"{r['rank']}. {r['color'].upper():<7} @{r['last_camera']}"
+                        t = osd.Text()
+                        t.display_text = line_txt.encode("ascii")
+                        t.x_offset = self.mux_width // 2 - 110
+                        t.y_offset = 28 + idx * 22
+                        t.font.name = osd.FontFamily.Serif
+                        t.font.size = 12
+                        r_, g_, b_ = _COLOR_RGB_NORMALISED.get(r['color'], (1, 1, 1))
+                        t.font.color = osd.Color(r_, g_, b_, 1.0)
+                        t.set_bg_color = True
+                        t.bg_color = osd.Color(0, 0, 0, 0.85)
+                        dm.add_text(t)
+
+                # Per-camera list — arrival order on this cam (top-right corner)
+                cam_rk = self.tracker.camera_ranking(self.cam_ids[pad])
+                if cam_rk:
+                    hdr = osd.Text()
+                    hdr.display_text = b"here"
+                    hdr.x_offset = self.mux_width - 130
+                    hdr.y_offset = 6
+                    hdr.font.name = osd.FontFamily.Serif
+                    hdr.font.size = 8
+                    hdr.font.color = osd.Color(0.7, 0.7, 0.7, 1.0)
+                    hdr.set_bg_color = True
+                    hdr.bg_color = osd.Color(0, 0, 0, 0.75)
+                    dm.add_text(hdr)
+                    for idx, r in enumerate(cam_rk):
+                        line_txt = f"{r['rank']}. {r['color'].upper()}"
+                        txt = osd.Text()
+                        txt.display_text = line_txt.encode("ascii")
+                        txt.x_offset = self.mux_width - 130
+                        txt.y_offset = 24 + idx * 18
+                        txt.font.name = osd.FontFamily.Serif
+                        txt.font.size = 8
+                        r_, g_, b_ = _COLOR_RGB_NORMALISED.get(r['color'], (1, 1, 1))
+                        txt.font.color = osd.Color(r_, g_, b_, 1.0)
+                        txt.set_bg_color = True
+                        txt.bg_color = osd.Color(0, 0, 0, 0.75)
+                        dm.add_text(txt)
 
             # All texts for this frame are ready — now append the display_meta
             if dm is not None:
@@ -453,12 +859,14 @@ class DetectionProbe(BatchMetadataOperator):
             self.det_counts[pad]   += len(dets)
             self.total_frames      += 1
 
+            src_frame_num = getattr(frame_meta, "frame_number", 0) or 0
             slot = make_camera_slot(
                 cam_id=self.cam_ids[pad],
                 frame_w=self.mux_width,
                 frame_h=self.mux_height,
                 timestamp_us=ts_us,
                 detections=dets,
+                source_frame_num=src_frame_num,
             )
             self.plugin.write_camera(self.shm_handle, pad, slot)
             wrote_any = True
@@ -514,10 +922,12 @@ def build_pipeline(cameras: list[CameraEntry], nvinfer_config: Path,
         raise ValueError("no cameras configured")
 
     cam_ids    = [c.cam_id for c in cameras]
+    cam_uris   = [c.uri for c in cameras]
     shm_handle = plugin.create_shm(cam_ids)
 
     probe_op = DetectionProbe(plugin, shm_handle, cam_ids,
-                              mux_width=mux_width, mux_height=mux_height)
+                              mux_width=mux_width, mux_height=mux_height,
+                              cam_uris=cam_uris)
 
     pipe = Pipeline("rv-pipeline")
     pipe.add("nvstreammux", "mux", {
@@ -549,7 +959,10 @@ def build_pipeline(cameras: list[CameraEntry], nvinfer_config: Path,
             "width":  display_width, "height": display_height,
         })
         pipe.add("nvosdbin",      "osd")
-        pipe.add("nveglglessink", "sink", {"sync": False})
+        # Realtime playback (sync=True) so labels stay readable.
+        # Override with RV_DISPLAY_SYNC=0 for max-speed processing.
+        _sync = os.environ.get("RV_DISPLAY_SYNC", "1") == "1"
+        pipe.add("nveglglessink", "sink", {"sync": _sync})
     else:
         pipe.add("fakesink", "sink", {"sync": False, "async": False})
 

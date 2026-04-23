@@ -16,6 +16,7 @@ class CameraDetections:
         self.detections: list[dict] = []
         self.timestamp: float = time.time()
         self.frame_seq: int = 0   # SHM write_seq — cross-layer tracing key
+        self.source_frame_num: int = 0  # per-source decoder frame index
 
     def add(self, det: dict):
         self.detections.append(det)

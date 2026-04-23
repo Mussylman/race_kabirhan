@@ -63,7 +63,7 @@ DETECTION_FMT = "<6fIf5fI"
 assert struct.calcsize(DETECTION_FMT) == DETECTION_SIZE
 
 # CameraSlot header: cam_id[16] (16s), timestamp_us (Q), frame_w (I), frame_h (I),
-#                     num_detections (I), _pad (I)
+#                     num_detections (I), source_frame_num (I)
 CAMERA_SLOT_HEADER_FMT = "<16sQIIII"
 CAMERA_SLOT_HEADER_SIZE = struct.calcsize(CAMERA_SLOT_HEADER_FMT)
 
@@ -111,6 +111,10 @@ class SharedMemoryReader:
         self._librt = None
         self._libc = None
         self._libpthread = None
+        # Torn-read diagnostics: per-attempt counter, key = retries used (0..MAX)
+        # 0 = first attempt succeeded; >0 = took N retries; "exhausted" = fallback
+        self._torn_retry_hist: dict[str, int] = {}
+        self._reads_total: int = 0
 
     def attach(self) -> bool:
         """Attach to existing shared memory and semaphore.
@@ -226,7 +230,9 @@ class SharedMemoryReader:
 
                 slot_header = self._shm_buf.read(CAMERA_SLOT_HEADER_SIZE)
                 (cam_id_raw, timestamp_us, frame_w, frame_h,
-                 num_dets, _pad) = struct.unpack(CAMERA_SLOT_HEADER_FMT, slot_header)
+                 num_dets, source_frame_num) = struct.unpack(
+                    CAMERA_SLOT_HEADER_FMT, slot_header
+                )
 
                 cam_id = cam_id_raw.rstrip(b'\x00').decode('ascii', errors='replace')
                 num_dets = min(num_dets, MAX_DETECTIONS)
@@ -235,6 +241,7 @@ class SharedMemoryReader:
                 cam_result = CameraDetections(cam_id, frame_w, frame_h)
                 cam_result.timestamp = ts_capture
                 cam_result.frame_seq = seq_before
+                cam_result.source_frame_num = int(source_frame_num)
 
                 for j in range(num_dets):
                     det_data = self._shm_buf.read(DETECTION_SIZE)
@@ -278,6 +285,9 @@ class SharedMemoryReader:
 
             if seq_after == seq_before:
                 self._last_seq = seq_before
+                self._reads_total += 1
+                key = str(attempt)  # 0 = first try clean; 1..MAX = took N retries
+                self._torn_retry_hist[key] = self._torn_retry_hist.get(key, 0) + 1
                 self._emit_read_logs(pending_logs, seq_before)
                 agg.flush_if_due()
                 return results if results else None
@@ -290,9 +300,19 @@ class SharedMemoryReader:
             MAX_TORN_RETRIES, seq_after,
         )
         self._last_seq = seq_after
+        self._reads_total += 1
+        self._torn_retry_hist["exhausted"] = self._torn_retry_hist.get("exhausted", 0) + 1
         self._emit_read_logs(pending_logs, seq_after)
         agg.flush_if_due()
         return results if results else None
+
+    def get_stats(self) -> dict:
+        """Diagnostic counters for torn-read retry behaviour."""
+        return {
+            "reads_total": self._reads_total,
+            "last_seq": self._last_seq,
+            "retry_histogram": dict(self._torn_retry_hist),
+        }
 
     def _emit_read_logs(self, pending_logs: list[tuple], write_seq: int) -> None:
         # SHM_READ log — throttled to 1/2s per camera (every frame when LOG_TIMING)
