@@ -1,0 +1,5462 @@
+[
+  {
+    "id": "frame_000000_det_01",
+    "label": "green",
+    "pred": "green",
+    "pred_conf": 0.9962114095687866,
+    "probs": {
+      "blue": 0.0027,
+      "green": 0.9962,
+      "purple": 0.0003,
+      "red": 0.0001,
+      "yellow": 0.0007
+    }
+  },
+  {
+    "id": "frame_000030_det_01",
+    "label": "green",
+    "pred": "green",
+    "pred_conf": 0.9982843995094299,
+    "probs": {
+      "blue": 0.0013,
+      "green": 0.9983,
+      "purple": 0.0001,
+      "red": 0.0,
+      "yellow": 0.0003
+    }
+  },
+  {
+    "id": "frame_000060_det_02",
+    "label": "green",
+    "pred": "green",
+    "pred_conf": 0.9986889958381653,
+    "probs": {
+      "blue": 0.001,
+      "green": 0.9987,
+      "purple": 0.0001,
+      "red": 0.0,
+      "yellow": 0.0002
+    }
+  },
+  {
+    "id": "frame_000090_det_02",
+    "label": "green",
+    "pred": "green",
+    "pred_conf": 0.9975517392158508,
+    "probs": {
+      "blue": 0.0018,
+      "green": 0.9976,
+      "purple": 0.0002,
+      "red": 0.0001,
+      "yellow": 0.0004
+    }
+  },
+  {
+    "id": "frame_000120_det_01",
+    "label": "green",
+    "pred": "green",
+    "pred_conf": 0.9979068040847778,
+    "probs": {
+      "blue": 0.0017,
+      "green": 0.9979,
+      "purple": 0.0002,
+      "red": 0.0,
+      "yellow": 0.0002
+    }
+  },
+  {
+    "id": "frame_000150_det_01",
+    "label": "green",
+    "pred": "green",
+    "pred_conf": 0.997668445110321,
+    "probs": {
+      "blue": 0.0018,
+      "green": 0.9977,
+      "purple": 0.0002,
+      "red": 0.0,
+      "yellow": 0.0002
+    }
+  },
+  {
+    "id": "frame_000180_det_01",
+    "label": "green",
+    "pred": "green",
+    "pred_conf": 0.9981923699378967,
+    "probs": {
+      "blue": 0.0015,
+      "green": 0.9982,
+      "purple": 0.0001,
+      "red": 0.0,
+      "yellow": 0.0001
+    }
+  },
+  {
+    "id": "frame_000210_det_01",
+    "label": "green",
+    "pred": "green",
+    "pred_conf": 0.9973648190498352,
+    "probs": {
+      "blue": 0.0021,
+      "green": 0.9974,
+      "purple": 0.0002,
+      "red": 0.0001,
+      "yellow": 0.0002
+    }
+  },
+  {
+    "id": "frame_000240_det_01",
+    "label": "green",
+    "pred": "green",
+    "pred_conf": 0.9974713325500488,
+    "probs": {
+      "blue": 0.0021,
+      "green": 0.9975,
+      "purple": 0.0002,
+      "red": 0.0,
+      "yellow": 0.0002
+    }
+  },
+  {
+    "id": "frame_000270_det_02",
+    "label": "green",
+    "pred": "green",
+    "pred_conf": 0.9984545707702637,
+    "probs": {
+      "blue": 0.0014,
+      "green": 0.9985,
+      "purple": 0.0001,
+      "red": 0.0,
+      "yellow": 0.0001
+    }
+  },
+  {
+    "id": "frame_000300_det_03",
+    "label": "green",
+    "pred": "green",
+    "pred_conf": 0.9966716766357422,
+    "probs": {
+      "blue": 0.0028,
+      "green": 0.9967,
+      "purple": 0.0002,
+      "red": 0.0,
+      "yellow": 0.0003
+    }
+  },
+  {
+    "id": "frame_000330_det_02",
+    "label": "green",
+    "pred": "green",
+    "pred_conf": 0.9965090155601501,
+    "probs": {
+      "blue": 0.0029,
+      "green": 0.9965,
+      "purple": 0.0002,
+      "red": 0.0,
+      "yellow": 0.0003
+    }
+  },
+  {
+    "id": "frame_000360_det_01",
+    "label": "green",
+    "pred": "green",
+    "pred_conf": 0.9972014427185059,
+    "probs": {
+      "blue": 0.0024,
+      "green": 0.9972,
+      "purple": 0.0002,
+      "red": 0.0,
+      "yellow": 0.0002
+    }
+  },
+  {
+    "id": "frame_000390_det_02",
+    "label": "green",
+    "pred": "green",
+    "pred_conf": 0.9974231719970703,
+    "probs": {
+      "blue": 0.0022,
+      "green": 0.9974,
+      "purple": 0.0002,
+      "red": 0.0,
+      "yellow": 0.0001
+    }
+  },
+  {
+    "id": "frame_000420_det_02",
+    "label": "green",
+    "pred": "green",
+    "pred_conf": 0.99949049949646,
+    "probs": {
+      "blue": 0.0004,
+      "green": 0.9995,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 0.0
+    }
+  },
+  {
+    "id": "frame_000450_det_02",
+    "label": "green",
+    "pred": "green",
+    "pred_conf": 0.9986336827278137,
+    "probs": {
+      "blue": 0.0012,
+      "green": 0.9986,
+      "purple": 0.0001,
+      "red": 0.0,
+      "yellow": 0.0001
+    }
+  },
+  {
+    "id": "frame_000480_det_01",
+    "label": "green",
+    "pred": "green",
+    "pred_conf": 0.9970071911811829,
+    "probs": {
+      "blue": 0.0025,
+      "green": 0.997,
+      "purple": 0.0003,
+      "red": 0.0,
+      "yellow": 0.0002
+    }
+  },
+  {
+    "id": "frame_000510_det_02",
+    "label": "green",
+    "pred": "green",
+    "pred_conf": 0.9985824823379517,
+    "probs": {
+      "blue": 0.0011,
+      "green": 0.9986,
+      "purple": 0.0001,
+      "red": 0.0,
+      "yellow": 0.0002
+    }
+  },
+  {
+    "id": "frame_000540_det_02",
+    "label": "green",
+    "pred": "green",
+    "pred_conf": 0.9969327449798584,
+    "probs": {
+      "blue": 0.0024,
+      "green": 0.9969,
+      "purple": 0.0003,
+      "red": 0.0001,
+      "yellow": 0.0003
+    }
+  },
+  {
+    "id": "frame_000570_det_03",
+    "label": "green",
+    "pred": "green",
+    "pred_conf": 0.9991632699966431,
+    "probs": {
+      "blue": 0.0007,
+      "green": 0.9992,
+      "purple": 0.0001,
+      "red": 0.0,
+      "yellow": 0.0001
+    }
+  },
+  {
+    "id": "frame_000600_det_02",
+    "label": "green",
+    "pred": "green",
+    "pred_conf": 0.9970667958259583,
+    "probs": {
+      "blue": 0.0024,
+      "green": 0.9971,
+      "purple": 0.0003,
+      "red": 0.0,
+      "yellow": 0.0002
+    }
+  },
+  {
+    "id": "frame_000630_det_02",
+    "label": "green",
+    "pred": "green",
+    "pred_conf": 0.998370349407196,
+    "probs": {
+      "blue": 0.0014,
+      "green": 0.9984,
+      "purple": 0.0001,
+      "red": 0.0,
+      "yellow": 0.0001
+    }
+  },
+  {
+    "id": "frame_000660_det_03",
+    "label": "green",
+    "pred": "green",
+    "pred_conf": 0.9982247948646545,
+    "probs": {
+      "blue": 0.0015,
+      "green": 0.9982,
+      "purple": 0.0002,
+      "red": 0.0,
+      "yellow": 0.0001
+    }
+  },
+  {
+    "id": "frame_000690_det_02",
+    "label": "green",
+    "pred": "green",
+    "pred_conf": 0.9986031651496887,
+    "probs": {
+      "blue": 0.0011,
+      "green": 0.9986,
+      "purple": 0.0001,
+      "red": 0.0,
+      "yellow": 0.0001
+    }
+  },
+  {
+    "id": "frame_000720_det_03",
+    "label": "green",
+    "pred": "green",
+    "pred_conf": 0.9962521195411682,
+    "probs": {
+      "blue": 0.003,
+      "green": 0.9963,
+      "purple": 0.0004,
+      "red": 0.0001,
+      "yellow": 0.0003
+    }
+  },
+  {
+    "id": "frame_000750_det_02",
+    "label": "green",
+    "pred": "green",
+    "pred_conf": 0.9964253306388855,
+    "probs": {
+      "blue": 0.0029,
+      "green": 0.9964,
+      "purple": 0.0003,
+      "red": 0.0001,
+      "yellow": 0.0003
+    }
+  },
+  {
+    "id": "frame_000780_det_03",
+    "label": "green",
+    "pred": "green",
+    "pred_conf": 0.9976620674133301,
+    "probs": {
+      "blue": 0.002,
+      "green": 0.9977,
+      "purple": 0.0002,
+      "red": 0.0,
+      "yellow": 0.0002
+    }
+  },
+  {
+    "id": "frame_000810_det_03",
+    "label": "green",
+    "pred": "green",
+    "pred_conf": 0.9971520900726318,
+    "probs": {
+      "blue": 0.0024,
+      "green": 0.9972,
+      "purple": 0.0002,
+      "red": 0.0,
+      "yellow": 0.0002
+    }
+  },
+  {
+    "id": "frame_000840_det_03",
+    "label": "green",
+    "pred": "green",
+    "pred_conf": 0.9952534437179565,
+    "probs": {
+      "blue": 0.0039,
+      "green": 0.9953,
+      "purple": 0.0003,
+      "red": 0.0001,
+      "yellow": 0.0005
+    }
+  },
+  {
+    "id": "frame_000870_det_02",
+    "label": "green",
+    "pred": "green",
+    "pred_conf": 0.9992239475250244,
+    "probs": {
+      "blue": 0.0006,
+      "green": 0.9992,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 0.0001
+    }
+  },
+  {
+    "id": "frame_000900_det_01",
+    "label": "green",
+    "pred": "green",
+    "pred_conf": 0.9994783997535706,
+    "probs": {
+      "blue": 0.0004,
+      "green": 0.9995,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 0.0001
+    }
+  },
+  {
+    "id": "frame_000930_det_02",
+    "label": "green",
+    "pred": "green",
+    "pred_conf": 0.9988798499107361,
+    "probs": {
+      "blue": 0.0008,
+      "green": 0.9989,
+      "purple": 0.0001,
+      "red": 0.0,
+      "yellow": 0.0002
+    }
+  },
+  {
+    "id": "frame_000960_det_02",
+    "label": "green",
+    "pred": "green",
+    "pred_conf": 0.9983870983123779,
+    "probs": {
+      "blue": 0.0014,
+      "green": 0.9984,
+      "purple": 0.0001,
+      "red": 0.0,
+      "yellow": 0.0001
+    }
+  },
+  {
+    "id": "frame_000990_det_02",
+    "label": "green",
+    "pred": "green",
+    "pred_conf": 0.9989781379699707,
+    "probs": {
+      "blue": 0.0008,
+      "green": 0.999,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 0.0001
+    }
+  },
+  {
+    "id": "frame_001020_det_02",
+    "label": "green",
+    "pred": "green",
+    "pred_conf": 0.998405396938324,
+    "probs": {
+      "blue": 0.0013,
+      "green": 0.9984,
+      "purple": 0.0001,
+      "red": 0.0,
+      "yellow": 0.0002
+    }
+  },
+  {
+    "id": "frame_001050_det_02",
+    "label": "green",
+    "pred": "green",
+    "pred_conf": 0.9986758828163147,
+    "probs": {
+      "blue": 0.0011,
+      "green": 0.9987,
+      "purple": 0.0001,
+      "red": 0.0,
+      "yellow": 0.0002
+    }
+  },
+  {
+    "id": "frame_001080_det_01",
+    "label": "green",
+    "pred": "green",
+    "pred_conf": 0.9959380626678467,
+    "probs": {
+      "blue": 0.0032,
+      "green": 0.9959,
+      "purple": 0.0004,
+      "red": 0.0001,
+      "yellow": 0.0004
+    }
+  },
+  {
+    "id": "frame_001110_det_01",
+    "label": "green",
+    "pred": "green",
+    "pred_conf": 0.9987640380859375,
+    "probs": {
+      "blue": 0.001,
+      "green": 0.9988,
+      "purple": 0.0001,
+      "red": 0.0,
+      "yellow": 0.0001
+    }
+  },
+  {
+    "id": "frame_001140_det_01",
+    "label": "green",
+    "pred": "green",
+    "pred_conf": 0.9989649057388306,
+    "probs": {
+      "blue": 0.0008,
+      "green": 0.999,
+      "purple": 0.0001,
+      "red": 0.0,
+      "yellow": 0.0001
+    }
+  },
+  {
+    "id": "frame_001170_det_01",
+    "label": "green",
+    "pred": "green",
+    "pred_conf": 0.9996092915534973,
+    "probs": {
+      "blue": 0.0003,
+      "green": 0.9996,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 0.0001
+    }
+  },
+  {
+    "id": "frame_001200_det_01",
+    "label": "green",
+    "pred": "green",
+    "pred_conf": 0.9981606602668762,
+    "probs": {
+      "blue": 0.0014,
+      "green": 0.9982,
+      "purple": 0.0001,
+      "red": 0.0,
+      "yellow": 0.0003
+    }
+  },
+  {
+    "id": "frame_001230_det_01",
+    "label": "green",
+    "pred": "green",
+    "pred_conf": 0.9991698265075684,
+    "probs": {
+      "blue": 0.0006,
+      "green": 0.9992,
+      "purple": 0.0001,
+      "red": 0.0,
+      "yellow": 0.0001
+    }
+  },
+  {
+    "id": "frame_001260_det_01",
+    "label": "green",
+    "pred": "green",
+    "pred_conf": 0.9986316561698914,
+    "probs": {
+      "blue": 0.0011,
+      "green": 0.9986,
+      "purple": 0.0001,
+      "red": 0.0,
+      "yellow": 0.0002
+    }
+  },
+  {
+    "id": "frame_001290_det_01",
+    "label": "green",
+    "pred": "green",
+    "pred_conf": 0.9993269443511963,
+    "probs": {
+      "blue": 0.0005,
+      "green": 0.9993,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 0.0001
+    }
+  },
+  {
+    "id": "frame_001320_det_01",
+    "label": "green",
+    "pred": "green",
+    "pred_conf": 0.9993605017662048,
+    "probs": {
+      "blue": 0.0005,
+      "green": 0.9994,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 0.0001
+    }
+  },
+  {
+    "id": "frame_001350_det_01",
+    "label": "green",
+    "pred": "green",
+    "pred_conf": 0.9995598196983337,
+    "probs": {
+      "blue": 0.0003,
+      "green": 0.9996,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 0.0001
+    }
+  },
+  {
+    "id": "frame_001380_det_01",
+    "label": "green",
+    "pred": "green",
+    "pred_conf": 0.9995893836021423,
+    "probs": {
+      "blue": 0.0004,
+      "green": 0.9996,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 0.0
+    }
+  },
+  {
+    "id": "frame_001410_det_01",
+    "label": "green",
+    "pred": "green",
+    "pred_conf": 0.9989683628082275,
+    "probs": {
+      "blue": 0.0008,
+      "green": 0.999,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 0.0002
+    }
+  },
+  {
+    "id": "frame_001440_det_01",
+    "label": "green",
+    "pred": "green",
+    "pred_conf": 0.9967344403266907,
+    "probs": {
+      "blue": 0.002,
+      "green": 0.9967,
+      "purple": 0.0002,
+      "red": 0.0001,
+      "yellow": 0.001
+    }
+  },
+  {
+    "id": "frame_001470_det_01",
+    "label": "green",
+    "pred": "green",
+    "pred_conf": 0.9975016713142395,
+    "probs": {
+      "blue": 0.0014,
+      "green": 0.9975,
+      "purple": 0.0001,
+      "red": 0.0001,
+      "yellow": 0.0009
+    }
+  },
+  {
+    "id": "frame_001500_det_01",
+    "label": "green",
+    "pred": "green",
+    "pred_conf": 0.9986043572425842,
+    "probs": {
+      "blue": 0.0011,
+      "green": 0.9986,
+      "purple": 0.0001,
+      "red": 0.0,
+      "yellow": 0.0001
+    }
+  },
+  {
+    "id": "frame_001530_det_01",
+    "label": "green",
+    "pred": "green",
+    "pred_conf": 0.997751772403717,
+    "probs": {
+      "blue": 0.0018,
+      "green": 0.9978,
+      "purple": 0.0002,
+      "red": 0.0,
+      "yellow": 0.0002
+    }
+  },
+  {
+    "id": "frame_001560_det_03",
+    "label": "green",
+    "pred": "green",
+    "pred_conf": 0.9970552921295166,
+    "probs": {
+      "blue": 0.0025,
+      "green": 0.9971,
+      "purple": 0.0002,
+      "red": 0.0,
+      "yellow": 0.0003
+    }
+  },
+  {
+    "id": "frame_001590_det_01",
+    "label": "green",
+    "pred": "green",
+    "pred_conf": 0.9996401071548462,
+    "probs": {
+      "blue": 0.0003,
+      "green": 0.9996,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 0.0
+    }
+  },
+  {
+    "id": "frame_001620_det_01",
+    "label": "green",
+    "pred": "green",
+    "pred_conf": 0.9996902942657471,
+    "probs": {
+      "blue": 0.0002,
+      "green": 0.9997,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 0.0001
+    }
+  },
+  {
+    "id": "frame_000000_det_02",
+    "label": "yellow",
+    "pred": "yellow",
+    "pred_conf": 0.9999022483825684,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0001,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 0.9999
+    }
+  },
+  {
+    "id": "frame_000030_det_02",
+    "label": "yellow",
+    "pred": "yellow",
+    "pred_conf": 0.9999722242355347,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 1.0
+    }
+  },
+  {
+    "id": "frame_000060_det_01",
+    "label": "yellow",
+    "pred": "yellow",
+    "pred_conf": 0.9987842440605164,
+    "probs": {
+      "blue": 0.0001,
+      "green": 0.0011,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 0.9988
+    }
+  },
+  {
+    "id": "frame_000090_det_01",
+    "label": "yellow",
+    "pred": "yellow",
+    "pred_conf": 0.9997459053993225,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0002,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 0.9997
+    }
+  },
+  {
+    "id": "frame_000120_det_02",
+    "label": "yellow",
+    "pred": "yellow",
+    "pred_conf": 0.9992363452911377,
+    "probs": {
+      "blue": 0.0001,
+      "green": 0.0007,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 0.9992
+    }
+  },
+  {
+    "id": "frame_000150_det_03",
+    "label": "yellow",
+    "pred": "yellow",
+    "pred_conf": 0.999863862991333,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0001,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 0.9999
+    }
+  },
+  {
+    "id": "frame_000180_det_02",
+    "label": "yellow",
+    "pred": "yellow",
+    "pred_conf": 0.999262273311615,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0007,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 0.9993
+    }
+  },
+  {
+    "id": "frame_000210_det_02",
+    "label": "yellow",
+    "pred": "yellow",
+    "pred_conf": 0.9998039603233337,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0002,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 0.9998
+    }
+  },
+  {
+    "id": "frame_000240_det_02",
+    "label": "yellow",
+    "pred": "yellow",
+    "pred_conf": 0.9998443126678467,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0001,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 0.9998
+    }
+  },
+  {
+    "id": "frame_000270_det_01",
+    "label": "yellow",
+    "pred": "yellow",
+    "pred_conf": 0.9992412328720093,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0007,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 0.9992
+    }
+  },
+  {
+    "id": "frame_000300_det_02",
+    "label": "yellow",
+    "pred": "yellow",
+    "pred_conf": 0.9997150301933289,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0003,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 0.9997
+    }
+  },
+  {
+    "id": "frame_000330_det_01",
+    "label": "yellow",
+    "pred": "yellow",
+    "pred_conf": 0.9998569488525391,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0001,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 0.9999
+    }
+  },
+  {
+    "id": "frame_000360_det_02",
+    "label": "yellow",
+    "pred": "yellow",
+    "pred_conf": 0.9998181462287903,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0002,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 0.9998
+    }
+  },
+  {
+    "id": "frame_000390_det_01",
+    "label": "yellow",
+    "pred": "yellow",
+    "pred_conf": 0.9975714087486267,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0024,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 0.9976
+    }
+  },
+  {
+    "id": "frame_000420_det_01",
+    "label": "yellow",
+    "pred": "yellow",
+    "pred_conf": 0.9982659220695496,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0017,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 0.9983
+    }
+  },
+  {
+    "id": "frame_000450_det_01",
+    "label": "yellow",
+    "pred": "yellow",
+    "pred_conf": 0.999762237071991,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0002,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 0.9998
+    }
+  },
+  {
+    "id": "frame_000480_det_03",
+    "label": "yellow",
+    "pred": "yellow",
+    "pred_conf": 0.9991902709007263,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0008,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 0.9992
+    }
+  },
+  {
+    "id": "frame_000510_det_01",
+    "label": "yellow",
+    "pred": "yellow",
+    "pred_conf": 0.9986370205879211,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0013,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 0.9986
+    }
+  },
+  {
+    "id": "frame_000540_det_01",
+    "label": "yellow",
+    "pred": "yellow",
+    "pred_conf": 0.999146580696106,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0008,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 0.9991
+    }
+  },
+  {
+    "id": "frame_000570_det_01",
+    "label": "yellow",
+    "pred": "yellow",
+    "pred_conf": 0.9979293346405029,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.002,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 0.9979
+    }
+  },
+  {
+    "id": "frame_000600_det_01",
+    "label": "yellow",
+    "pred": "yellow",
+    "pred_conf": 0.9989303946495056,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.001,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 0.9989
+    }
+  },
+  {
+    "id": "frame_000630_det_01",
+    "label": "yellow",
+    "pred": "yellow",
+    "pred_conf": 0.9996864795684814,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0003,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 0.9997
+    }
+  },
+  {
+    "id": "frame_000660_det_01",
+    "label": "yellow",
+    "pred": "yellow",
+    "pred_conf": 0.9997904896736145,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0002,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 0.9998
+    }
+  },
+  {
+    "id": "frame_000690_det_01",
+    "label": "yellow",
+    "pred": "yellow",
+    "pred_conf": 0.9997557997703552,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0002,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 0.9998
+    }
+  },
+  {
+    "id": "frame_000720_det_01",
+    "label": "yellow",
+    "pred": "yellow",
+    "pred_conf": 0.9897095561027527,
+    "probs": {
+      "blue": 0.0004,
+      "green": 0.0098,
+      "purple": 0.0,
+      "red": 0.0001,
+      "yellow": 0.9897
+    }
+  },
+  {
+    "id": "frame_000750_det_01",
+    "label": "yellow",
+    "pred": "yellow",
+    "pred_conf": 0.999786913394928,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0002,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 0.9998
+    }
+  },
+  {
+    "id": "frame_000780_det_01",
+    "label": "yellow",
+    "pred": "yellow",
+    "pred_conf": 0.9995958209037781,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0004,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 0.9996
+    }
+  },
+  {
+    "id": "frame_000810_det_01",
+    "label": "yellow",
+    "pred": "yellow",
+    "pred_conf": 0.9999666213989258,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 1.0
+    }
+  },
+  {
+    "id": "frame_000840_det_01",
+    "label": "yellow",
+    "pred": "yellow",
+    "pred_conf": 0.999947190284729,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 0.9999
+    }
+  },
+  {
+    "id": "frame_000870_det_01",
+    "label": "yellow",
+    "pred": "yellow",
+    "pred_conf": 0.9998133778572083,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0002,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 0.9998
+    }
+  },
+  {
+    "id": "frame_000900_det_02",
+    "label": "yellow",
+    "pred": "yellow",
+    "pred_conf": 0.9999445676803589,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0001,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 0.9999
+    }
+  },
+  {
+    "id": "frame_000930_det_01",
+    "label": "yellow",
+    "pred": "yellow",
+    "pred_conf": 0.9991807341575623,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0008,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 0.9992
+    }
+  },
+  {
+    "id": "frame_000960_det_01",
+    "label": "yellow",
+    "pred": "yellow",
+    "pred_conf": 0.9992638230323792,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0007,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 0.9993
+    }
+  },
+  {
+    "id": "frame_000990_det_01",
+    "label": "yellow",
+    "pred": "yellow",
+    "pred_conf": 0.9997974038124084,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0002,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 0.9998
+    }
+  },
+  {
+    "id": "frame_001020_det_01",
+    "label": "yellow",
+    "pred": "yellow",
+    "pred_conf": 0.9987751841545105,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0012,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 0.9988
+    }
+  },
+  {
+    "id": "frame_001050_det_01",
+    "label": "yellow",
+    "pred": "yellow",
+    "pred_conf": 0.9989351630210876,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.001,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 0.9989
+    }
+  },
+  {
+    "id": "frame_001080_det_02",
+    "label": "yellow",
+    "pred": "yellow",
+    "pred_conf": 0.9999306201934814,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0001,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 0.9999
+    }
+  },
+  {
+    "id": "frame_001110_det_03",
+    "label": "yellow",
+    "pred": "yellow",
+    "pred_conf": 0.9999896287918091,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 1.0
+    }
+  },
+  {
+    "id": "frame_001140_det_03",
+    "label": "yellow",
+    "pred": "yellow",
+    "pred_conf": 0.99998939037323,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 1.0
+    }
+  },
+  {
+    "id": "frame_001170_det_02",
+    "label": "yellow",
+    "pred": "yellow",
+    "pred_conf": 0.9999898672103882,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 1.0
+    }
+  },
+  {
+    "id": "frame_001200_det_02",
+    "label": "yellow",
+    "pred": "yellow",
+    "pred_conf": 0.9999971389770508,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 1.0
+    }
+  },
+  {
+    "id": "frame_001230_det_02",
+    "label": "yellow",
+    "pred": "yellow",
+    "pred_conf": 0.9999878406524658,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 1.0
+    }
+  },
+  {
+    "id": "frame_001260_det_02",
+    "label": "yellow",
+    "pred": "yellow",
+    "pred_conf": 0.9999881982803345,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 1.0
+    }
+  },
+  {
+    "id": "frame_001290_det_02",
+    "label": "yellow",
+    "pred": "yellow",
+    "pred_conf": 0.9999988079071045,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 1.0
+    }
+  },
+  {
+    "id": "frame_001320_det_03",
+    "label": "yellow",
+    "pred": "yellow",
+    "pred_conf": 0.9999995231628418,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 1.0
+    }
+  },
+  {
+    "id": "frame_001350_det_03",
+    "label": "yellow",
+    "pred": "yellow",
+    "pred_conf": 0.9988358616828918,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0012,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 0.9988
+    }
+  },
+  {
+    "id": "frame_001380_det_02",
+    "label": "yellow",
+    "pred": "yellow",
+    "pred_conf": 0.9998413324356079,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0002,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 0.9998
+    }
+  },
+  {
+    "id": "frame_001410_det_02",
+    "label": "yellow",
+    "pred": "yellow",
+    "pred_conf": 0.9959278702735901,
+    "probs": {
+      "blue": 0.0001,
+      "green": 0.0039,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 0.9959
+    }
+  },
+  {
+    "id": "frame_001440_det_02",
+    "label": "yellow",
+    "pred": "yellow",
+    "pred_conf": 0.9988049268722534,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0012,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 0.9988
+    }
+  },
+  {
+    "id": "frame_001470_det_02",
+    "label": "yellow",
+    "pred": "yellow",
+    "pred_conf": 0.9984024167060852,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0015,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 0.9984
+    }
+  },
+  {
+    "id": "frame_001500_det_02",
+    "label": "yellow",
+    "pred": "yellow",
+    "pred_conf": 0.9999231100082397,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0001,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 0.9999
+    }
+  },
+  {
+    "id": "frame_001530_det_02",
+    "label": "yellow",
+    "pred": "yellow",
+    "pred_conf": 0.9994432330131531,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0005,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 0.9994
+    }
+  },
+  {
+    "id": "frame_001590_det_02",
+    "label": "yellow",
+    "pred": "yellow",
+    "pred_conf": 0.992024302482605,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0079,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 0.992
+    }
+  },
+  {
+    "id": "frame_001620_det_03",
+    "label": "yellow",
+    "pred": "yellow",
+    "pred_conf": 0.9994314312934875,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0006,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 0.9994
+    }
+  },
+  {
+    "id": "frame_001650_det_01",
+    "label": "yellow",
+    "pred": "yellow",
+    "pred_conf": 0.9999997615814209,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 1.0
+    }
+  },
+  {
+    "id": "frame_002130_det_01",
+    "label": "yellow",
+    "pred": "yellow",
+    "pred_conf": 0.9984533786773682,
+    "probs": {
+      "blue": 0.0002,
+      "green": 0.0013,
+      "purple": 0.0,
+      "red": 0.0,
+      "yellow": 0.9985
+    }
+  },
+  {
+    "id": "frame_000000_det_03",
+    "label": "red",
+    "pred": "red",
+    "pred_conf": 0.9999996423721313,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 1.0,
+      "yellow": 0.0
+    }
+  },
+  {
+    "id": "frame_000030_det_03",
+    "label": "red",
+    "pred": "red",
+    "pred_conf": 0.9999997615814209,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 1.0,
+      "yellow": 0.0
+    }
+  },
+  {
+    "id": "frame_000060_det_03",
+    "label": "red",
+    "pred": "red",
+    "pred_conf": 1.0,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 1.0,
+      "yellow": 0.0
+    }
+  },
+  {
+    "id": "frame_000090_det_03",
+    "label": "red",
+    "pred": "red",
+    "pred_conf": 0.9999980926513672,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 1.0,
+      "yellow": 0.0
+    }
+  },
+  {
+    "id": "frame_000090_det_04",
+    "label": "red",
+    "pred": "red",
+    "pred_conf": 1.0,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 1.0,
+      "yellow": 0.0
+    }
+  },
+  {
+    "id": "frame_000120_det_03",
+    "label": "red",
+    "pred": "red",
+    "pred_conf": 0.9999998807907104,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 1.0,
+      "yellow": 0.0
+    }
+  },
+  {
+    "id": "frame_000150_det_02",
+    "label": "red",
+    "pred": "red",
+    "pred_conf": 0.9999997615814209,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 1.0,
+      "yellow": 0.0
+    }
+  },
+  {
+    "id": "frame_000180_det_03",
+    "label": "red",
+    "pred": "red",
+    "pred_conf": 0.9999998807907104,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 1.0,
+      "yellow": 0.0
+    }
+  },
+  {
+    "id": "frame_000210_det_03",
+    "label": "red",
+    "pred": "red",
+    "pred_conf": 0.9999997615814209,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 1.0,
+      "yellow": 0.0
+    }
+  },
+  {
+    "id": "frame_000240_det_03",
+    "label": "red",
+    "pred": "red",
+    "pred_conf": 0.9999949932098389,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 1.0,
+      "yellow": 0.0
+    }
+  },
+  {
+    "id": "frame_000270_det_03",
+    "label": "red",
+    "pred": "red",
+    "pred_conf": 0.9999884366989136,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 1.0,
+      "yellow": 0.0
+    }
+  },
+  {
+    "id": "frame_000300_det_01",
+    "label": "red",
+    "pred": "red",
+    "pred_conf": 0.9999991655349731,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 1.0,
+      "yellow": 0.0
+    }
+  },
+  {
+    "id": "frame_000330_det_03",
+    "label": "red",
+    "pred": "red",
+    "pred_conf": 0.9999991655349731,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 1.0,
+      "yellow": 0.0
+    }
+  },
+  {
+    "id": "frame_000360_det_03",
+    "label": "red",
+    "pred": "red",
+    "pred_conf": 0.9999995231628418,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 1.0,
+      "yellow": 0.0
+    }
+  },
+  {
+    "id": "frame_000390_det_03",
+    "label": "red",
+    "pred": "red",
+    "pred_conf": 0.9999806880950928,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 1.0,
+      "yellow": 0.0
+    }
+  },
+  {
+    "id": "frame_000420_det_03",
+    "label": "red",
+    "pred": "red",
+    "pred_conf": 0.9999970197677612,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 1.0,
+      "yellow": 0.0
+    }
+  },
+  {
+    "id": "frame_000450_det_03",
+    "label": "red",
+    "pred": "red",
+    "pred_conf": 0.9999998807907104,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 1.0,
+      "yellow": 0.0
+    }
+  },
+  {
+    "id": "frame_000480_det_02",
+    "label": "red",
+    "pred": "red",
+    "pred_conf": 0.9999985694885254,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 1.0,
+      "yellow": 0.0
+    }
+  },
+  {
+    "id": "frame_000510_det_03",
+    "label": "red",
+    "pred": "red",
+    "pred_conf": 0.9999979734420776,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 1.0,
+      "yellow": 0.0
+    }
+  },
+  {
+    "id": "frame_000540_det_03",
+    "label": "red",
+    "pred": "red",
+    "pred_conf": 0.9999896287918091,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 1.0,
+      "yellow": 0.0
+    }
+  },
+  {
+    "id": "frame_000570_det_02",
+    "label": "red",
+    "pred": "red",
+    "pred_conf": 0.9999991655349731,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 1.0,
+      "yellow": 0.0
+    }
+  },
+  {
+    "id": "frame_000600_det_03",
+    "label": "red",
+    "pred": "red",
+    "pred_conf": 0.9999953508377075,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 1.0,
+      "yellow": 0.0
+    }
+  },
+  {
+    "id": "frame_000630_det_03",
+    "label": "red",
+    "pred": "red",
+    "pred_conf": 0.999998927116394,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 1.0,
+      "yellow": 0.0
+    }
+  },
+  {
+    "id": "frame_000660_det_02",
+    "label": "red",
+    "pred": "red",
+    "pred_conf": 0.9999821186065674,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 1.0,
+      "yellow": 0.0
+    }
+  },
+  {
+    "id": "frame_000690_det_03",
+    "label": "red",
+    "pred": "red",
+    "pred_conf": 1.0,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 1.0,
+      "yellow": 0.0
+    }
+  },
+  {
+    "id": "frame_000720_det_02",
+    "label": "red",
+    "pred": "red",
+    "pred_conf": 0.9999992847442627,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 1.0,
+      "yellow": 0.0
+    }
+  },
+  {
+    "id": "frame_000750_det_03",
+    "label": "red",
+    "pred": "red",
+    "pred_conf": 0.9999814033508301,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 1.0,
+      "yellow": 0.0
+    }
+  },
+  {
+    "id": "frame_000780_det_02",
+    "label": "red",
+    "pred": "red",
+    "pred_conf": 0.9999974966049194,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 1.0,
+      "yellow": 0.0
+    }
+  },
+  {
+    "id": "frame_000810_det_02",
+    "label": "red",
+    "pred": "red",
+    "pred_conf": 0.9999967813491821,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 1.0,
+      "yellow": 0.0
+    }
+  },
+  {
+    "id": "frame_000840_det_02",
+    "label": "red",
+    "pred": "red",
+    "pred_conf": 0.9999992847442627,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 1.0,
+      "yellow": 0.0
+    }
+  },
+  {
+    "id": "frame_000870_det_03",
+    "label": "red",
+    "pred": "red",
+    "pred_conf": 0.9999998807907104,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 1.0,
+      "yellow": 0.0
+    }
+  },
+  {
+    "id": "frame_000900_det_03",
+    "label": "red",
+    "pred": "red",
+    "pred_conf": 0.9999929666519165,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 1.0,
+      "yellow": 0.0
+    }
+  },
+  {
+    "id": "frame_000930_det_03",
+    "label": "red",
+    "pred": "red",
+    "pred_conf": 0.9999992847442627,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 1.0,
+      "yellow": 0.0
+    }
+  },
+  {
+    "id": "frame_000960_det_03",
+    "label": "red",
+    "pred": "red",
+    "pred_conf": 0.9999980926513672,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 1.0,
+      "yellow": 0.0
+    }
+  },
+  {
+    "id": "frame_000990_det_03",
+    "label": "red",
+    "pred": "red",
+    "pred_conf": 0.9999978542327881,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 1.0,
+      "yellow": 0.0
+    }
+  },
+  {
+    "id": "frame_001020_det_03",
+    "label": "red",
+    "pred": "red",
+    "pred_conf": 0.9999985694885254,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 1.0,
+      "yellow": 0.0
+    }
+  },
+  {
+    "id": "frame_001050_det_03",
+    "label": "red",
+    "pred": "red",
+    "pred_conf": 0.9999995231628418,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 1.0,
+      "yellow": 0.0
+    }
+  },
+  {
+    "id": "frame_001080_det_03",
+    "label": "red",
+    "pred": "red",
+    "pred_conf": 0.9999921321868896,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 1.0,
+      "yellow": 0.0
+    }
+  },
+  {
+    "id": "frame_001110_det_02",
+    "label": "red",
+    "pred": "red",
+    "pred_conf": 0.9999996423721313,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 1.0,
+      "yellow": 0.0
+    }
+  },
+  {
+    "id": "frame_001140_det_02",
+    "label": "red",
+    "pred": "red",
+    "pred_conf": 1.0,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 1.0,
+      "yellow": 0.0
+    }
+  },
+  {
+    "id": "frame_001170_det_03",
+    "label": "red",
+    "pred": "red",
+    "pred_conf": 1.0,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 1.0,
+      "yellow": 0.0
+    }
+  },
+  {
+    "id": "frame_001200_det_03",
+    "label": "red",
+    "pred": "red",
+    "pred_conf": 0.9999992847442627,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 1.0,
+      "yellow": 0.0
+    }
+  },
+  {
+    "id": "frame_001230_det_03",
+    "label": "red",
+    "pred": "red",
+    "pred_conf": 0.9999995231628418,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 1.0,
+      "yellow": 0.0
+    }
+  },
+  {
+    "id": "frame_001260_det_03",
+    "label": "red",
+    "pred": "red",
+    "pred_conf": 0.9999985694885254,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 1.0,
+      "yellow": 0.0
+    }
+  },
+  {
+    "id": "frame_001290_det_03",
+    "label": "red",
+    "pred": "red",
+    "pred_conf": 0.9999990463256836,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 1.0,
+      "yellow": 0.0
+    }
+  },
+  {
+    "id": "frame_001320_det_02",
+    "label": "red",
+    "pred": "red",
+    "pred_conf": 0.9999980926513672,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 1.0,
+      "yellow": 0.0
+    }
+  },
+  {
+    "id": "frame_001320_det_04",
+    "label": "red",
+    "pred": "red",
+    "pred_conf": 0.9999961853027344,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 1.0,
+      "yellow": 0.0
+    }
+  },
+  {
+    "id": "frame_001350_det_02",
+    "label": "red",
+    "pred": "red",
+    "pred_conf": 0.9999997615814209,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 1.0,
+      "yellow": 0.0
+    }
+  },
+  {
+    "id": "frame_001380_det_03",
+    "label": "red",
+    "pred": "red",
+    "pred_conf": 0.9999992847442627,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 1.0,
+      "yellow": 0.0
+    }
+  },
+  {
+    "id": "frame_001410_det_03",
+    "label": "red",
+    "pred": "red",
+    "pred_conf": 0.9999998807907104,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 1.0,
+      "yellow": 0.0
+    }
+  },
+  {
+    "id": "frame_001440_det_03",
+    "label": "red",
+    "pred": "red",
+    "pred_conf": 1.0,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 1.0,
+      "yellow": 0.0
+    }
+  },
+  {
+    "id": "frame_001470_det_03",
+    "label": "red",
+    "pred": "red",
+    "pred_conf": 0.9999908208847046,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 1.0,
+      "yellow": 0.0
+    }
+  },
+  {
+    "id": "frame_001500_det_03",
+    "label": "red",
+    "pred": "red",
+    "pred_conf": 0.9999923706054688,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 1.0,
+      "yellow": 0.0
+    }
+  },
+  {
+    "id": "frame_001530_det_03",
+    "label": "red",
+    "pred": "red",
+    "pred_conf": 1.0,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 1.0,
+      "yellow": 0.0
+    }
+  },
+  {
+    "id": "frame_001560_det_01",
+    "label": "red",
+    "pred": "red",
+    "pred_conf": 1.0,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 1.0,
+      "yellow": 0.0
+    }
+  },
+  {
+    "id": "frame_001590_det_03",
+    "label": "red",
+    "pred": "red",
+    "pred_conf": 1.0,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 1.0,
+      "yellow": 0.0
+    }
+  },
+  {
+    "id": "frame_001620_det_02",
+    "label": "red",
+    "pred": "red",
+    "pred_conf": 1.0,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 1.0,
+      "yellow": 0.0
+    }
+  },
+  {
+    "id": "frame_001650_det_02",
+    "label": "red",
+    "pred": "red",
+    "pred_conf": 1.0,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0,
+      "red": 1.0,
+      "yellow": 0.0
+    }
+  },
+  {
+    "id": "frame_001650_det_03",
+    "label": "red",
+    "pred": "red",
+    "pred_conf": 0.9995784163475037,
+    "probs": {
+      "blue": 0.0,
+      "green": 0.0,
+      "purple": 0.0002,
+      "red": 0.9996,
+      "yellow": 0.0002
+    }
+  },
+  {
+    "id": "frame_000000_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.7283101081848145,
+    "probs": {
+      "blue": 0.1654,
+      "green": 0.7283,
+      "purple": 0.0568,
+      "red": 0.0035,
+      "yellow": 0.0461
+    }
+  },
+  {
+    "id": "frame_000030_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8056248426437378,
+    "probs": {
+      "blue": 0.099,
+      "green": 0.8056,
+      "purple": 0.0362,
+      "red": 0.0044,
+      "yellow": 0.0548
+    }
+  },
+  {
+    "id": "frame_000060_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8803740739822388,
+    "probs": {
+      "blue": 0.0763,
+      "green": 0.8804,
+      "purple": 0.0171,
+      "red": 0.0013,
+      "yellow": 0.0249
+    }
+  },
+  {
+    "id": "frame_000090_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.7899134159088135,
+    "probs": {
+      "blue": 0.1141,
+      "green": 0.7899,
+      "purple": 0.0447,
+      "red": 0.0038,
+      "yellow": 0.0474
+    }
+  },
+  {
+    "id": "frame_000120_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8773881196975708,
+    "probs": {
+      "blue": 0.0665,
+      "green": 0.8774,
+      "purple": 0.0168,
+      "red": 0.0023,
+      "yellow": 0.037
+    }
+  },
+  {
+    "id": "frame_000150_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8837478756904602,
+    "probs": {
+      "blue": 0.0676,
+      "green": 0.8837,
+      "purple": 0.0203,
+      "red": 0.0019,
+      "yellow": 0.0264
+    }
+  },
+  {
+    "id": "frame_000180_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.6443294882774353,
+    "probs": {
+      "blue": 0.1703,
+      "green": 0.6443,
+      "purple": 0.0726,
+      "red": 0.0084,
+      "yellow": 0.1043
+    }
+  },
+  {
+    "id": "frame_000210_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8197636604309082,
+    "probs": {
+      "blue": 0.1071,
+      "green": 0.8198,
+      "purple": 0.0274,
+      "red": 0.0027,
+      "yellow": 0.043
+    }
+  },
+  {
+    "id": "frame_000240_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.6880759596824646,
+    "probs": {
+      "blue": 0.1551,
+      "green": 0.6881,
+      "purple": 0.0682,
+      "red": 0.0064,
+      "yellow": 0.0822
+    }
+  },
+  {
+    "id": "frame_000270_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.6577643752098083,
+    "probs": {
+      "blue": 0.1811,
+      "green": 0.6578,
+      "purple": 0.0591,
+      "red": 0.0049,
+      "yellow": 0.097
+    }
+  },
+  {
+    "id": "frame_000270_det_04",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.5747844576835632,
+    "probs": {
+      "blue": 0.0903,
+      "green": 0.5748,
+      "purple": 0.0472,
+      "red": 0.0466,
+      "yellow": 0.2412
+    }
+  },
+  {
+    "id": "frame_000300_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.7316129803657532,
+    "probs": {
+      "blue": 0.1243,
+      "green": 0.7316,
+      "purple": 0.0405,
+      "red": 0.0043,
+      "yellow": 0.0993
+    }
+  },
+  {
+    "id": "frame_000330_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.7202526926994324,
+    "probs": {
+      "blue": 0.1215,
+      "green": 0.7203,
+      "purple": 0.043,
+      "red": 0.0047,
+      "yellow": 0.1105
+    }
+  },
+  {
+    "id": "frame_000360_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.6495805382728577,
+    "probs": {
+      "blue": 0.1832,
+      "green": 0.6496,
+      "purple": 0.0608,
+      "red": 0.0067,
+      "yellow": 0.0998
+    }
+  },
+  {
+    "id": "frame_000390_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.6803672313690186,
+    "probs": {
+      "blue": 0.165,
+      "green": 0.6804,
+      "purple": 0.0634,
+      "red": 0.0066,
+      "yellow": 0.0845
+    }
+  },
+  {
+    "id": "frame_000420_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.7351809144020081,
+    "probs": {
+      "blue": 0.1582,
+      "green": 0.7352,
+      "purple": 0.0492,
+      "red": 0.0051,
+      "yellow": 0.0523
+    }
+  },
+  {
+    "id": "frame_000450_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.9328874349594116,
+    "probs": {
+      "blue": 0.0456,
+      "green": 0.9329,
+      "purple": 0.0069,
+      "red": 0.0008,
+      "yellow": 0.0138
+    }
+  },
+  {
+    "id": "frame_000480_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.9215877652168274,
+    "probs": {
+      "blue": 0.0424,
+      "green": 0.9216,
+      "purple": 0.0097,
+      "red": 0.0016,
+      "yellow": 0.0247
+    }
+  },
+  {
+    "id": "frame_000510_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.6056302785873413,
+    "probs": {
+      "blue": 0.1836,
+      "green": 0.6056,
+      "purple": 0.0817,
+      "red": 0.0084,
+      "yellow": 0.1207
+    }
+  },
+  {
+    "id": "frame_000540_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8012291789054871,
+    "probs": {
+      "blue": 0.1178,
+      "green": 0.8012,
+      "purple": 0.0321,
+      "red": 0.0034,
+      "yellow": 0.0455
+    }
+  },
+  {
+    "id": "frame_000570_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8192513585090637,
+    "probs": {
+      "blue": 0.0979,
+      "green": 0.8193,
+      "purple": 0.0262,
+      "red": 0.0028,
+      "yellow": 0.0539
+    }
+  },
+  {
+    "id": "frame_000600_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.7883521318435669,
+    "probs": {
+      "blue": 0.1189,
+      "green": 0.7884,
+      "purple": 0.0313,
+      "red": 0.0032,
+      "yellow": 0.0582
+    }
+  },
+  {
+    "id": "frame_000630_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.5721575617790222,
+    "probs": {
+      "blue": 0.1889,
+      "green": 0.5722,
+      "purple": 0.0886,
+      "red": 0.0132,
+      "yellow": 0.1372
+    }
+  },
+  {
+    "id": "frame_000660_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.9080458283424377,
+    "probs": {
+      "blue": 0.0551,
+      "green": 0.908,
+      "purple": 0.0081,
+      "red": 0.0013,
+      "yellow": 0.0275
+    }
+  },
+  {
+    "id": "frame_000660_det_04",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.725335955619812,
+    "probs": {
+      "blue": 0.0167,
+      "green": 0.7253,
+      "purple": 0.2496,
+      "red": 0.0079,
+      "yellow": 0.0005
+    }
+  },
+  {
+    "id": "frame_000690_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8666858077049255,
+    "probs": {
+      "blue": 0.0862,
+      "green": 0.8667,
+      "purple": 0.0148,
+      "red": 0.0017,
+      "yellow": 0.0306
+    }
+  },
+  {
+    "id": "frame_000720_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.5516104698181152,
+    "probs": {
+      "blue": 0.2162,
+      "green": 0.5516,
+      "purple": 0.1084,
+      "red": 0.0108,
+      "yellow": 0.1129
+    }
+  },
+  {
+    "id": "frame_000750_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8065165281295776,
+    "probs": {
+      "blue": 0.0852,
+      "green": 0.8065,
+      "purple": 0.0188,
+      "red": 0.0039,
+      "yellow": 0.0856
+    }
+  },
+  {
+    "id": "frame_000780_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8514445424079895,
+    "probs": {
+      "blue": 0.074,
+      "green": 0.8514,
+      "purple": 0.014,
+      "red": 0.0024,
+      "yellow": 0.0581
+    }
+  },
+  {
+    "id": "frame_000810_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8785404562950134,
+    "probs": {
+      "blue": 0.0709,
+      "green": 0.8785,
+      "purple": 0.0178,
+      "red": 0.0019,
+      "yellow": 0.0308
+    }
+  },
+  {
+    "id": "frame_000840_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8501833081245422,
+    "probs": {
+      "blue": 0.0826,
+      "green": 0.8502,
+      "purple": 0.0242,
+      "red": 0.0024,
+      "yellow": 0.0407
+    }
+  },
+  {
+    "id": "frame_000870_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.7779973149299622,
+    "probs": {
+      "blue": 0.1242,
+      "green": 0.778,
+      "purple": 0.0321,
+      "red": 0.003,
+      "yellow": 0.0628
+    }
+  },
+  {
+    "id": "frame_000870_det_04",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.6765249371528625,
+    "probs": {
+      "blue": 0.0248,
+      "green": 0.6765,
+      "purple": 0.2878,
+      "red": 0.0097,
+      "yellow": 0.0011
+    }
+  },
+  {
+    "id": "frame_000900_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.7649167776107788,
+    "probs": {
+      "blue": 0.122,
+      "green": 0.7649,
+      "purple": 0.0321,
+      "red": 0.0045,
+      "yellow": 0.0765
+    }
+  },
+  {
+    "id": "frame_000900_det_05",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8371090888977051,
+    "probs": {
+      "blue": 0.011,
+      "green": 0.8371,
+      "purple": 0.1469,
+      "red": 0.0046,
+      "yellow": 0.0004
+    }
+  },
+  {
+    "id": "frame_000930_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8460984230041504,
+    "probs": {
+      "blue": 0.0625,
+      "green": 0.8461,
+      "purple": 0.0125,
+      "red": 0.0021,
+      "yellow": 0.0768
+    }
+  },
+  {
+    "id": "frame_000930_det_04",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8002334237098694,
+    "probs": {
+      "blue": 0.0134,
+      "green": 0.8002,
+      "purple": 0.1791,
+      "red": 0.0067,
+      "yellow": 0.0006
+    }
+  },
+  {
+    "id": "frame_000960_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.9029449820518494,
+    "probs": {
+      "blue": 0.0367,
+      "green": 0.9029,
+      "purple": 0.0054,
+      "red": 0.0009,
+      "yellow": 0.0541
+    }
+  },
+  {
+    "id": "frame_000960_det_04",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8223484754562378,
+    "probs": {
+      "blue": 0.0159,
+      "green": 0.8223,
+      "purple": 0.159,
+      "red": 0.0025,
+      "yellow": 0.0003
+    }
+  },
+  {
+    "id": "frame_000990_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8788396716117859,
+    "probs": {
+      "blue": 0.0523,
+      "green": 0.8788,
+      "purple": 0.0092,
+      "red": 0.0014,
+      "yellow": 0.0582
+    }
+  },
+  {
+    "id": "frame_000990_det_04",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8189719319343567,
+    "probs": {
+      "blue": 0.0158,
+      "green": 0.819,
+      "purple": 0.1622,
+      "red": 0.0027,
+      "yellow": 0.0004
+    }
+  },
+  {
+    "id": "frame_001020_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.7790725231170654,
+    "probs": {
+      "blue": 0.1055,
+      "green": 0.7791,
+      "purple": 0.0261,
+      "red": 0.0026,
+      "yellow": 0.0867
+    }
+  },
+  {
+    "id": "frame_001050_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.9060515761375427,
+    "probs": {
+      "blue": 0.0446,
+      "green": 0.9061,
+      "purple": 0.0075,
+      "red": 0.0011,
+      "yellow": 0.0408
+    }
+  },
+  {
+    "id": "frame_001080_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.9129779934883118,
+    "probs": {
+      "blue": 0.0446,
+      "green": 0.913,
+      "purple": 0.0077,
+      "red": 0.001,
+      "yellow": 0.0338
+    }
+  },
+  {
+    "id": "frame_001110_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.9214593172073364,
+    "probs": {
+      "blue": 0.0401,
+      "green": 0.9215,
+      "purple": 0.0079,
+      "red": 0.0009,
+      "yellow": 0.0297
+    }
+  },
+  {
+    "id": "frame_001140_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.9308038353919983,
+    "probs": {
+      "blue": 0.0351,
+      "green": 0.9308,
+      "purple": 0.006,
+      "red": 0.0007,
+      "yellow": 0.0275
+    }
+  },
+  {
+    "id": "frame_001170_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.939343273639679,
+    "probs": {
+      "blue": 0.0332,
+      "green": 0.9393,
+      "purple": 0.0044,
+      "red": 0.0004,
+      "yellow": 0.0226
+    }
+  },
+  {
+    "id": "frame_001200_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.9336099028587341,
+    "probs": {
+      "blue": 0.0364,
+      "green": 0.9336,
+      "purple": 0.0046,
+      "red": 0.0005,
+      "yellow": 0.0249
+    }
+  },
+  {
+    "id": "frame_001230_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.9268835186958313,
+    "probs": {
+      "blue": 0.0379,
+      "green": 0.9269,
+      "purple": 0.0052,
+      "red": 0.0006,
+      "yellow": 0.0294
+    }
+  },
+  {
+    "id": "frame_001260_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8952593803405762,
+    "probs": {
+      "blue": 0.0623,
+      "green": 0.8953,
+      "purple": 0.0134,
+      "red": 0.0008,
+      "yellow": 0.0282
+    }
+  },
+  {
+    "id": "frame_001290_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.9332461357116699,
+    "probs": {
+      "blue": 0.0399,
+      "green": 0.9332,
+      "purple": 0.0067,
+      "red": 0.0005,
+      "yellow": 0.0196
+    }
+  },
+  {
+    "id": "frame_001320_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.9328296780586243,
+    "probs": {
+      "blue": 0.0363,
+      "green": 0.9328,
+      "purple": 0.0063,
+      "red": 0.0006,
+      "yellow": 0.024
+    }
+  },
+  {
+    "id": "frame_001350_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.9238362908363342,
+    "probs": {
+      "blue": 0.0437,
+      "green": 0.9238,
+      "purple": 0.0063,
+      "red": 0.0006,
+      "yellow": 0.0256
+    }
+  },
+  {
+    "id": "frame_001380_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.9241945743560791,
+    "probs": {
+      "blue": 0.0403,
+      "green": 0.9242,
+      "purple": 0.0058,
+      "red": 0.0006,
+      "yellow": 0.0292
+    }
+  },
+  {
+    "id": "frame_001410_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.900230884552002,
+    "probs": {
+      "blue": 0.0488,
+      "green": 0.9002,
+      "purple": 0.0078,
+      "red": 0.0009,
+      "yellow": 0.0424
+    }
+  },
+  {
+    "id": "frame_001440_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8941450715065002,
+    "probs": {
+      "blue": 0.0518,
+      "green": 0.8941,
+      "purple": 0.0082,
+      "red": 0.0009,
+      "yellow": 0.0449
+    }
+  },
+  {
+    "id": "frame_001470_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.829250693321228,
+    "probs": {
+      "blue": 0.0891,
+      "green": 0.8293,
+      "purple": 0.0229,
+      "red": 0.0019,
+      "yellow": 0.0568
+    }
+  },
+  {
+    "id": "frame_001470_det_04",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8321396112442017,
+    "probs": {
+      "blue": 0.0192,
+      "green": 0.8321,
+      "purple": 0.1381,
+      "red": 0.0093,
+      "yellow": 0.0012
+    }
+  },
+  {
+    "id": "frame_001500_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.9014723896980286,
+    "probs": {
+      "blue": 0.0513,
+      "green": 0.9015,
+      "purple": 0.0078,
+      "red": 0.0007,
+      "yellow": 0.0387
+    }
+  },
+  {
+    "id": "frame_001530_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.9141599535942078,
+    "probs": {
+      "blue": 0.0447,
+      "green": 0.9142,
+      "purple": 0.0067,
+      "red": 0.0007,
+      "yellow": 0.0337
+    }
+  },
+  {
+    "id": "frame_001560_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.9150003790855408,
+    "probs": {
+      "blue": 0.0396,
+      "green": 0.915,
+      "purple": 0.006,
+      "red": 0.0008,
+      "yellow": 0.0387
+    }
+  },
+  {
+    "id": "frame_001590_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8965411186218262,
+    "probs": {
+      "blue": 0.0619,
+      "green": 0.8965,
+      "purple": 0.0135,
+      "red": 0.0013,
+      "yellow": 0.0267
+    }
+  },
+  {
+    "id": "frame_001620_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.772466242313385,
+    "probs": {
+      "blue": 0.0869,
+      "green": 0.7725,
+      "purple": 0.0271,
+      "red": 0.0067,
+      "yellow": 0.1067
+    }
+  },
+  {
+    "id": "frame_001650_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.9155895113945007,
+    "probs": {
+      "blue": 0.0548,
+      "green": 0.9156,
+      "purple": 0.0084,
+      "red": 0.0009,
+      "yellow": 0.0203
+    }
+  },
+  {
+    "id": "frame_001680_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8662489652633667,
+    "probs": {
+      "blue": 0.0859,
+      "green": 0.8662,
+      "purple": 0.0161,
+      "red": 0.0014,
+      "yellow": 0.0303
+    }
+  },
+  {
+    "id": "frame_001710_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.9071027040481567,
+    "probs": {
+      "blue": 0.0594,
+      "green": 0.9071,
+      "purple": 0.011,
+      "red": 0.001,
+      "yellow": 0.0215
+    }
+  },
+  {
+    "id": "frame_001740_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.9182174801826477,
+    "probs": {
+      "blue": 0.0473,
+      "green": 0.9182,
+      "purple": 0.0085,
+      "red": 0.0011,
+      "yellow": 0.0249
+    }
+  },
+  {
+    "id": "frame_001770_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.9181147813796997,
+    "probs": {
+      "blue": 0.0525,
+      "green": 0.9181,
+      "purple": 0.0108,
+      "red": 0.001,
+      "yellow": 0.0176
+    }
+  },
+  {
+    "id": "frame_001800_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.7487996816635132,
+    "probs": {
+      "blue": 0.0685,
+      "green": 0.7488,
+      "purple": 0.0126,
+      "red": 0.0021,
+      "yellow": 0.168
+    }
+  },
+  {
+    "id": "frame_001830_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8657436370849609,
+    "probs": {
+      "blue": 0.0906,
+      "green": 0.8657,
+      "purple": 0.016,
+      "red": 0.0014,
+      "yellow": 0.0263
+    }
+  },
+  {
+    "id": "frame_001860_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.9382649064064026,
+    "probs": {
+      "blue": 0.0407,
+      "green": 0.9383,
+      "purple": 0.0055,
+      "red": 0.0006,
+      "yellow": 0.015
+    }
+  },
+  {
+    "id": "frame_001890_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.9103674292564392,
+    "probs": {
+      "blue": 0.0583,
+      "green": 0.9104,
+      "purple": 0.0109,
+      "red": 0.0011,
+      "yellow": 0.0193
+    }
+  },
+  {
+    "id": "frame_001920_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.9116443991661072,
+    "probs": {
+      "blue": 0.0604,
+      "green": 0.9116,
+      "purple": 0.0101,
+      "red": 0.0008,
+      "yellow": 0.017
+    }
+  },
+  {
+    "id": "frame_001950_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.9297783374786377,
+    "probs": {
+      "blue": 0.0516,
+      "green": 0.9298,
+      "purple": 0.0063,
+      "red": 0.0005,
+      "yellow": 0.0118
+    }
+  },
+  {
+    "id": "frame_001980_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.9297823309898376,
+    "probs": {
+      "blue": 0.0516,
+      "green": 0.9298,
+      "purple": 0.0063,
+      "red": 0.0005,
+      "yellow": 0.0118
+    }
+  },
+  {
+    "id": "frame_002010_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.9571101069450378,
+    "probs": {
+      "blue": 0.0327,
+      "green": 0.9571,
+      "purple": 0.0028,
+      "red": 0.0003,
+      "yellow": 0.0072
+    }
+  },
+  {
+    "id": "frame_002040_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.9590016603469849,
+    "probs": {
+      "blue": 0.0297,
+      "green": 0.959,
+      "purple": 0.0029,
+      "red": 0.0003,
+      "yellow": 0.0081
+    }
+  },
+  {
+    "id": "frame_002070_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.9030236005783081,
+    "probs": {
+      "blue": 0.0552,
+      "green": 0.903,
+      "purple": 0.0123,
+      "red": 0.0017,
+      "yellow": 0.0277
+    }
+  },
+  {
+    "id": "frame_002100_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.897577166557312,
+    "probs": {
+      "blue": 0.0409,
+      "green": 0.8976,
+      "purple": 0.009,
+      "red": 0.0017,
+      "yellow": 0.0508
+    }
+  },
+  {
+    "id": "frame_002130_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8665559887886047,
+    "probs": {
+      "blue": 0.0438,
+      "green": 0.8666,
+      "purple": 0.006,
+      "red": 0.0013,
+      "yellow": 0.0823
+    }
+  },
+  {
+    "id": "frame_002160_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.5175998210906982,
+    "probs": {
+      "blue": 0.0539,
+      "green": 0.5176,
+      "purple": 0.0078,
+      "red": 0.0027,
+      "yellow": 0.418
+    }
+  },
+  {
+    "id": "frame_002190_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8649801015853882,
+    "probs": {
+      "blue": 0.0511,
+      "green": 0.865,
+      "purple": 0.0117,
+      "red": 0.0023,
+      "yellow": 0.0699
+    }
+  },
+  {
+    "id": "frame_002220_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8114019632339478,
+    "probs": {
+      "blue": 0.0269,
+      "green": 0.8114,
+      "purple": 0.0033,
+      "red": 0.0012,
+      "yellow": 0.1573
+    }
+  },
+  {
+    "id": "frame_002250_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8239760994911194,
+    "probs": {
+      "blue": 0.0538,
+      "green": 0.824,
+      "purple": 0.0079,
+      "red": 0.0016,
+      "yellow": 0.1127
+    }
+  },
+  {
+    "id": "frame_002280_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.9195144176483154,
+    "probs": {
+      "blue": 0.061,
+      "green": 0.9195,
+      "purple": 0.009,
+      "red": 0.0009,
+      "yellow": 0.0096
+    }
+  },
+  {
+    "id": "frame_002310_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8668971061706543,
+    "probs": {
+      "blue": 0.0614,
+      "green": 0.8669,
+      "purple": 0.0113,
+      "red": 0.0021,
+      "yellow": 0.0583
+    }
+  },
+  {
+    "id": "frame_002340_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.9492377042770386,
+    "probs": {
+      "blue": 0.0299,
+      "green": 0.9492,
+      "purple": 0.0024,
+      "red": 0.0005,
+      "yellow": 0.018
+    }
+  },
+  {
+    "id": "frame_002370_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.9150668382644653,
+    "probs": {
+      "blue": 0.0314,
+      "green": 0.9151,
+      "purple": 0.0039,
+      "red": 0.0013,
+      "yellow": 0.0483
+    }
+  },
+  {
+    "id": "frame_002400_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.7468428611755371,
+    "probs": {
+      "blue": 0.1035,
+      "green": 0.7468,
+      "purple": 0.0287,
+      "red": 0.0058,
+      "yellow": 0.1151
+    }
+  },
+  {
+    "id": "frame_002430_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.7984097599983215,
+    "probs": {
+      "blue": 0.0951,
+      "green": 0.7984,
+      "purple": 0.0348,
+      "red": 0.0062,
+      "yellow": 0.0655
+    }
+  },
+  {
+    "id": "frame_002460_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.9240303635597229,
+    "probs": {
+      "blue": 0.0419,
+      "green": 0.924,
+      "purple": 0.004,
+      "red": 0.0009,
+      "yellow": 0.0291
+    }
+  },
+  {
+    "id": "frame_002490_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.7560625672340393,
+    "probs": {
+      "blue": 0.0547,
+      "green": 0.7561,
+      "purple": 0.014,
+      "red": 0.0037,
+      "yellow": 0.1714
+    }
+  },
+  {
+    "id": "frame_002520_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.49615007638931274,
+    "probs": {
+      "blue": 0.1751,
+      "green": 0.4962,
+      "purple": 0.0673,
+      "red": 0.0071,
+      "yellow": 0.2544
+    }
+  },
+  {
+    "id": "frame_002580_det_00",
+    "label": "not_jockey",
+    "pred": "yellow",
+    "pred_conf": 0.7088151574134827,
+    "probs": {
+      "blue": 0.0684,
+      "green": 0.1962,
+      "purple": 0.0193,
+      "red": 0.0073,
+      "yellow": 0.7088
+    }
+  },
+  {
+    "id": "frame_002610_det_00",
+    "label": "not_jockey",
+    "pred": "yellow",
+    "pred_conf": 0.7281405925750732,
+    "probs": {
+      "blue": 0.0472,
+      "green": 0.207,
+      "purple": 0.0122,
+      "red": 0.0055,
+      "yellow": 0.7281
+    }
+  },
+  {
+    "id": "frame_002640_det_00",
+    "label": "not_jockey",
+    "pred": "yellow",
+    "pred_conf": 0.7153661251068115,
+    "probs": {
+      "blue": 0.0563,
+      "green": 0.2118,
+      "purple": 0.0122,
+      "red": 0.0043,
+      "yellow": 0.7154
+    }
+  },
+  {
+    "id": "frame_002670_det_00",
+    "label": "not_jockey",
+    "pred": "yellow",
+    "pred_conf": 0.4461902678012848,
+    "probs": {
+      "blue": 0.1211,
+      "green": 0.4105,
+      "purple": 0.0174,
+      "red": 0.0048,
+      "yellow": 0.4462
+    }
+  },
+  {
+    "id": "frame_002700_det_00",
+    "label": "not_jockey",
+    "pred": "yellow",
+    "pred_conf": 0.4222278594970703,
+    "probs": {
+      "blue": 0.1661,
+      "green": 0.3565,
+      "purple": 0.0387,
+      "red": 0.0165,
+      "yellow": 0.4222
+    }
+  },
+  {
+    "id": "frame_002730_det_00",
+    "label": "not_jockey",
+    "pred": "yellow",
+    "pred_conf": 0.8334380388259888,
+    "probs": {
+      "blue": 0.0527,
+      "green": 0.1061,
+      "purple": 0.0018,
+      "red": 0.0059,
+      "yellow": 0.8334
+    }
+  },
+  {
+    "id": "frame_002760_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.9166646599769592,
+    "probs": {
+      "blue": 0.0555,
+      "green": 0.9167,
+      "purple": 0.0121,
+      "red": 0.002,
+      "yellow": 0.0137
+    }
+  },
+  {
+    "id": "frame_002790_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.6727393269538879,
+    "probs": {
+      "blue": 0.2109,
+      "green": 0.6727,
+      "purple": 0.0914,
+      "red": 0.0058,
+      "yellow": 0.0192
+    }
+  },
+  {
+    "id": "frame_002820_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8247177004814148,
+    "probs": {
+      "blue": 0.1029,
+      "green": 0.8247,
+      "purple": 0.0235,
+      "red": 0.0041,
+      "yellow": 0.0447
+    }
+  },
+  {
+    "id": "frame_002850_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.848205029964447,
+    "probs": {
+      "blue": 0.1003,
+      "green": 0.8482,
+      "purple": 0.0452,
+      "red": 0.0013,
+      "yellow": 0.005
+    }
+  },
+  {
+    "id": "frame_003060_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.6887511610984802,
+    "probs": {
+      "blue": 0.028,
+      "green": 0.6888,
+      "purple": 0.2514,
+      "red": 0.0284,
+      "yellow": 0.0035
+    }
+  },
+  {
+    "id": "frame_003090_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.6969856023788452,
+    "probs": {
+      "blue": 0.0269,
+      "green": 0.697,
+      "purple": 0.2454,
+      "red": 0.0274,
+      "yellow": 0.0033
+    }
+  },
+  {
+    "id": "frame_003120_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8188685178756714,
+    "probs": {
+      "blue": 0.0188,
+      "green": 0.8189,
+      "purple": 0.156,
+      "red": 0.0057,
+      "yellow": 0.0006
+    }
+  },
+  {
+    "id": "frame_003150_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.7511340975761414,
+    "probs": {
+      "blue": 0.0373,
+      "green": 0.7511,
+      "purple": 0.2032,
+      "red": 0.0065,
+      "yellow": 0.0018
+    }
+  },
+  {
+    "id": "frame_003180_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.7390890121459961,
+    "probs": {
+      "blue": 0.0387,
+      "green": 0.7391,
+      "purple": 0.2121,
+      "red": 0.0079,
+      "yellow": 0.0021
+    }
+  },
+  {
+    "id": "frame_003210_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8524635434150696,
+    "probs": {
+      "blue": 0.0217,
+      "green": 0.8525,
+      "purple": 0.114,
+      "red": 0.0102,
+      "yellow": 0.0017
+    }
+  },
+  {
+    "id": "frame_003240_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.6884394288063049,
+    "probs": {
+      "blue": 0.0429,
+      "green": 0.6884,
+      "purple": 0.2157,
+      "red": 0.0436,
+      "yellow": 0.0093
+    }
+  },
+  {
+    "id": "frame_003300_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.7715581655502319,
+    "probs": {
+      "blue": 0.0257,
+      "green": 0.7716,
+      "purple": 0.1951,
+      "red": 0.0066,
+      "yellow": 0.001
+    }
+  },
+  {
+    "id": "frame_003330_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.7265563607215881,
+    "probs": {
+      "blue": 0.0259,
+      "green": 0.7266,
+      "purple": 0.2352,
+      "red": 0.0111,
+      "yellow": 0.0012
+    }
+  },
+  {
+    "id": "frame_003360_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.7361370325088501,
+    "probs": {
+      "blue": 0.0465,
+      "green": 0.7361,
+      "purple": 0.1961,
+      "red": 0.0168,
+      "yellow": 0.0044
+    }
+  },
+  {
+    "id": "frame_003390_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.7162907719612122,
+    "probs": {
+      "blue": 0.0433,
+      "green": 0.7163,
+      "purple": 0.2161,
+      "red": 0.0201,
+      "yellow": 0.0043
+    }
+  },
+  {
+    "id": "frame_003420_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.7179087400436401,
+    "probs": {
+      "blue": 0.0321,
+      "green": 0.7179,
+      "purple": 0.2375,
+      "red": 0.0102,
+      "yellow": 0.0023
+    }
+  },
+  {
+    "id": "frame_003450_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8206984996795654,
+    "probs": {
+      "blue": 0.0215,
+      "green": 0.8207,
+      "purple": 0.1475,
+      "red": 0.0088,
+      "yellow": 0.0015
+    }
+  },
+  {
+    "id": "frame_003480_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8116371631622314,
+    "probs": {
+      "blue": 0.0221,
+      "green": 0.8116,
+      "purple": 0.1561,
+      "red": 0.0086,
+      "yellow": 0.0015
+    }
+  },
+  {
+    "id": "frame_003570_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.7676663398742676,
+    "probs": {
+      "blue": 0.0354,
+      "green": 0.7677,
+      "purple": 0.1889,
+      "red": 0.0063,
+      "yellow": 0.0018
+    }
+  },
+  {
+    "id": "frame_003720_det_00",
+    "label": "not_jockey",
+    "pred": "purple",
+    "pred_conf": 0.45227083563804626,
+    "probs": {
+      "blue": 0.0345,
+      "green": 0.1381,
+      "purple": 0.4523,
+      "red": 0.3277,
+      "yellow": 0.0474
+    }
+  },
+  {
+    "id": "frame_003750_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.7154666781425476,
+    "probs": {
+      "blue": 0.0227,
+      "green": 0.7155,
+      "purple": 0.2493,
+      "red": 0.0116,
+      "yellow": 0.001
+    }
+  },
+  {
+    "id": "frame_003780_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.7590296268463135,
+    "probs": {
+      "blue": 0.0208,
+      "green": 0.759,
+      "purple": 0.2125,
+      "red": 0.0071,
+      "yellow": 0.0006
+    }
+  },
+  {
+    "id": "frame_003900_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8731565475463867,
+    "probs": {
+      "blue": 0.0168,
+      "green": 0.8732,
+      "purple": 0.1046,
+      "red": 0.0048,
+      "yellow": 0.0006
+    }
+  },
+  {
+    "id": "frame_003930_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8366299867630005,
+    "probs": {
+      "blue": 0.0183,
+      "green": 0.8366,
+      "purple": 0.136,
+      "red": 0.0082,
+      "yellow": 0.0009
+    }
+  },
+  {
+    "id": "frame_003960_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8061012625694275,
+    "probs": {
+      "blue": 0.0246,
+      "green": 0.8061,
+      "purple": 0.1568,
+      "red": 0.0107,
+      "yellow": 0.0017
+    }
+  },
+  {
+    "id": "frame_003990_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8142617344856262,
+    "probs": {
+      "blue": 0.0247,
+      "green": 0.8143,
+      "purple": 0.1479,
+      "red": 0.0113,
+      "yellow": 0.0019
+    }
+  },
+  {
+    "id": "frame_004020_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.4918493628501892,
+    "probs": {
+      "blue": 0.0683,
+      "green": 0.4918,
+      "purple": 0.3402,
+      "red": 0.0657,
+      "yellow": 0.034
+    }
+  },
+  {
+    "id": "frame_004170_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8435236215591431,
+    "probs": {
+      "blue": 0.0233,
+      "green": 0.8435,
+      "purple": 0.125,
+      "red": 0.0065,
+      "yellow": 0.0016
+    }
+  },
+  {
+    "id": "frame_004260_det_00",
+    "label": "not_jockey",
+    "pred": "purple",
+    "pred_conf": 0.4412582516670227,
+    "probs": {
+      "blue": 0.0428,
+      "green": 0.1488,
+      "purple": 0.4413,
+      "red": 0.3095,
+      "yellow": 0.0576
+    }
+  },
+  {
+    "id": "frame_004290_det_00",
+    "label": "not_jockey",
+    "pred": "purple",
+    "pred_conf": 0.40852275490760803,
+    "probs": {
+      "blue": 0.0359,
+      "green": 0.1246,
+      "purple": 0.4085,
+      "red": 0.3752,
+      "yellow": 0.0559
+    }
+  },
+  {
+    "id": "frame_004320_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.7735931873321533,
+    "probs": {
+      "blue": 0.024,
+      "green": 0.7736,
+      "purple": 0.1974,
+      "red": 0.0042,
+      "yellow": 0.0008
+    }
+  },
+  {
+    "id": "frame_004350_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.7807534337043762,
+    "probs": {
+      "blue": 0.0243,
+      "green": 0.7808,
+      "purple": 0.1868,
+      "red": 0.007,
+      "yellow": 0.0011
+    }
+  },
+  {
+    "id": "frame_004380_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.7860921025276184,
+    "probs": {
+      "blue": 0.0241,
+      "green": 0.7861,
+      "purple": 0.1823,
+      "red": 0.0065,
+      "yellow": 0.0011
+    }
+  },
+  {
+    "id": "frame_004500_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8166638016700745,
+    "probs": {
+      "blue": 0.027,
+      "green": 0.8167,
+      "purple": 0.1395,
+      "red": 0.0137,
+      "yellow": 0.0031
+    }
+  },
+  {
+    "id": "frame_004530_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8451424241065979,
+    "probs": {
+      "blue": 0.0232,
+      "green": 0.8451,
+      "purple": 0.121,
+      "red": 0.0088,
+      "yellow": 0.0019
+    }
+  },
+  {
+    "id": "frame_004560_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.4923490583896637,
+    "probs": {
+      "blue": 0.0611,
+      "green": 0.4923,
+      "purple": 0.3707,
+      "red": 0.0582,
+      "yellow": 0.0177
+    }
+  },
+  {
+    "id": "frame_004590_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.49023619294166565,
+    "probs": {
+      "blue": 0.062,
+      "green": 0.4902,
+      "purple": 0.3716,
+      "red": 0.058,
+      "yellow": 0.0182
+    }
+  },
+  {
+    "id": "frame_004620_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8669887781143188,
+    "probs": {
+      "blue": 0.0195,
+      "green": 0.867,
+      "purple": 0.1056,
+      "red": 0.0065,
+      "yellow": 0.0014
+    }
+  },
+  {
+    "id": "frame_004770_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8363487720489502,
+    "probs": {
+      "blue": 0.0255,
+      "green": 0.8363,
+      "purple": 0.1312,
+      "red": 0.0056,
+      "yellow": 0.0013
+    }
+  },
+  {
+    "id": "frame_004800_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.6128912568092346,
+    "probs": {
+      "blue": 0.0522,
+      "green": 0.6129,
+      "purple": 0.2696,
+      "red": 0.0503,
+      "yellow": 0.015
+    }
+  },
+  {
+    "id": "frame_004830_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.675215482711792,
+    "probs": {
+      "blue": 0.0451,
+      "green": 0.6752,
+      "purple": 0.229,
+      "red": 0.0402,
+      "yellow": 0.0105
+    }
+  },
+  {
+    "id": "frame_005070_det_00",
+    "label": "not_jockey",
+    "pred": "purple",
+    "pred_conf": 0.40142810344696045,
+    "probs": {
+      "blue": 0.0726,
+      "green": 0.2986,
+      "purple": 0.4014,
+      "red": 0.1589,
+      "yellow": 0.0685
+    }
+  },
+  {
+    "id": "frame_005100_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.846930205821991,
+    "probs": {
+      "blue": 0.0205,
+      "green": 0.8469,
+      "purple": 0.1239,
+      "red": 0.0074,
+      "yellow": 0.0013
+    }
+  },
+  {
+    "id": "frame_005130_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8656089901924133,
+    "probs": {
+      "blue": 0.0174,
+      "green": 0.8656,
+      "purple": 0.1109,
+      "red": 0.0052,
+      "yellow": 0.0009
+    }
+  },
+  {
+    "id": "frame_005250_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8012003898620605,
+    "probs": {
+      "blue": 0.0311,
+      "green": 0.8012,
+      "purple": 0.158,
+      "red": 0.0075,
+      "yellow": 0.0021
+    }
+  },
+  {
+    "id": "frame_005280_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.7558162212371826,
+    "probs": {
+      "blue": 0.0338,
+      "green": 0.7558,
+      "purple": 0.1966,
+      "red": 0.0111,
+      "yellow": 0.0027
+    }
+  },
+  {
+    "id": "frame_005310_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.7669299840927124,
+    "probs": {
+      "blue": 0.0241,
+      "green": 0.7669,
+      "purple": 0.2025,
+      "red": 0.0054,
+      "yellow": 0.0011
+    }
+  },
+  {
+    "id": "frame_005340_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.7455030679702759,
+    "probs": {
+      "blue": 0.0255,
+      "green": 0.7455,
+      "purple": 0.2217,
+      "red": 0.006,
+      "yellow": 0.0013
+    }
+  },
+  {
+    "id": "frame_005400_det_00",
+    "label": "not_jockey",
+    "pred": "purple",
+    "pred_conf": 0.5133683085441589,
+    "probs": {
+      "blue": 0.0436,
+      "green": 0.1545,
+      "purple": 0.5134,
+      "red": 0.2407,
+      "yellow": 0.0479
+    }
+  },
+  {
+    "id": "frame_005430_det_00",
+    "label": "not_jockey",
+    "pred": "purple",
+    "pred_conf": 0.49797582626342773,
+    "probs": {
+      "blue": 0.044,
+      "green": 0.2009,
+      "purple": 0.498,
+      "red": 0.2176,
+      "yellow": 0.0396
+    }
+  },
+  {
+    "id": "frame_005520_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8000549077987671,
+    "probs": {
+      "blue": 0.0265,
+      "green": 0.8001,
+      "purple": 0.155,
+      "red": 0.0159,
+      "yellow": 0.0026
+    }
+  },
+  {
+    "id": "frame_005610_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.89305579662323,
+    "probs": {
+      "blue": 0.0195,
+      "green": 0.8931,
+      "purple": 0.0835,
+      "red": 0.0032,
+      "yellow": 0.0008
+    }
+  },
+  {
+    "id": "frame_005640_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8928347229957581,
+    "probs": {
+      "blue": 0.0198,
+      "green": 0.8928,
+      "purple": 0.0835,
+      "red": 0.003,
+      "yellow": 0.0008
+    }
+  },
+  {
+    "id": "frame_005670_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.6837173700332642,
+    "probs": {
+      "blue": 0.0319,
+      "green": 0.6837,
+      "purple": 0.2733,
+      "red": 0.0092,
+      "yellow": 0.0019
+    }
+  },
+  {
+    "id": "frame_005730_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.7158939242362976,
+    "probs": {
+      "blue": 0.0359,
+      "green": 0.7159,
+      "purple": 0.2364,
+      "red": 0.01,
+      "yellow": 0.0019
+    }
+  },
+  {
+    "id": "frame_005820_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.5720484256744385,
+    "probs": {
+      "blue": 0.0493,
+      "green": 0.572,
+      "purple": 0.3262,
+      "red": 0.0411,
+      "yellow": 0.0114
+    }
+  },
+  {
+    "id": "frame_005910_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.7867946028709412,
+    "probs": {
+      "blue": 0.0429,
+      "green": 0.7868,
+      "purple": 0.1467,
+      "red": 0.0169,
+      "yellow": 0.0066
+    }
+  },
+  {
+    "id": "frame_005940_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.7968004941940308,
+    "probs": {
+      "blue": 0.0434,
+      "green": 0.7968,
+      "purple": 0.1369,
+      "red": 0.0162,
+      "yellow": 0.0066
+    }
+  },
+  {
+    "id": "frame_006150_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.9242406487464905,
+    "probs": {
+      "blue": 0.0081,
+      "green": 0.9242,
+      "purple": 0.0662,
+      "red": 0.0013,
+      "yellow": 0.0002
+    }
+  },
+  {
+    "id": "frame_006180_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.9176534414291382,
+    "probs": {
+      "blue": 0.0075,
+      "green": 0.9177,
+      "purple": 0.0733,
+      "red": 0.0014,
+      "yellow": 0.0001
+    }
+  },
+  {
+    "id": "frame_006240_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8833913207054138,
+    "probs": {
+      "blue": 0.0184,
+      "green": 0.8834,
+      "purple": 0.0951,
+      "red": 0.0025,
+      "yellow": 0.0006
+    }
+  },
+  {
+    "id": "frame_006510_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.7792083621025085,
+    "probs": {
+      "blue": 0.0399,
+      "green": 0.7792,
+      "purple": 0.1446,
+      "red": 0.0254,
+      "yellow": 0.0108
+    }
+  },
+  {
+    "id": "frame_006540_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8828102946281433,
+    "probs": {
+      "blue": 0.0229,
+      "green": 0.8828,
+      "purple": 0.0875,
+      "red": 0.0048,
+      "yellow": 0.002
+    }
+  },
+  {
+    "id": "frame_006570_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.7890743017196655,
+    "probs": {
+      "blue": 0.0276,
+      "green": 0.7891,
+      "purple": 0.1677,
+      "red": 0.0132,
+      "yellow": 0.0024
+    }
+  },
+  {
+    "id": "frame_006600_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.7923642992973328,
+    "probs": {
+      "blue": 0.0275,
+      "green": 0.7924,
+      "purple": 0.1664,
+      "red": 0.0113,
+      "yellow": 0.0024
+    }
+  },
+  {
+    "id": "frame_006630_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.6525235772132874,
+    "probs": {
+      "blue": 0.0517,
+      "green": 0.6525,
+      "purple": 0.244,
+      "red": 0.0385,
+      "yellow": 0.0133
+    }
+  },
+  {
+    "id": "frame_006660_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.6080315113067627,
+    "probs": {
+      "blue": 0.0405,
+      "green": 0.608,
+      "purple": 0.3084,
+      "red": 0.0362,
+      "yellow": 0.0069
+    }
+  },
+  {
+    "id": "frame_006690_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.6236827373504639,
+    "probs": {
+      "blue": 0.0404,
+      "green": 0.6237,
+      "purple": 0.2963,
+      "red": 0.0332,
+      "yellow": 0.0065
+    }
+  },
+  {
+    "id": "frame_006750_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.9022969603538513,
+    "probs": {
+      "blue": 0.0175,
+      "green": 0.9023,
+      "purple": 0.0782,
+      "red": 0.0016,
+      "yellow": 0.0004
+    }
+  },
+  {
+    "id": "frame_006780_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8958837985992432,
+    "probs": {
+      "blue": 0.0183,
+      "green": 0.8959,
+      "purple": 0.0838,
+      "red": 0.0016,
+      "yellow": 0.0004
+    }
+  },
+  {
+    "id": "frame_007020_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8187474608421326,
+    "probs": {
+      "blue": 0.0297,
+      "green": 0.8187,
+      "purple": 0.1476,
+      "red": 0.0028,
+      "yellow": 0.0011
+    }
+  },
+  {
+    "id": "frame_007200_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.9154829978942871,
+    "probs": {
+      "blue": 0.0136,
+      "green": 0.9155,
+      "purple": 0.0697,
+      "red": 0.0009,
+      "yellow": 0.0003
+    }
+  },
+  {
+    "id": "frame_007230_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.9176025986671448,
+    "probs": {
+      "blue": 0.0138,
+      "green": 0.9176,
+      "purple": 0.0674,
+      "red": 0.0009,
+      "yellow": 0.0003
+    }
+  },
+  {
+    "id": "frame_007260_det_00",
+    "label": "not_jockey",
+    "pred": "purple",
+    "pred_conf": 0.4386741518974304,
+    "probs": {
+      "blue": 0.0846,
+      "green": 0.2282,
+      "purple": 0.4387,
+      "red": 0.1476,
+      "yellow": 0.1009
+    }
+  },
+  {
+    "id": "frame_007290_det_00",
+    "label": "not_jockey",
+    "pred": "purple",
+    "pred_conf": 0.4363413453102112,
+    "probs": {
+      "blue": 0.0847,
+      "green": 0.2304,
+      "purple": 0.4363,
+      "red": 0.1474,
+      "yellow": 0.1012
+    }
+  },
+  {
+    "id": "frame_007350_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8381701707839966,
+    "probs": {
+      "blue": 0.0232,
+      "green": 0.8382,
+      "purple": 0.1343,
+      "red": 0.0034,
+      "yellow": 0.0008
+    }
+  },
+  {
+    "id": "frame_007380_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8620462417602539,
+    "probs": {
+      "blue": 0.0203,
+      "green": 0.862,
+      "purple": 0.1146,
+      "red": 0.0025,
+      "yellow": 0.0006
+    }
+  },
+  {
+    "id": "frame_007410_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.9191379547119141,
+    "probs": {
+      "blue": 0.009,
+      "green": 0.9191,
+      "purple": 0.0705,
+      "red": 0.0011,
+      "yellow": 0.0002
+    }
+  },
+  {
+    "id": "frame_007440_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.919388473033905,
+    "probs": {
+      "blue": 0.0091,
+      "green": 0.9194,
+      "purple": 0.0702,
+      "red": 0.0011,
+      "yellow": 0.0002
+    }
+  },
+  {
+    "id": "frame_007500_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.6910718083381653,
+    "probs": {
+      "blue": 0.048,
+      "green": 0.6911,
+      "purple": 0.2328,
+      "red": 0.0217,
+      "yellow": 0.0065
+    }
+  },
+  {
+    "id": "frame_007530_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.7050569653511047,
+    "probs": {
+      "blue": 0.0424,
+      "green": 0.7051,
+      "purple": 0.2235,
+      "red": 0.0228,
+      "yellow": 0.0063
+    }
+  },
+  {
+    "id": "frame_007590_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.7609962224960327,
+    "probs": {
+      "blue": 0.0294,
+      "green": 0.761,
+      "purple": 0.2068,
+      "red": 0.0024,
+      "yellow": 0.0004
+    }
+  },
+  {
+    "id": "frame_007620_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8922061920166016,
+    "probs": {
+      "blue": 0.0159,
+      "green": 0.8922,
+      "purple": 0.0889,
+      "red": 0.0023,
+      "yellow": 0.0007
+    }
+  },
+  {
+    "id": "frame_007650_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8609955906867981,
+    "probs": {
+      "blue": 0.0157,
+      "green": 0.861,
+      "purple": 0.1194,
+      "red": 0.0036,
+      "yellow": 0.0004
+    }
+  },
+  {
+    "id": "frame_007680_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8463424444198608,
+    "probs": {
+      "blue": 0.0157,
+      "green": 0.8463,
+      "purple": 0.1322,
+      "red": 0.0053,
+      "yellow": 0.0005
+    }
+  },
+  {
+    "id": "frame_007950_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8319992423057556,
+    "probs": {
+      "blue": 0.0232,
+      "green": 0.832,
+      "purple": 0.14,
+      "red": 0.004,
+      "yellow": 0.0008
+    }
+  },
+  {
+    "id": "frame_007980_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8310315608978271,
+    "probs": {
+      "blue": 0.0251,
+      "green": 0.831,
+      "purple": 0.1388,
+      "red": 0.0041,
+      "yellow": 0.001
+    }
+  },
+  {
+    "id": "frame_008010_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8758468627929688,
+    "probs": {
+      "blue": 0.0205,
+      "green": 0.8758,
+      "purple": 0.0987,
+      "red": 0.004,
+      "yellow": 0.001
+    }
+  },
+  {
+    "id": "frame_008250_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.9016669392585754,
+    "probs": {
+      "blue": 0.02,
+      "green": 0.9017,
+      "purple": 0.0767,
+      "red": 0.0011,
+      "yellow": 0.0004
+    }
+  },
+  {
+    "id": "frame_008280_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8955553770065308,
+    "probs": {
+      "blue": 0.0204,
+      "green": 0.8956,
+      "purple": 0.0824,
+      "red": 0.0012,
+      "yellow": 0.0004
+    }
+  },
+  {
+    "id": "frame_008370_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.906670331954956,
+    "probs": {
+      "blue": 0.0198,
+      "green": 0.9067,
+      "purple": 0.0717,
+      "red": 0.0013,
+      "yellow": 0.0006
+    }
+  },
+  {
+    "id": "frame_008520_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8066667914390564,
+    "probs": {
+      "blue": 0.0261,
+      "green": 0.8067,
+      "purple": 0.162,
+      "red": 0.0042,
+      "yellow": 0.001
+    }
+  },
+  {
+    "id": "frame_008550_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.9008693695068359,
+    "probs": {
+      "blue": 0.0229,
+      "green": 0.9009,
+      "purple": 0.0745,
+      "red": 0.0013,
+      "yellow": 0.0004
+    }
+  },
+  {
+    "id": "frame_008580_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8999451398849487,
+    "probs": {
+      "blue": 0.0235,
+      "green": 0.8999,
+      "purple": 0.0748,
+      "red": 0.0013,
+      "yellow": 0.0004
+    }
+  },
+  {
+    "id": "frame_008610_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.7572858929634094,
+    "probs": {
+      "blue": 0.0217,
+      "green": 0.7573,
+      "purple": 0.2159,
+      "red": 0.0044,
+      "yellow": 0.0007
+    }
+  },
+  {
+    "id": "frame_008640_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.7587161660194397,
+    "probs": {
+      "blue": 0.0216,
+      "green": 0.7587,
+      "purple": 0.2147,
+      "red": 0.0044,
+      "yellow": 0.0007
+    }
+  },
+  {
+    "id": "frame_008730_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8171340823173523,
+    "probs": {
+      "blue": 0.0266,
+      "green": 0.8171,
+      "purple": 0.1523,
+      "red": 0.0032,
+      "yellow": 0.0008
+    }
+  },
+  {
+    "id": "frame_008880_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.765109121799469,
+    "probs": {
+      "blue": 0.0326,
+      "green": 0.7651,
+      "purple": 0.187,
+      "red": 0.0127,
+      "yellow": 0.0027
+    }
+  },
+  {
+    "id": "frame_008910_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.9393413066864014,
+    "probs": {
+      "blue": 0.0118,
+      "green": 0.9393,
+      "purple": 0.0483,
+      "red": 0.0004,
+      "yellow": 0.0002
+    }
+  },
+  {
+    "id": "frame_008940_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.9411805868148804,
+    "probs": {
+      "blue": 0.0102,
+      "green": 0.9412,
+      "purple": 0.0481,
+      "red": 0.0004,
+      "yellow": 0.0002
+    }
+  },
+  {
+    "id": "frame_009000_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.836150586605072,
+    "probs": {
+      "blue": 0.0216,
+      "green": 0.8362,
+      "purple": 0.1394,
+      "red": 0.0024,
+      "yellow": 0.0005
+    }
+  },
+  {
+    "id": "frame_009030_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8372198343276978,
+    "probs": {
+      "blue": 0.0215,
+      "green": 0.8372,
+      "purple": 0.1385,
+      "red": 0.0023,
+      "yellow": 0.0005
+    }
+  },
+  {
+    "id": "frame_009060_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.7963676452636719,
+    "probs": {
+      "blue": 0.0284,
+      "green": 0.7964,
+      "purple": 0.1672,
+      "red": 0.0067,
+      "yellow": 0.0014
+    }
+  },
+  {
+    "id": "frame_009090_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.803547739982605,
+    "probs": {
+      "blue": 0.0237,
+      "green": 0.8035,
+      "purple": 0.1643,
+      "red": 0.0072,
+      "yellow": 0.0013
+    }
+  },
+  {
+    "id": "frame_009150_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.7054738998413086,
+    "probs": {
+      "blue": 0.028,
+      "green": 0.7055,
+      "purple": 0.2516,
+      "red": 0.0131,
+      "yellow": 0.0019
+    }
+  },
+  {
+    "id": "frame_009180_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.7679620981216431,
+    "probs": {
+      "blue": 0.0239,
+      "green": 0.768,
+      "purple": 0.1993,
+      "red": 0.0077,
+      "yellow": 0.0011
+    }
+  },
+  {
+    "id": "frame_009300_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.9275550842285156,
+    "probs": {
+      "blue": 0.0112,
+      "green": 0.9276,
+      "purple": 0.0602,
+      "red": 0.0009,
+      "yellow": 0.0002
+    }
+  },
+  {
+    "id": "frame_009330_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.9042209386825562,
+    "probs": {
+      "blue": 0.0152,
+      "green": 0.9042,
+      "purple": 0.0791,
+      "red": 0.0012,
+      "yellow": 0.0003
+    }
+  },
+  {
+    "id": "frame_009360_det_00",
+    "label": "not_jockey",
+    "pred": "purple",
+    "pred_conf": 0.46426451206207275,
+    "probs": {
+      "blue": 0.0516,
+      "green": 0.4221,
+      "purple": 0.4643,
+      "red": 0.0513,
+      "yellow": 0.0107
+    }
+  },
+  {
+    "id": "frame_009390_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.7773752212524414,
+    "probs": {
+      "blue": 0.0315,
+      "green": 0.7774,
+      "purple": 0.1856,
+      "red": 0.0045,
+      "yellow": 0.0011
+    }
+  },
+  {
+    "id": "frame_009570_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.7660960555076599,
+    "probs": {
+      "blue": 0.018,
+      "green": 0.7661,
+      "purple": 0.2119,
+      "red": 0.0037,
+      "yellow": 0.0004
+    }
+  },
+  {
+    "id": "frame_009780_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.7118648886680603,
+    "probs": {
+      "blue": 0.0283,
+      "green": 0.7119,
+      "purple": 0.2474,
+      "red": 0.011,
+      "yellow": 0.0014
+    }
+  },
+  {
+    "id": "frame_010200_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.5794113874435425,
+    "probs": {
+      "blue": 0.0258,
+      "green": 0.5794,
+      "purple": 0.3717,
+      "red": 0.0214,
+      "yellow": 0.0018
+    }
+  },
+  {
+    "id": "frame_010260_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8824445605278015,
+    "probs": {
+      "blue": 0.0191,
+      "green": 0.8824,
+      "purple": 0.0963,
+      "red": 0.0017,
+      "yellow": 0.0004
+    }
+  },
+  {
+    "id": "frame_010290_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.904144287109375,
+    "probs": {
+      "blue": 0.0119,
+      "green": 0.9041,
+      "purple": 0.0827,
+      "red": 0.0011,
+      "yellow": 0.0002
+    }
+  },
+  {
+    "id": "frame_010320_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.9487097263336182,
+    "probs": {
+      "blue": 0.0069,
+      "green": 0.9487,
+      "purple": 0.0435,
+      "red": 0.0008,
+      "yellow": 0.0001
+    }
+  },
+  {
+    "id": "frame_010350_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8240328431129456,
+    "probs": {
+      "blue": 0.0216,
+      "green": 0.824,
+      "purple": 0.1497,
+      "red": 0.0038,
+      "yellow": 0.0008
+    }
+  },
+  {
+    "id": "frame_010380_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8113478422164917,
+    "probs": {
+      "blue": 0.0205,
+      "green": 0.8113,
+      "purple": 0.165,
+      "red": 0.0027,
+      "yellow": 0.0005
+    }
+  },
+  {
+    "id": "frame_010410_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8141196966171265,
+    "probs": {
+      "blue": 0.0258,
+      "green": 0.8141,
+      "purple": 0.1546,
+      "red": 0.0043,
+      "yellow": 0.0011
+    }
+  },
+  {
+    "id": "frame_010440_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8315898180007935,
+    "probs": {
+      "blue": 0.0217,
+      "green": 0.8316,
+      "purple": 0.1426,
+      "red": 0.0033,
+      "yellow": 0.0008
+    }
+  },
+  {
+    "id": "frame_010680_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8348913788795471,
+    "probs": {
+      "blue": 0.0162,
+      "green": 0.8349,
+      "purple": 0.1464,
+      "red": 0.0021,
+      "yellow": 0.0003
+    }
+  },
+  {
+    "id": "frame_010800_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.7898039221763611,
+    "probs": {
+      "blue": 0.0149,
+      "green": 0.7898,
+      "purple": 0.1926,
+      "red": 0.0025,
+      "yellow": 0.0003
+    }
+  },
+  {
+    "id": "frame_010830_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.7826876044273376,
+    "probs": {
+      "blue": 0.0192,
+      "green": 0.7827,
+      "purple": 0.1946,
+      "red": 0.0032,
+      "yellow": 0.0003
+    }
+  },
+  {
+    "id": "frame_010920_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8627792596817017,
+    "probs": {
+      "blue": 0.0178,
+      "green": 0.8628,
+      "purple": 0.1135,
+      "red": 0.0051,
+      "yellow": 0.0008
+    }
+  },
+  {
+    "id": "frame_011100_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.7780284881591797,
+    "probs": {
+      "blue": 0.0252,
+      "green": 0.778,
+      "purple": 0.1895,
+      "red": 0.0059,
+      "yellow": 0.0014
+    }
+  },
+  {
+    "id": "frame_011130_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.7797713875770569,
+    "probs": {
+      "blue": 0.0285,
+      "green": 0.7798,
+      "purple": 0.1839,
+      "red": 0.0063,
+      "yellow": 0.0016
+    }
+  },
+  {
+    "id": "frame_011370_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.6469916105270386,
+    "probs": {
+      "blue": 0.0343,
+      "green": 0.647,
+      "purple": 0.2944,
+      "red": 0.0216,
+      "yellow": 0.0028
+    }
+  },
+  {
+    "id": "frame_011400_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8299550414085388,
+    "probs": {
+      "blue": 0.0173,
+      "green": 0.83,
+      "purple": 0.1496,
+      "red": 0.0029,
+      "yellow": 0.0003
+    }
+  },
+  {
+    "id": "frame_011430_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8288939595222473,
+    "probs": {
+      "blue": 0.0182,
+      "green": 0.8289,
+      "purple": 0.15,
+      "red": 0.0026,
+      "yellow": 0.0003
+    }
+  },
+  {
+    "id": "frame_012330_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8944093585014343,
+    "probs": {
+      "blue": 0.0218,
+      "green": 0.8944,
+      "purple": 0.0807,
+      "red": 0.0025,
+      "yellow": 0.0006
+    }
+  },
+  {
+    "id": "frame_012360_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8344802856445312,
+    "probs": {
+      "blue": 0.0302,
+      "green": 0.8345,
+      "purple": 0.1292,
+      "red": 0.005,
+      "yellow": 0.0012
+    }
+  },
+  {
+    "id": "frame_012390_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8349041938781738,
+    "probs": {
+      "blue": 0.0302,
+      "green": 0.8349,
+      "purple": 0.1287,
+      "red": 0.005,
+      "yellow": 0.0012
+    }
+  },
+  {
+    "id": "frame_012480_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.7549512386322021,
+    "probs": {
+      "blue": 0.0293,
+      "green": 0.755,
+      "purple": 0.2028,
+      "red": 0.0113,
+      "yellow": 0.0018
+    }
+  },
+  {
+    "id": "frame_012510_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8556979298591614,
+    "probs": {
+      "blue": 0.0156,
+      "green": 0.8557,
+      "purple": 0.124,
+      "red": 0.0043,
+      "yellow": 0.0004
+    }
+  },
+  {
+    "id": "frame_012540_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8555555939674377,
+    "probs": {
+      "blue": 0.0156,
+      "green": 0.8556,
+      "purple": 0.1242,
+      "red": 0.0043,
+      "yellow": 0.0004
+    }
+  },
+  {
+    "id": "frame_012720_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8184774518013,
+    "probs": {
+      "blue": 0.0154,
+      "green": 0.8185,
+      "purple": 0.1608,
+      "red": 0.0049,
+      "yellow": 0.0004
+    }
+  },
+  {
+    "id": "frame_012810_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.7326021790504456,
+    "probs": {
+      "blue": 0.0186,
+      "green": 0.7326,
+      "purple": 0.2425,
+      "red": 0.0057,
+      "yellow": 0.0006
+    }
+  },
+  {
+    "id": "frame_012840_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.7254381775856018,
+    "probs": {
+      "blue": 0.0216,
+      "green": 0.7254,
+      "purple": 0.2463,
+      "red": 0.006,
+      "yellow": 0.0006
+    }
+  },
+  {
+    "id": "frame_012870_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8846999406814575,
+    "probs": {
+      "blue": 0.0126,
+      "green": 0.8847,
+      "purple": 0.1,
+      "red": 0.0025,
+      "yellow": 0.0002
+    }
+  },
+  {
+    "id": "frame_012900_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.7778676748275757,
+    "probs": {
+      "blue": 0.0173,
+      "green": 0.7779,
+      "purple": 0.1998,
+      "red": 0.0045,
+      "yellow": 0.0005
+    }
+  },
+  {
+    "id": "frame_012930_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.7503662705421448,
+    "probs": {
+      "blue": 0.0197,
+      "green": 0.7504,
+      "purple": 0.2231,
+      "red": 0.0062,
+      "yellow": 0.0007
+    }
+  },
+  {
+    "id": "frame_013020_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.902497410774231,
+    "probs": {
+      "blue": 0.0101,
+      "green": 0.9025,
+      "purple": 0.0857,
+      "red": 0.0015,
+      "yellow": 0.0002
+    }
+  },
+  {
+    "id": "frame_013260_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8606517314910889,
+    "probs": {
+      "blue": 0.0108,
+      "green": 0.8607,
+      "purple": 0.1261,
+      "red": 0.0023,
+      "yellow": 0.0002
+    }
+  },
+  {
+    "id": "frame_013290_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8258280754089355,
+    "probs": {
+      "blue": 0.0109,
+      "green": 0.8258,
+      "purple": 0.1602,
+      "red": 0.0029,
+      "yellow": 0.0002
+    }
+  },
+  {
+    "id": "frame_013410_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8636577725410461,
+    "probs": {
+      "blue": 0.0155,
+      "green": 0.8637,
+      "purple": 0.117,
+      "red": 0.0035,
+      "yellow": 0.0004
+    }
+  },
+  {
+    "id": "frame_013440_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8934105634689331,
+    "probs": {
+      "blue": 0.0097,
+      "green": 0.8934,
+      "purple": 0.0943,
+      "red": 0.0023,
+      "yellow": 0.0002
+    }
+  },
+  {
+    "id": "frame_013500_det_00",
+    "label": "not_jockey",
+    "pred": "purple",
+    "pred_conf": 0.43589961528778076,
+    "probs": {
+      "blue": 0.0462,
+      "green": 0.3491,
+      "purple": 0.4359,
+      "red": 0.1504,
+      "yellow": 0.0183
+    }
+  },
+  {
+    "id": "frame_013530_det_00",
+    "label": "not_jockey",
+    "pred": "purple",
+    "pred_conf": 0.4843718707561493,
+    "probs": {
+      "blue": 0.051,
+      "green": 0.3142,
+      "purple": 0.4844,
+      "red": 0.1316,
+      "yellow": 0.0188
+    }
+  },
+  {
+    "id": "frame_013620_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.8995774984359741,
+    "probs": {
+      "blue": 0.0182,
+      "green": 0.8996,
+      "purple": 0.0809,
+      "red": 0.0011,
+      "yellow": 0.0003
+    }
+  },
+  {
+    "id": "frame_013770_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.9192354083061218,
+    "probs": {
+      "blue": 0.0126,
+      "green": 0.9192,
+      "purple": 0.0664,
+      "red": 0.0015,
+      "yellow": 0.0002
+    }
+  },
+  {
+    "id": "frame_013920_det_00",
+    "label": "not_jockey",
+    "pred": "green",
+    "pred_conf": 0.77178555727005,
+    "probs": {
+      "blue": 0.0247,
+      "green": 0.7718,
+      "purple": 0.1904,
+      "red": 0.0117,
+      "yellow": 0.0013
+    }
+  }
+]

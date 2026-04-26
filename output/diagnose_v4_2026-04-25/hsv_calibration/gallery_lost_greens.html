@@ -1,0 +1,65 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8">
+<title>HSV filter — lost green jockeys review</title>
+<style>
+  body { font-family:system-ui; background:#1a1a1a; color:#ddd; margin:0; padding:14px; }
+  h1 { color:#fff; }
+  h2 { color:#ffaf3a; border-bottom:1px solid #444; padding:6px 0; margin-top:20px; }
+  .desc { color:#aaa; font-size:13px; margin:0 0 10px 0; }
+  .grid { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
+  .card { background:#2a2a2a; border-radius:4px; padding:6px; }
+  .card.lost   { border:2px solid #a44; }
+  .card.passed { border:2px solid #2a8; }
+  .card img { width:100%; max-height:280px; object-fit:contain; display:block;               cursor:zoom-in; }
+  .meta { font-family:monospace; font-size:11px; color:#ccc; padding:6px; }
+  .meta b { color:#fff; }
+  .ratio { color:#fea; font-weight:bold; font-size:13px; }
+  nav { position:sticky; top:0; background:#1a1a1a; padding:8px 0; z-index:50;        border-bottom:1px solid #444; margin-bottom:10px; }
+  nav a { color:#88ddff; margin-right:14px; text-decoration:none; }
+</style></head><body>
+<h1>HSV filter — green jockeys review</h1>
+<p class="desc">Combo: S_MIN=30, V_MIN=50, green=H∈[35,85], threshold=0.05. Все crops размечены как <b>green</b> в labels.json.</p>
+<nav>
+<a href="#lost">🔴 Lost (27)</a>
+<a href="#passed">🟢 Passed contrast (5)</a>
+</nav>
+<h2 id="lost">🔴 Lost greens — ratio &lt; 0.05 (отбракованы фильтром)</h2>
+<p class="desc">Это reference set для решения: реальные жокеи в плохих условиях / mislabel / corner cases?</p>
+<div class="grid">
+<div class="card lost"><a href="../crops_raw/frame_000090_det_02.jpg" target="_blank"><img src="../crops_raw/frame_000090_det_02.jpg" loading="lazy"></a><div class="meta"><b>frame_000090_det_02</b><br><span class="ratio">HSV ratio = 0.0170</span><br>CNN: <b>green</b> conf=0.998<br>true label: green</div></div>
+<div class="card lost"><a href="../crops_raw/frame_000000_det_01.jpg" target="_blank"><img src="../crops_raw/frame_000000_det_01.jpg" loading="lazy"></a><div class="meta"><b>frame_000000_det_01</b><br><span class="ratio">HSV ratio = 0.0185</span><br>CNN: <b>green</b> conf=0.996<br>true label: green</div></div>
+<div class="card lost"><a href="../crops_raw/frame_000840_det_03.jpg" target="_blank"><img src="../crops_raw/frame_000840_det_03.jpg" loading="lazy"></a><div class="meta"><b>frame_000840_det_03</b><br><span class="ratio">HSV ratio = 0.0245</span><br>CNN: <b>green</b> conf=0.995<br>true label: green</div></div>
+<div class="card lost"><a href="../crops_raw/frame_000240_det_01.jpg" target="_blank"><img src="../crops_raw/frame_000240_det_01.jpg" loading="lazy"></a><div class="meta"><b>frame_000240_det_01</b><br><span class="ratio">HSV ratio = 0.0328</span><br>CNN: <b>green</b> conf=0.997<br>true label: green</div></div>
+<div class="card lost"><a href="../crops_raw/frame_000330_det_02.jpg" target="_blank"><img src="../crops_raw/frame_000330_det_02.jpg" loading="lazy"></a><div class="meta"><b>frame_000330_det_02</b><br><span class="ratio">HSV ratio = 0.0330</span><br>CNN: <b>green</b> conf=0.997<br>true label: green</div></div>
+<div class="card lost"><a href="../crops_raw/frame_001440_det_01.jpg" target="_blank"><img src="../crops_raw/frame_001440_det_01.jpg" loading="lazy"></a><div class="meta"><b>frame_001440_det_01</b><br><span class="ratio">HSV ratio = 0.0334</span><br>CNN: <b>green</b> conf=0.997<br>true label: green</div></div>
+<div class="card lost"><a href="../crops_raw/frame_000060_det_02.jpg" target="_blank"><img src="../crops_raw/frame_000060_det_02.jpg" loading="lazy"></a><div class="meta"><b>frame_000060_det_02</b><br><span class="ratio">HSV ratio = 0.0338</span><br>CNN: <b>green</b> conf=0.999<br>true label: green</div></div>
+<div class="card lost"><a href="../crops_raw/frame_000030_det_01.jpg" target="_blank"><img src="../crops_raw/frame_000030_det_01.jpg" loading="lazy"></a><div class="meta"><b>frame_000030_det_01</b><br><span class="ratio">HSV ratio = 0.0342</span><br>CNN: <b>green</b> conf=0.998<br>true label: green</div></div>
+<div class="card lost"><a href="../crops_raw/frame_000600_det_02.jpg" target="_blank"><img src="../crops_raw/frame_000600_det_02.jpg" loading="lazy"></a><div class="meta"><b>frame_000600_det_02</b><br><span class="ratio">HSV ratio = 0.0349</span><br>CNN: <b>green</b> conf=0.997<br>true label: green</div></div>
+<div class="card lost"><a href="../crops_raw/frame_001110_det_01.jpg" target="_blank"><img src="../crops_raw/frame_001110_det_01.jpg" loading="lazy"></a><div class="meta"><b>frame_001110_det_01</b><br><span class="ratio">HSV ratio = 0.0364</span><br>CNN: <b>green</b> conf=0.999<br>true label: green</div></div>
+<div class="card lost"><a href="../crops_raw/frame_000720_det_03.jpg" target="_blank"><img src="../crops_raw/frame_000720_det_03.jpg" loading="lazy"></a><div class="meta"><b>frame_000720_det_03</b><br><span class="ratio">HSV ratio = 0.0375</span><br>CNN: <b>green</b> conf=0.996<br>true label: green</div></div>
+<div class="card lost"><a href="../crops_raw/frame_001050_det_02.jpg" target="_blank"><img src="../crops_raw/frame_001050_det_02.jpg" loading="lazy"></a><div class="meta"><b>frame_001050_det_02</b><br><span class="ratio">HSV ratio = 0.0379</span><br>CNN: <b>green</b> conf=0.999<br>true label: green</div></div>
+<div class="card lost"><a href="../crops_raw/frame_001080_det_01.jpg" target="_blank"><img src="../crops_raw/frame_001080_det_01.jpg" loading="lazy"></a><div class="meta"><b>frame_001080_det_01</b><br><span class="ratio">HSV ratio = 0.0388</span><br>CNN: <b>green</b> conf=0.996<br>true label: green</div></div>
+<div class="card lost"><a href="../crops_raw/frame_000810_det_03.jpg" target="_blank"><img src="../crops_raw/frame_000810_det_03.jpg" loading="lazy"></a><div class="meta"><b>frame_000810_det_03</b><br><span class="ratio">HSV ratio = 0.0393</span><br>CNN: <b>green</b> conf=0.997<br>true label: green</div></div>
+<div class="card lost"><a href="../crops_raw/frame_001350_det_01.jpg" target="_blank"><img src="../crops_raw/frame_001350_det_01.jpg" loading="lazy"></a><div class="meta"><b>frame_001350_det_01</b><br><span class="ratio">HSV ratio = 0.0396</span><br>CNN: <b>green</b> conf=1.000<br>true label: green</div></div>
+<div class="card lost"><a href="../crops_raw/frame_001470_det_01.jpg" target="_blank"><img src="../crops_raw/frame_001470_det_01.jpg" loading="lazy"></a><div class="meta"><b>frame_001470_det_01</b><br><span class="ratio">HSV ratio = 0.0397</span><br>CNN: <b>green</b> conf=0.998<br>true label: green</div></div>
+<div class="card lost"><a href="../crops_raw/frame_001230_det_01.jpg" target="_blank"><img src="../crops_raw/frame_001230_det_01.jpg" loading="lazy"></a><div class="meta"><b>frame_001230_det_01</b><br><span class="ratio">HSV ratio = 0.0405</span><br>CNN: <b>green</b> conf=0.999<br>true label: green</div></div>
+<div class="card lost"><a href="../crops_raw/frame_000360_det_01.jpg" target="_blank"><img src="../crops_raw/frame_000360_det_01.jpg" loading="lazy"></a><div class="meta"><b>frame_000360_det_01</b><br><span class="ratio">HSV ratio = 0.0418</span><br>CNN: <b>green</b> conf=0.997<br>true label: green</div></div>
+<div class="card lost"><a href="../crops_raw/frame_000690_det_02.jpg" target="_blank"><img src="../crops_raw/frame_000690_det_02.jpg" loading="lazy"></a><div class="meta"><b>frame_000690_det_02</b><br><span class="ratio">HSV ratio = 0.0424</span><br>CNN: <b>green</b> conf=0.999<br>true label: green</div></div>
+<div class="card lost"><a href="../crops_raw/frame_000180_det_01.jpg" target="_blank"><img src="../crops_raw/frame_000180_det_01.jpg" loading="lazy"></a><div class="meta"><b>frame_000180_det_01</b><br><span class="ratio">HSV ratio = 0.0433</span><br>CNN: <b>green</b> conf=0.998<br>true label: green</div></div>
+<div class="card lost"><a href="../crops_raw/frame_000450_det_02.jpg" target="_blank"><img src="../crops_raw/frame_000450_det_02.jpg" loading="lazy"></a><div class="meta"><b>frame_000450_det_02</b><br><span class="ratio">HSV ratio = 0.0438</span><br>CNN: <b>green</b> conf=0.999<br>true label: green</div></div>
+<div class="card lost"><a href="../crops_raw/frame_000630_det_02.jpg" target="_blank"><img src="../crops_raw/frame_000630_det_02.jpg" loading="lazy"></a><div class="meta"><b>frame_000630_det_02</b><br><span class="ratio">HSV ratio = 0.0445</span><br>CNN: <b>green</b> conf=0.998<br>true label: green</div></div>
+<div class="card lost"><a href="../crops_raw/frame_000480_det_01.jpg" target="_blank"><img src="../crops_raw/frame_000480_det_01.jpg" loading="lazy"></a><div class="meta"><b>frame_000480_det_01</b><br><span class="ratio">HSV ratio = 0.0446</span><br>CNN: <b>green</b> conf=0.997<br>true label: green</div></div>
+<div class="card lost"><a href="../crops_raw/frame_000540_det_02.jpg" target="_blank"><img src="../crops_raw/frame_000540_det_02.jpg" loading="lazy"></a><div class="meta"><b>frame_000540_det_02</b><br><span class="ratio">HSV ratio = 0.0446</span><br>CNN: <b>green</b> conf=0.997<br>true label: green</div></div>
+<div class="card lost"><a href="../crops_raw/frame_001380_det_01.jpg" target="_blank"><img src="../crops_raw/frame_001380_det_01.jpg" loading="lazy"></a><div class="meta"><b>frame_001380_det_01</b><br><span class="ratio">HSV ratio = 0.0454</span><br>CNN: <b>green</b> conf=1.000<br>true label: green</div></div>
+<div class="card lost"><a href="../crops_raw/frame_001320_det_01.jpg" target="_blank"><img src="../crops_raw/frame_001320_det_01.jpg" loading="lazy"></a><div class="meta"><b>frame_001320_det_01</b><br><span class="ratio">HSV ratio = 0.0488</span><br>CNN: <b>green</b> conf=0.999<br>true label: green</div></div>
+<div class="card lost"><a href="../crops_raw/frame_000210_det_01.jpg" target="_blank"><img src="../crops_raw/frame_000210_det_01.jpg" loading="lazy"></a><div class="meta"><b>frame_000210_det_01</b><br><span class="ratio">HSV ratio = 0.0489</span><br>CNN: <b>green</b> conf=0.997<br>true label: green</div></div>
+</div>
+<h2 id="passed">🟢 Passed greens (top 5 by ratio) — для сравнения</h2>
+<p class="desc">Это «эталонные» зелёные жокеи где silk занимает заметную долю crop'а.</p>
+<div class="grid">
+<div class="card passed"><a href="../crops_raw/frame_001620_det_01.jpg" target="_blank"><img src="../crops_raw/frame_001620_det_01.jpg" loading="lazy"></a><div class="meta"><b>frame_001620_det_01</b><br><span class="ratio">HSV ratio = 0.0929</span><br>CNN: <b>green</b> conf=1.000<br>true label: green</div></div>
+<div class="card passed"><a href="../crops_raw/frame_000870_det_02.jpg" target="_blank"><img src="../crops_raw/frame_000870_det_02.jpg" loading="lazy"></a><div class="meta"><b>frame_000870_det_02</b><br><span class="ratio">HSV ratio = 0.0826</span><br>CNN: <b>green</b> conf=0.999<br>true label: green</div></div>
+<div class="card passed"><a href="../crops_raw/frame_001500_det_01.jpg" target="_blank"><img src="../crops_raw/frame_001500_det_01.jpg" loading="lazy"></a><div class="meta"><b>frame_001500_det_01</b><br><span class="ratio">HSV ratio = 0.0780</span><br>CNN: <b>green</b> conf=0.999<br>true label: green</div></div>
+<div class="card passed"><a href="../crops_raw/frame_001560_det_03.jpg" target="_blank"><img src="../crops_raw/frame_001560_det_03.jpg" loading="lazy"></a><div class="meta"><b>frame_001560_det_03</b><br><span class="ratio">HSV ratio = 0.0764</span><br>CNN: <b>green</b> conf=0.997<br>true label: green</div></div>
+<div class="card passed"><a href="../crops_raw/frame_000270_det_02.jpg" target="_blank"><img src="../crops_raw/frame_000270_det_02.jpg" loading="lazy"></a><div class="meta"><b>frame_000270_det_02</b><br><span class="ratio">HSV ratio = 0.0732</span><br>CNN: <b>green</b> conf=0.998<br>true label: green</div></div>
+</div>
+</body></html>
