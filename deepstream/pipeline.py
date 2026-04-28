@@ -51,6 +51,10 @@ from deepstream.modules.colors import (
     _ACTIVE_IDS,
     _COLOR_RGB_NORMALISED,
 )
+from deepstream.modules.geom import (
+    _load_roi_polygons,
+    _point_in_polygon,
+)
 
 REPO_ROOT        = Path(__file__).resolve().parent.parent
 DEFAULT_CONFIG   = REPO_ROOT / "deepstream" / "configs" / "nvinfer_racevision.txt"
@@ -97,38 +101,6 @@ class TightBboxShrinkProbe(BatchMetadataOperator):
                 rp.top    = rp.top  + TIGHT_Y_LO * orig_h
                 rp.width  = _TIGHT_W_FRAC * orig_w
                 rp.height = _TIGHT_H_FRAC * orig_h
-
-def _load_roi_polygons(path: Path) -> dict[str, list[list[tuple[float, float]]]]:
-    """Load normalized ROI polygons from JSON. Returns
-    {cam_id: [polygon1, polygon2, ...]} where each polygon is a list of
-    (x_norm, y_norm) pairs in [0, 1]."""
-    if not path.is_file():
-        return {}
-    data = json.loads(path.read_text())
-    out: dict[str, list[list[tuple[float, float]]]] = {}
-    for cam_id, polys in data.items():
-        cam_polys = []
-        for p in polys:
-            pts = [(float(pt["x"]), float(pt["y"])) for pt in p]
-            if len(pts) >= 3:
-                cam_polys.append(pts)
-        if cam_polys:
-            out[cam_id] = cam_polys
-    return out
-
-
-def _point_in_polygon(x: float, y: float, poly: list[tuple[float, float]]) -> bool:
-    """Ray-casting point-in-polygon test."""
-    n = len(poly)
-    inside = False
-    j = n - 1
-    for i in range(n):
-        xi, yi = poly[i]
-        xj, yj = poly[j]
-        if ((yi > y) != (yj > y)) and (x < (xj - xi) * (y - yi) / ((yj - yi) or 1e-12) + xi):
-            inside = not inside
-        j = i
-    return inside
 
 # ── FrameSaver: snapshot когда на камере ≥N классифицированных жокеев ──
 _SNAP_MIN_COUNT  = int(os.environ.get("RV_SNAP_MIN", "3"))
