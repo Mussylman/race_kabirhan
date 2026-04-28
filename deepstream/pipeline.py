@@ -397,6 +397,247 @@ class DetectionProbe(BatchMetadataOperator):
 
         return dm
 
+    def _process_detections(
+        self,
+        frame_meta,
+        pad: int,
+        dm,
+        ts_now: float,
+    ) -> tuple[list, list, dict]:
+        """Process per-frame detections: filter, classify, OSD draw, accumulate.
+
+        Iterates frame_meta.object_items, filters persons via
+        _passes_filters, ROI test, horse-gate (currently dormant —
+        horse_bboxes always empty while YOLO emits person-only).
+        Extracts color from SGIE classifier_meta (parser format
+        "color|prob|logit"). Drops non-active colors. Logs audit
+        events for both rejects and passes. Draws per-detection OSD
+        bbox+text on `dm` if provided. Accumulates Detection objects
+        for SHM and a classified_in_frame list for FrameSaver trigger.
+
+        Args:
+            frame_meta: pyservicemaker frame_meta object
+            pad: cam slot index in self.cam_ids
+            dm: primary display_meta from _build_frame_overlay, or
+                None when debug_mode skipped OSD
+            ts_now: wall-clock timestamp (sec) for audit log entries
+
+        Returns:
+            dets: list of Detection objects (capped at MAX_DETECTIONS)
+            classified_in_frame: list of (cx, color_name, conf, logit)
+            counters: dict with n_all_objs, n_persons, n_horses,
+                      n_passed, n_with_cls, n_horse_gate_rej
+        """
+        n_all_objs = 0
+        n_persons  = 0
+        n_horses   = 0
+        n_passed   = 0
+        n_with_cls = 0
+        n_horse_gate_rej = 0
+
+        classified_in_frame: list[tuple[float, str]] = []
+        dets = []
+
+        # Single pass — with horse-emission disabled in C++, all objects
+        # are persons. Keep horse-gate code dormant (empty list).
+        horse_bboxes: list[tuple[float, float, float, float]] = []
+        for obj in frame_meta.object_items:
+            n_all_objs += 1
+            if obj.class_id != PERSON_CLASS_ID:
+                continue
+            n_persons += 1
+            rp = obj.rect_params
+            x1 = rp.left
+            y1 = rp.top
+            x2 = x1 + rp.width
+            y2 = y1 + rp.height
+
+            passed_filters = self._passes_filters(x1, y1, x2, y2)
+            polys = self.roi_polygons.get(self.cam_ids[pad])
+            inside_roi = True
+            if polys:
+                cx_n = (x1 + x2) * 0.5 / self.mux_width
+                cy_n = (y1 + y2) * 0.5 / self.mux_height
+                inside_roi = any(_point_in_polygon(cx_n, cy_n, p) for p in polys)
+
+            # Horse-gate only if horses detected (YOLO class 17 would populate
+            # horse_bboxes). With person-only emission it stays empty → gate skipped.
+            has_horse = True if not horse_bboxes else self._has_horse_overlap(
+                (x1, y1, x2, y2), horse_bboxes)
+            if not has_horse:
+                n_horse_gate_rej += 1
+
+            reject_reason = ""
+            if not passed_filters:
+                reject_reason = "bbox_filter"
+            elif not inside_roi:
+                reject_reason = "roi_outside"
+            elif not has_horse:
+                reject_reason = "no_horse"
+
+            # Audit: log even rejects (for diagnosis)
+            if self.audit is not None and self.audit.enabled and reject_reason:
+                self.audit.log_detection(
+                    cam_id=self.cam_ids[pad], ts=ts_now,
+                    frame_idx=self.frame_counts[pad],
+                    bbox=(x1, y1, x2, y2),
+                    frame_w=self.mux_width, frame_h=self.mux_height,
+                    color="", color_conf=0.0,
+                    det_conf=float(obj.confidence),
+                    passed_filters=passed_filters, inside_roi=inside_roi,
+                    written_to_shm=False,
+                    track_id=int(getattr(obj, "object_id", 0) or 0),
+                    reject_reason=reject_reason,
+                )
+
+            if not passed_filters or not inside_roi or not has_horse:
+                rp.border_width = 0
+                tp = getattr(obj, "text_params", None)
+                if tp is not None:
+                    tp.display_text = b""
+                continue
+
+            n_passed += 1
+
+            # Extract color + confidence. Our custom parser encodes
+            # label as "red|0.95" because pyservicemaker hides
+            # attr.attributeConfidence.
+            color_id, color_conf, color_logit = COLOR_UNKNOWN, 0.0, 0.0
+            for cls_meta in obj.classifier_items:
+                n_lab = int(getattr(cls_meta, "n_labels", 0))
+                for j in range(n_lab):
+                    raw = cls_meta.get_n_label(j) or ""
+                    # Format from parser: "color|prob|logit"
+                    parts = raw.split("|")
+                    lbl = parts[0]
+                    prob = 1.0
+                    logit = 0.0
+                    if len(parts) >= 2:
+                        try: prob = float(parts[1])
+                        except ValueError: prob = 0.0
+                    if len(parts) >= 3:
+                        try: logit = float(parts[2])
+                        except ValueError: logit = 0.0
+                    cid = _COLOR_NAME_TO_ID.get(lbl.strip().lower())
+                    if cid is not None:
+                        color_id, color_conf, color_logit = cid, prob, logit
+                        break
+                if color_id != COLOR_UNKNOWN:
+                    break
+
+            verbose = self.debug_mode and self.debug_budget > 0
+            if verbose:
+                print(f"  [det cam={self.cam_ids[pad]} conf={obj.confidence:.2f} "
+                      f"bbox={int(x2-x1)}x{int(y2-y1)}] "
+                      f"obj.label={getattr(obj, 'label', '')!r} "
+                      f"resolved={_COLOR_ID_TO_NAME.get(color_id, '?')}",
+                      flush=True)
+                self.debug_budget -= 1
+
+            # Drop classifications for colors not active in today's race
+            # (blue/purple would be spectators — no jockeys wear them today).
+            if color_id != COLOR_UNKNOWN and color_id not in _ACTIVE_IDS:
+                color_id, color_conf = COLOR_UNKNOWN, 0.0
+
+            if color_id != COLOR_UNKNOWN:
+                n_with_cls += 1
+                cx = float((x1 + x2) * 0.5)
+                classified_in_frame.append(
+                    (cx, _COLOR_ID_TO_NAME[color_id],
+                     float(color_conf), float(color_logit))
+                )
+
+            # CSV dump: every PGIE detection that passed bbox filter,
+            # whether classified or not
+            if self.csv_fp is not None:
+                color_name = _COLOR_ID_TO_NAME.get(color_id, "UNK")
+                self.csv_fp.write(
+                    f"{self.frame_counts[pad]},{self.cam_ids[pad]},"
+                    f"{int(x1)},{int(y1)},{int(x2-x1)},{int(y2-y1)},"
+                    f"{obj.confidence:.3f},{color_name},{color_conf:.3f}\n"
+                )
+
+            track_id = getattr(obj, "object_id", 0) or 0
+
+            # OSD: hide the default nvosd bbox (forced red) and draw our own
+            # via display_meta Rect so it actually takes our color.
+            rp.border_width = 0  # hide default
+            if dm is not None and color_id != COLOR_UNKNOWN:
+                color_name = _COLOR_ID_TO_NAME.get(color_id, "?")
+                r, g, b = _COLOR_RGB_NORMALISED.get(color_name, (0.5, 0.5, 0.5))
+                box = osd.Rect()
+                box.left = int(x1)
+                box.top = int(y1)
+                box.width = int(x2 - x1)
+                box.height = int(y2 - y1)
+                box.border_width = 3
+                box.border_color = osd.Color(r, g, b, 1.0)
+                box.has_bg_color = False
+                try:
+                    dm.add_rect(box)
+                except Exception:
+                    pass
+
+                tp = getattr(obj, "text_params", None)
+                if tp is not None:
+                    if color_id == COLOR_UNKNOWN:
+                        tp.display_text = b""
+                    else:
+                        tid = int(getattr(obj, "object_id", 0) or 0)
+                        tid_str = f" #{tid}" if 0 < tid < 1_000_000 else ""
+                        label = (f"{color_name} cls{float(color_conf):.2f}"
+                                 f" lgt{float(color_logit):.1f}{tid_str}")
+                        tp.display_text = label.encode("ascii")
+                        fp = getattr(tp, "font", None) or getattr(tp, "font_params", None)
+                        if fp is not None:
+                            try:
+                                fp.color = osd.Color(r, g, b, 1.0)
+                                fp.size = 6
+                            except Exception:
+                                pass
+                        try:
+                            tp.set_bg_color = True
+                            tp.bg_color = osd.Color(0, 0, 0, 0.7)
+                        except Exception:
+                            pass
+
+            dets.append(make_detection(
+                x1=x1, y1=y1, x2=x2, y2=y2,
+                det_conf=obj.confidence,
+                color_id=color_id,
+                color_conf=color_conf,
+                track_id=track_id,
+            ))
+
+            # Audit: log passed detection
+            if self.audit is not None and self.audit.enabled:
+                self.audit.log_detection(
+                    cam_id=self.cam_ids[pad], ts=ts_now,
+                    frame_idx=self.frame_counts[pad],
+                    bbox=(x1, y1, x2, y2),
+                    frame_w=self.mux_width, frame_h=self.mux_height,
+                    color=_COLOR_ID_TO_NAME.get(color_id, ""),
+                    color_conf=float(color_conf),
+                    det_conf=float(obj.confidence),
+                    passed_filters=True, inside_roi=True,
+                    written_to_shm=True,
+                    track_id=int(track_id),
+                    reject_reason="",
+                )
+
+            if len(dets) >= MAX_DETECTIONS:
+                break
+
+        counters = {
+            "n_all_objs":       n_all_objs,
+            "n_persons":        n_persons,
+            "n_horses":         n_horses,
+            "n_passed":         n_passed,
+            "n_with_cls":       n_with_cls,
+            "n_horse_gate_rej": n_horse_gate_rej,
+        }
+        return dets, classified_in_frame, counters
+
     def handle_metadata(self, batch_meta):
         try:
             self._handle_metadata_impl(batch_meta)
@@ -421,213 +662,20 @@ class DetectionProbe(BatchMetadataOperator):
 
             dm = self._build_frame_overlay(frame_meta, batch_meta, pad)
 
-            n_all_objs = 0
-            n_persons  = 0
-            n_horses   = 0
-            n_passed   = 0
-            n_with_cls = 0
-            n_horse_gate_rej = 0
-
-            classified_in_frame: list[tuple[float, str]] = []
-            dets = []
             ts_now = time.time()
-
-            # Single pass — with horse-emission disabled in C++, all objects
-            # are persons. Keep horse-gate code dormant (empty list).
-            horse_bboxes: list[tuple[float, float, float, float]] = []
-            for obj in frame_meta.object_items:
-                n_all_objs += 1
-                if obj.class_id != PERSON_CLASS_ID:
-                    continue
-                n_persons += 1
-                rp = obj.rect_params
-                x1 = rp.left
-                y1 = rp.top
-                x2 = x1 + rp.width
-                y2 = y1 + rp.height
-
-                passed_filters = self._passes_filters(x1, y1, x2, y2)
-                polys = self.roi_polygons.get(self.cam_ids[pad])
-                inside_roi = True
-                if polys:
-                    cx_n = (x1 + x2) * 0.5 / self.mux_width
-                    cy_n = (y1 + y2) * 0.5 / self.mux_height
-                    inside_roi = any(_point_in_polygon(cx_n, cy_n, p) for p in polys)
-
-                # Horse-gate only if horses detected (YOLO class 17 would populate
-                # horse_bboxes). With person-only emission it stays empty → gate skipped.
-                has_horse = True if not horse_bboxes else self._has_horse_overlap(
-                    (x1, y1, x2, y2), horse_bboxes)
-                if not has_horse:
-                    n_horse_gate_rej += 1
-
-                reject_reason = ""
-                if not passed_filters:
-                    reject_reason = "bbox_filter"
-                elif not inside_roi:
-                    reject_reason = "roi_outside"
-                elif not has_horse:
-                    reject_reason = "no_horse"
-
-                # Audit: log even rejects (for diagnosis)
-                if self.audit is not None and self.audit.enabled and reject_reason:
-                    self.audit.log_detection(
-                        cam_id=self.cam_ids[pad], ts=ts_now,
-                        frame_idx=self.frame_counts[pad],
-                        bbox=(x1, y1, x2, y2),
-                        frame_w=self.mux_width, frame_h=self.mux_height,
-                        color="", color_conf=0.0,
-                        det_conf=float(obj.confidence),
-                        passed_filters=passed_filters, inside_roi=inside_roi,
-                        written_to_shm=False,
-                        track_id=int(getattr(obj, "object_id", 0) or 0),
-                        reject_reason=reject_reason,
-                    )
-
-                if not passed_filters or not inside_roi or not has_horse:
-                    rp.border_width = 0
-                    tp = getattr(obj, "text_params", None)
-                    if tp is not None:
-                        tp.display_text = b""
-                    continue
-
-                n_passed += 1
-
-                # Extract color + confidence. Our custom parser encodes
-                # label as "red|0.95" because pyservicemaker hides
-                # attr.attributeConfidence.
-                color_id, color_conf, color_logit = COLOR_UNKNOWN, 0.0, 0.0
-                for cls_meta in obj.classifier_items:
-                    n_lab = int(getattr(cls_meta, "n_labels", 0))
-                    for j in range(n_lab):
-                        raw = cls_meta.get_n_label(j) or ""
-                        # Format from parser: "color|prob|logit"
-                        parts = raw.split("|")
-                        lbl = parts[0]
-                        prob = 1.0
-                        logit = 0.0
-                        if len(parts) >= 2:
-                            try: prob = float(parts[1])
-                            except ValueError: prob = 0.0
-                        if len(parts) >= 3:
-                            try: logit = float(parts[2])
-                            except ValueError: logit = 0.0
-                        cid = _COLOR_NAME_TO_ID.get(lbl.strip().lower())
-                        if cid is not None:
-                            color_id, color_conf, color_logit = cid, prob, logit
-                            break
-                    if color_id != COLOR_UNKNOWN:
-                        break
-
-                verbose = self.debug_mode and self.debug_budget > 0
-                if verbose:
-                    print(f"  [det cam={self.cam_ids[pad]} conf={obj.confidence:.2f} "
-                          f"bbox={int(x2-x1)}x{int(y2-y1)}] "
-                          f"obj.label={getattr(obj, 'label', '')!r} "
-                          f"resolved={_COLOR_ID_TO_NAME.get(color_id, '?')}",
-                          flush=True)
-                    self.debug_budget -= 1
-
-                # Drop classifications for colors not active in today's race
-                # (blue/purple would be spectators — no jockeys wear them today).
-                if color_id != COLOR_UNKNOWN and color_id not in _ACTIVE_IDS:
-                    color_id, color_conf = COLOR_UNKNOWN, 0.0
-
-                if color_id != COLOR_UNKNOWN:
-                    n_with_cls += 1
-                    cx = float((x1 + x2) * 0.5)
-                    classified_in_frame.append(
-                        (cx, _COLOR_ID_TO_NAME[color_id],
-                         float(color_conf), float(color_logit))
-                    )
-
-                # CSV dump: every PGIE detection that passed bbox filter,
-                # whether classified or not
-                if self.csv_fp is not None:
-                    color_name = _COLOR_ID_TO_NAME.get(color_id, "UNK")
-                    self.csv_fp.write(
-                        f"{self.frame_counts[pad]},{self.cam_ids[pad]},"
-                        f"{int(x1)},{int(y1)},{int(x2-x1)},{int(y2-y1)},"
-                        f"{obj.confidence:.3f},{color_name},{color_conf:.3f}\n"
-                    )
-
-                track_id = getattr(obj, "object_id", 0) or 0
-
-                # OSD: hide the default nvosd bbox (forced red) and draw our own
-                # via display_meta Rect so it actually takes our color.
-                rp.border_width = 0  # hide default
-                if dm is not None and color_id != COLOR_UNKNOWN:
-                    color_name = _COLOR_ID_TO_NAME.get(color_id, "?")
-                    r, g, b = _COLOR_RGB_NORMALISED.get(color_name, (0.5, 0.5, 0.5))
-                    box = osd.Rect()
-                    box.left = int(x1)
-                    box.top = int(y1)
-                    box.width = int(x2 - x1)
-                    box.height = int(y2 - y1)
-                    box.border_width = 3
-                    box.border_color = osd.Color(r, g, b, 1.0)
-                    box.has_bg_color = False
-                    try:
-                        dm.add_rect(box)
-                    except Exception:
-                        pass
-
-                    tp = getattr(obj, "text_params", None)
-                    if tp is not None:
-                        if color_id == COLOR_UNKNOWN:
-                            tp.display_text = b""
-                        else:
-                            tid = int(getattr(obj, "object_id", 0) or 0)
-                            tid_str = f" #{tid}" if 0 < tid < 1_000_000 else ""
-                            label = (f"{color_name} cls{float(color_conf):.2f}"
-                                     f" lgt{float(color_logit):.1f}{tid_str}")
-                            tp.display_text = label.encode("ascii")
-                            fp = getattr(tp, "font", None) or getattr(tp, "font_params", None)
-                            if fp is not None:
-                                try:
-                                    fp.color = osd.Color(r, g, b, 1.0)
-                                    fp.size = 6
-                                except Exception:
-                                    pass
-                            try:
-                                tp.set_bg_color = True
-                                tp.bg_color = osd.Color(0, 0, 0, 0.7)
-                            except Exception:
-                                pass
-
-                dets.append(make_detection(
-                    x1=x1, y1=y1, x2=x2, y2=y2,
-                    det_conf=obj.confidence,
-                    color_id=color_id,
-                    color_conf=color_conf,
-                    track_id=track_id,
-                ))
-
-                # Audit: log passed detection
-                if self.audit is not None and self.audit.enabled:
-                    self.audit.log_detection(
-                        cam_id=self.cam_ids[pad], ts=ts_now,
-                        frame_idx=self.frame_counts[pad],
-                        bbox=(x1, y1, x2, y2),
-                        frame_w=self.mux_width, frame_h=self.mux_height,
-                        color=_COLOR_ID_TO_NAME.get(color_id, ""),
-                        color_conf=float(color_conf),
-                        det_conf=float(obj.confidence),
-                        passed_filters=True, inside_roi=True,
-                        written_to_shm=True,
-                        track_id=int(track_id),
-                        reject_reason="",
-                    )
-
-                if len(dets) >= MAX_DETECTIONS:
-                    break
+            dets, classified_in_frame, counters = self._process_detections(
+                frame_meta, pad, dm, ts_now
+            )
 
             # Per-frame summary in debug mode
             if self.debug_mode and self.debug_frames < 20:
                 print(f"[frame cam={self.cam_ids[pad]} idx={self.frame_counts[pad]}] "
-                      f"all_objs={n_all_objs} persons={n_persons} horses={n_horses} "
-                      f"horse_rej={n_horse_gate_rej} filter_pass={n_passed} "
-                      f"classified={n_with_cls}", flush=True)
+                      f"all_objs={counters['n_all_objs']} "
+                      f"persons={counters['n_persons']} "
+                      f"horses={counters['n_horses']} "
+                      f"horse_rej={counters['n_horse_gate_rej']} "
+                      f"filter_pass={counters['n_passed']} "
+                      f"classified={counters['n_with_cls']}", flush=True)
                 self.debug_frames += 1
 
             # Snapshot trigger: ≥N classified jockeys on this camera frame
