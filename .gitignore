@@ -29,6 +29,19 @@ test_artifacts/
 
 # Build artifacts
 deepstream/build/
+build/
+bin/
+
+# Pipeline outputs / research artifacts
+output/
+ds_results/
+debug_*/
+
+# Backup files
+*.bak
+*.bak[0-9]*
+*.backup
+*.v[0-9]*_backup
 
 # Environment secrets
 *.env
@@ -62,3 +75,4 @@ npm-debug.log*
 .gitmodules
 .agent/
 eslint-output.json
+/tmp/
