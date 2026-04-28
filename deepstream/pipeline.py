@@ -319,6 +319,84 @@ class DetectionProbe(BatchMetadataOperator):
                 rp.width  = orig_w
                 rp.height = orig_h
 
+    def _build_frame_overlay(self, frame_meta, batch_meta, pad: int):
+        """Build per-frame OSD overlay (cam label, IP label, ROI).
+
+        Returns the acquired display_meta with cam-id and IP labels
+        attached. Returns None when in debug_mode (OSD skipped to
+        avoid known DeepStream hang with add_text + border_color).
+
+        ROI polygons may use a SECOND display_meta (dm_roi) due to
+        the ~16-item-per-dm limit; if used, dm_roi is appended to
+        frame_meta inside this method. The caller is responsible
+        for appending the returned dm.
+        """
+        if self.debug_mode:
+            return None
+
+        dm = batch_meta.acquire_display_meta()
+        cam_label = osd.Text()
+        cam_label.display_text = self.cam_ids[pad].encode("ascii")
+        cam_label.x_offset     = 8
+        cam_label.y_offset     = 8
+        cam_label.font.name    = osd.FontFamily.Serif
+        cam_label.font.size    = 6
+        cam_label.font.color   = osd.Color(1.0, 1.0, 0.0, 1.0)
+        cam_label.set_bg_color = True
+        cam_label.bg_color     = osd.Color(0.0, 0.0, 0.0, 0.7)
+        dm.add_text(cam_label)
+
+        # IP (last octet) — green label right of cam-id
+        ip_last = self.cam_ips[pad] if pad < len(self.cam_ips) else ""
+        if ip_last:
+            ip_lbl = osd.Text()
+            ip_lbl.display_text = f".{ip_last}".encode("ascii")
+            ip_lbl.x_offset = 52
+            ip_lbl.y_offset = 8
+            ip_lbl.font.name = osd.FontFamily.Serif
+            ip_lbl.font.size = 6
+            ip_lbl.font.color = osd.Color(0.2, 1.0, 0.2, 1.0)
+            ip_lbl.set_bg_color = True
+            ip_lbl.bg_color = osd.Color(0.0, 0.0, 0.0, 0.7)
+            dm.add_text(ip_lbl)
+
+        # ROI polygon — draw on a SEPARATE display_meta so it doesn't
+        # evict text/rect items from the primary dm (~16 item limit).
+        polys = self.roi_polygons.get(self.cam_ids[pad], [])
+        if polys:
+            try:
+                dm_roi = batch_meta.acquire_display_meta()
+            except Exception:
+                dm_roi = None
+            if dm_roi is not None:
+                drawn = 0
+                for poly in polys:
+                    if drawn >= 14:
+                        break
+                    if len(poly) < 2:
+                        continue
+                    for k in range(len(poly)):
+                        if drawn >= 14:
+                            break
+                        a = poly[k]
+                        b = poly[(k + 1) % len(poly)]
+                        line = osd.Line()
+                        line.x1 = int(a[0] * self.mux_width)
+                        line.y1 = int(a[1] * self.mux_height)
+                        line.x2 = int(b[0] * self.mux_width)
+                        line.y2 = int(b[1] * self.mux_height)
+                        line.width = 2
+                        line.color = osd.Color(0.0, 1.0, 0.0, 0.8)
+                        try:
+                            dm_roi.add_line(line)
+                            drawn += 1
+                        except Exception:
+                            pass
+                if drawn:
+                    frame_meta.append(dm_roi)
+
+        return dm
+
     def handle_metadata(self, batch_meta):
         try:
             self._handle_metadata_impl(batch_meta)
@@ -341,69 +419,7 @@ class DetectionProbe(BatchMetadataOperator):
             if pad < 0 or pad >= len(self.cam_ids):
                 continue
 
-            # In debug mode — SKIP OSD (known to hang with add_text + border_color)
-            dm = None
-            if not self.debug_mode:
-                dm = batch_meta.acquire_display_meta()
-                cam_label = osd.Text()
-                cam_label.display_text = self.cam_ids[pad].encode("ascii")
-                cam_label.x_offset     = 8
-                cam_label.y_offset     = 8
-                cam_label.font.name    = osd.FontFamily.Serif
-                cam_label.font.size    = 6
-                cam_label.font.color   = osd.Color(1.0, 1.0, 0.0, 1.0)
-                cam_label.set_bg_color = True
-                cam_label.bg_color     = osd.Color(0.0, 0.0, 0.0, 0.7)
-                dm.add_text(cam_label)
-
-                # IP (last octet) — green label right of cam-id
-                ip_last = self.cam_ips[pad] if pad < len(self.cam_ips) else ""
-                if ip_last:
-                    ip_lbl = osd.Text()
-                    ip_lbl.display_text = f".{ip_last}".encode("ascii")
-                    ip_lbl.x_offset = 52
-                    ip_lbl.y_offset = 8
-                    ip_lbl.font.name = osd.FontFamily.Serif
-                    ip_lbl.font.size = 6
-                    ip_lbl.font.color = osd.Color(0.2, 1.0, 0.2, 1.0)
-                    ip_lbl.set_bg_color = True
-                    ip_lbl.bg_color = osd.Color(0.0, 0.0, 0.0, 0.7)
-                    dm.add_text(ip_lbl)
-
-                # ROI polygon — draw on a SEPARATE display_meta so it doesn't
-                # evict text/rect items from the primary dm (~16 item limit).
-                polys = self.roi_polygons.get(self.cam_ids[pad], [])
-                if polys:
-                    try:
-                        dm_roi = batch_meta.acquire_display_meta()
-                    except Exception:
-                        dm_roi = None
-                    if dm_roi is not None:
-                        drawn = 0
-                        for poly in polys:
-                            if drawn >= 14:
-                                break
-                            if len(poly) < 2:
-                                continue
-                            for k in range(len(poly)):
-                                if drawn >= 14:
-                                    break
-                                a = poly[k]
-                                b = poly[(k + 1) % len(poly)]
-                                line = osd.Line()
-                                line.x1 = int(a[0] * self.mux_width)
-                                line.y1 = int(a[1] * self.mux_height)
-                                line.x2 = int(b[0] * self.mux_width)
-                                line.y2 = int(b[1] * self.mux_height)
-                                line.width = 2
-                                line.color = osd.Color(0.0, 1.0, 0.0, 0.8)
-                                try:
-                                    dm_roi.add_line(line)
-                                    drawn += 1
-                                except Exception:
-                                    pass
-                        if drawn:
-                            frame_meta.append(dm_roi)
+            dm = self._build_frame_overlay(frame_meta, batch_meta, pad)
 
             n_all_objs = 0
             n_persons  = 0
