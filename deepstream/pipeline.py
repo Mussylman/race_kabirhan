@@ -721,6 +721,72 @@ class DetectionProbe(BatchMetadataOperator):
                              for r in rk[:6])
             print(f"[RANK] {line}", flush=True)
 
+    def _draw_rankings_overlay(self, pad: int, dm) -> None:
+        """Draw global and per-camera ranking overlay on display_meta.
+
+        Top-center 'GLOBAL' header + top-5 colors with their last
+        camera. Top-right per-camera arrival ranking ('here'). Each
+        text line colored via _COLOR_RGB_NORMALISED.
+
+        No-op if dm is None (debug_mode) or tracker not wired.
+        Tracker reads (get_ranking, camera_ranking) are read-only.
+        """
+        if dm is None or self.tracker is None:
+            return
+
+        global_rk = self.tracker.get_ranking()
+        if global_rk:
+            header = osd.Text()
+            header.display_text = b"GLOBAL"
+            header.x_offset = self.mux_width // 2 - 40
+            header.y_offset = 6
+            header.font.name = osd.FontFamily.Serif
+            header.font.size = 10
+            header.font.color = osd.Color(1, 1, 1, 1.0)
+            header.set_bg_color = True
+            header.bg_color = osd.Color(0, 0, 0, 0.85)
+            dm.add_text(header)
+            for idx, r in enumerate(global_rk[:5]):
+                line_txt = f"{r['rank']}. {r['color'].upper():<7} @{r['last_camera']}"
+                t = osd.Text()
+                t.display_text = line_txt.encode("ascii")
+                t.x_offset = self.mux_width // 2 - 110
+                t.y_offset = 28 + idx * 22
+                t.font.name = osd.FontFamily.Serif
+                t.font.size = 12
+                r_, g_, b_ = _COLOR_RGB_NORMALISED.get(r['color'], (1, 1, 1))
+                t.font.color = osd.Color(r_, g_, b_, 1.0)
+                t.set_bg_color = True
+                t.bg_color = osd.Color(0, 0, 0, 0.85)
+                dm.add_text(t)
+
+        # Per-camera list — arrival order on this cam (top-right corner)
+        cam_rk = self.tracker.camera_ranking(self.cam_ids[pad])
+        if cam_rk:
+            hdr = osd.Text()
+            hdr.display_text = b"here"
+            hdr.x_offset = self.mux_width - 130
+            hdr.y_offset = 6
+            hdr.font.name = osd.FontFamily.Serif
+            hdr.font.size = 8
+            hdr.font.color = osd.Color(0.7, 0.7, 0.7, 1.0)
+            hdr.set_bg_color = True
+            hdr.bg_color = osd.Color(0, 0, 0, 0.75)
+            dm.add_text(hdr)
+            for idx, r in enumerate(cam_rk):
+                line_txt = f"{r['rank']}. {r['color'].upper()}"
+                txt = osd.Text()
+                txt.display_text = line_txt.encode("ascii")
+                txt.x_offset = self.mux_width - 130
+                txt.y_offset = 24 + idx * 18
+                txt.font.name = osd.FontFamily.Serif
+                txt.font.size = 8
+                r_, g_, b_ = _COLOR_RGB_NORMALISED.get(r['color'], (1, 1, 1))
+                txt.font.color = osd.Color(r_, g_, b_, 1.0)
+                txt.set_bg_color = True
+                txt.bg_color = osd.Color(0, 0, 0, 0.75)
+                dm.add_text(txt)
+
     def handle_metadata(self, batch_meta):
         try:
             self._handle_metadata_impl(batch_meta)
@@ -764,61 +830,7 @@ class DetectionProbe(BatchMetadataOperator):
             self._trigger_frame_saver(pad, classified_in_frame)
             self._ingest_tracker(pad, dets, ts_us)
 
-            # Global ranking overlay — large, top-center of every camera tile.
-            # Who's #1 across the whole track.
-            if dm is not None and self.tracker is not None:
-                global_rk = self.tracker.get_ranking()
-                if global_rk:
-                    header = osd.Text()
-                    header.display_text = b"GLOBAL"
-                    header.x_offset = self.mux_width // 2 - 40
-                    header.y_offset = 6
-                    header.font.name = osd.FontFamily.Serif
-                    header.font.size = 10
-                    header.font.color = osd.Color(1, 1, 1, 1.0)
-                    header.set_bg_color = True
-                    header.bg_color = osd.Color(0, 0, 0, 0.85)
-                    dm.add_text(header)
-                    for idx, r in enumerate(global_rk[:5]):
-                        line_txt = f"{r['rank']}. {r['color'].upper():<7} @{r['last_camera']}"
-                        t = osd.Text()
-                        t.display_text = line_txt.encode("ascii")
-                        t.x_offset = self.mux_width // 2 - 110
-                        t.y_offset = 28 + idx * 22
-                        t.font.name = osd.FontFamily.Serif
-                        t.font.size = 12
-                        r_, g_, b_ = _COLOR_RGB_NORMALISED.get(r['color'], (1, 1, 1))
-                        t.font.color = osd.Color(r_, g_, b_, 1.0)
-                        t.set_bg_color = True
-                        t.bg_color = osd.Color(0, 0, 0, 0.85)
-                        dm.add_text(t)
-
-                # Per-camera list — arrival order on this cam (top-right corner)
-                cam_rk = self.tracker.camera_ranking(self.cam_ids[pad])
-                if cam_rk:
-                    hdr = osd.Text()
-                    hdr.display_text = b"here"
-                    hdr.x_offset = self.mux_width - 130
-                    hdr.y_offset = 6
-                    hdr.font.name = osd.FontFamily.Serif
-                    hdr.font.size = 8
-                    hdr.font.color = osd.Color(0.7, 0.7, 0.7, 1.0)
-                    hdr.set_bg_color = True
-                    hdr.bg_color = osd.Color(0, 0, 0, 0.75)
-                    dm.add_text(hdr)
-                    for idx, r in enumerate(cam_rk):
-                        line_txt = f"{r['rank']}. {r['color'].upper()}"
-                        txt = osd.Text()
-                        txt.display_text = line_txt.encode("ascii")
-                        txt.x_offset = self.mux_width - 130
-                        txt.y_offset = 24 + idx * 18
-                        txt.font.name = osd.FontFamily.Serif
-                        txt.font.size = 8
-                        r_, g_, b_ = _COLOR_RGB_NORMALISED.get(r['color'], (1, 1, 1))
-                        txt.font.color = osd.Color(r_, g_, b_, 1.0)
-                        txt.set_bg_color = True
-                        txt.bg_color = osd.Color(0, 0, 0, 0.75)
-                        dm.add_text(txt)
+            self._draw_rankings_overlay(pad, dm)
 
             # All texts for this frame are ready — now append the display_meta
             if dm is not None:
