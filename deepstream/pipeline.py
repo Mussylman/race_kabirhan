@@ -55,6 +55,7 @@ from deepstream.modules.geom import (
     _load_roi_polygons,
     _point_in_polygon,
 )
+from deepstream.config import CameraEntry, load_cameras
 
 REPO_ROOT        = Path(__file__).resolve().parent.parent
 DEFAULT_CONFIG   = REPO_ROOT / "deepstream" / "configs" / "nvinfer_racevision.txt"
@@ -178,35 +179,6 @@ class FrameSaver:
 
     def close(self):
         self.stop.set()
-
-
-@dataclass
-class CameraEntry:
-    cam_id: str
-    uri: str
-    track_start: float = 0.0
-    track_end: float   = 100.0
-
-
-def load_cameras(config_path: Path, limit: Optional[int] = None) -> list[CameraEntry]:
-    with open(config_path) as fp:
-        cfg = json.load(fp)
-    raw = cfg.get("analytics", cfg if isinstance(cfg, list) else [])
-    cams: list[CameraEntry] = []
-    for entry in raw:
-        url = entry["url"]
-        # Accept both file:// URIs and bare paths
-        if not (url.startswith("rtsp://") or url.startswith("file://") or url.startswith("http://")):
-            url = f"file://{os.path.abspath(url)}"
-        cams.append(CameraEntry(
-            cam_id=entry["id"],
-            uri=url,
-            track_start=float(entry.get("track_start", 0)),
-            track_end=float(entry.get("track_end", 100)),
-        ))
-    if limit is not None:
-        cams = cams[:limit]
-    return cams
 
 
 class DetectionProbe(BatchMetadataOperator):
