@@ -1,0 +1,63 @@
+# SGIE secondary classifier — DINOv2 prototype-based color classification.
+#
+# Replaces SimpleColorCNN (v4) which had 0% not_jockey reject rate.
+# DINOv2-base outputs 768-dim embedding; custom parser computes cosine
+# similarity to 4 hardcoded prototypes (green/yellow/red/blue) and emits
+# class_id from labels_color.txt (1, 4, 3, 0 respectively) ИЛИ 255 при
+# reject (max_sim < threshold).
+#
+# Prototypes built from cam-24 (kamera_24_135253_END135443.mp4):
+# 50 blue + 53 green + 53 yellow + 60 red labeled crops.
+#
+# Preprocessing: ImageNet normalization (RGB):
+#   x = (pixel/255 - mean) / std,  mean=[0.485,0.456,0.406], std=[0.229,...]
+#   nvinfer approximation:
+#     net-scale-factor = 1/(255*0.226) = 0.01735
+#     offsets          = mean*255       = [123.675, 116.28, 103.53]   (RGB)
+
+[property]
+gpu-id=0
+
+# Model — DINOv2 base ViT-B/16, FP16 TRT engine
+onnx-file=/home/ipodrom/race_vision_bench/dinov2_prod/dinov2_base_b1.onnx
+model-engine-file=/home/ipodrom/race_vision_bench/dinov2_prod/dinov2_base_b1_gpu0_fp16.engine
+labelfile-path=/home/ipodrom/Рабочий стол/Ipodrom-Project/user/race_vision/deepstream/configs/labels_color.txt
+
+# 0=FP32, 1=INT8, 2=FP16
+network-mode=2
+batch-size=1
+
+# Preprocessing — same ImageNet mean/std as v4 (DINOv2 = ImageNet pretrain)
+net-scale-factor=0.01735
+offsets=123.675;116.28;103.53
+model-color-format=0
+
+# Network type: 1 = classifier
+network-type=1
+process-mode=2
+
+# Operate on any upstream GIE (−1), class 0 (person). -1 avoids silent miss
+# if PGIE gie-unique-id isn't explicitly propagated.
+gie-unique-id=2
+operate-on-gie-id=-1
+operate-on-class-ids=0
+
+# Filters — jockey bbox at 1280x720 mux is ~25x60
+input-object-min-width=8
+input-object-min-height=20
+input-object-max-width=200
+input-object-max-height=400
+
+classifier-async-mode=0
+# DINOv2 cosine similarity threshold. Reject if max_sim < threshold.
+# Best composite on Phase 3 zero-shot: 0.55-0.60. Production env override
+# via RV_DINOV2_MIN_SIM (parser uses max of two).
+classifier-threshold=0.55
+
+# Tensor I/O — DINOv2 input 3x224x224, output [1, 768] embedding
+infer-dims=3;224;224
+output-blob-names=embedding
+
+# Custom parser: cosine sim to 4 hardcoded prototypes + threshold reject
+parse-classifier-func-name=NvDsInferClassifierParseCustomDinov2
+custom-lib-path=/home/ipodrom/Рабочий стол/Ipodrom-Project/user/race_vision/deepstream/build/libnvdsinfer_racevision.so

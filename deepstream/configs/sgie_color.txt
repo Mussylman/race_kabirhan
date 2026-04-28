@@ -1,29 +1,42 @@
-# SGIE secondary classifier — color of jockey torso (5 classes).
+# SGIE secondary classifier — OSNet x1.0 (Market1501 pretrained)
+# embedding-based color classification.
 #
-# Input: 3x128x128 (color_classifier_v4 architecture)
-# Output: 5 logits → blue, green, purple, red, yellow
+# Replaces DINOv2 prototype-based, which had 43% REF/PROD disagreement
+# from preprocessing math drift. OSNet (256x128 input, 512-dim embedding)
+# shows 100% argmax stability under DeepStream preprocessing
+# (median cos sim REF↔PROD 0.9988) and 98.2% jockey accuracy on golden
+# cam-13 test. Custom parser computes cosine similarity to 4 hardcoded
+# prototypes (green/yellow/red/blue) and emits class_id from
+# labels_color.txt (1, 4, 3, 0 respectively) OR 255 при reject
+# (max_sim < threshold).
 #
-# Net is trained with ImageNet normalization:
-#   x = (pixel/255 - mean) / std,  mean=[0.485,0.456,0.406], std=[0.229,0.224,0.225]
-# nvinfer only supports x = (pixel - offsets) * net-scale-factor,
-# so we approximate with channel-averaged std (0.226):
-#   net-scale-factor = 1/(255*0.226) = 0.01735
-#   offsets          = mean*255       = [123.675, 116.28, 103.53]   (RGB)
-# This is the same approximation used by all sample resnet sgies.
+# Prototypes built from prototypes_osnet_combined.npz:
+# 1444 crops × 17 cams × 5 sessions (multicam + color_dataset merged).
+#
+# Preprocessing: ImageNet normalization (RGB):
+#   x = (pixel/255 - mean) / std,  mean=[0.485,0.456,0.406], std=[0.229,...]
+#   nvinfer approximation:
+#     net-scale-factor = 1/(255*0.226) = 0.01735
+#     offsets          = mean*255       = [123.675, 116.28, 103.53]   (RGB)
+#
+# DINOv2 fallback: parser still in libnvdsinfer_racevision.so as
+# NvDsInferClassifierParseCustomDinov2; switch via this config file
+# (see sgie_color_dinov2_backup.txt).
 
 [property]
 gpu-id=0
 
-# Model
-onnx-file=/home/ipodrom/Рабочий стол/Ipodrom-Project/user/race_vision/models/color_classifier_v4.onnx
-model-engine-file=/home/ipodrom/Рабочий стол/Ipodrom-Project/user/race_vision/models/color_classifier_v4.engine
+# Model — OSNet x1.0 (Market1501 pretrained), FP16 TRT engine
+onnx-file=/home/ipodrom/Рабочий стол/Ipodrom-Project/user/race_vision/models/osnet_x1_0_market_b1.onnx
+model-engine-file=/home/ipodrom/Рабочий стол/Ipodrom-Project/user/race_vision/models/osnet_x1_0_market_b1_gpu0_fp16.engine
 labelfile-path=/home/ipodrom/Рабочий стол/Ipodrom-Project/user/race_vision/deepstream/configs/labels_color.txt
 
 # 0=FP32, 1=INT8, 2=FP16
 network-mode=2
-batch-size=64
+batch-size=1
 
-# Preprocessing — approximate ImageNet normalization (RGB)
+# Preprocessing — ImageNet normalize (OSNet was pretrained on ImageNet
+# stats and fine-tuned on Market1501 with the same normalization).
 net-scale-factor=0.01735
 offsets=123.675;116.28;103.53
 model-color-format=0
@@ -39,19 +52,22 @@ operate-on-gie-id=-1
 operate-on-class-ids=0
 
 # Filters — jockey bbox at 1280x720 mux is ~25x60
-# Lower bound = reject YOLO noise; upper bound = reject spectators/staff
-input-object-min-width=12
-input-object-min-height=40
-input-object-max-width=80
-input-object-max-height=180
+input-object-min-width=8
+input-object-min-height=20
+input-object-max-width=200
+input-object-max-height=400
 
 classifier-async-mode=0
-classifier-threshold=0.5
+# OSNet cosine similarity threshold. Reject if max_sim < threshold.
+# 0.75 — best balanced on golden cam-13 (98.2% jockey acc, 99.2% NJ
+# reject). Production env override via RV_OSNET_MIN_SIM (parser uses
+# max of two).
+classifier-threshold=0.75
 
-# Tensor I/O
-infer-dims=3;128;128
-output-blob-names=output
+# Tensor I/O — OSNet input 3x256x128, output [1, 512] embedding
+infer-dims=3;256;128
+output-blob-names=embedding
 
-# Custom classifier parser (built-in auto-parse does not work with our 2D output)
-parse-classifier-func-name=NvDsInferClassiferParseCustomColor
+# Custom parser: cosine sim to 4 hardcoded prototypes + threshold reject
+parse-classifier-func-name=NvDsInferClassifierParseCustomOsnet
 custom-lib-path=/home/ipodrom/Рабочий стол/Ipodrom-Project/user/race_vision/deepstream/build/libnvdsinfer_racevision.so

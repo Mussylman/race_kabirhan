@@ -1,0 +1,12 @@
+{
+  "track_length": 800,
+  "max_active": 20,
+  "analytics": [
+    {
+      "id": "cam-24",
+      "url": "file:///home/ipodrom/Рабочий стол/Ipodrom-Project/user/race_vision/data/videos/test_full_loop/yaris_20260421_174240/kamera_24_174252_END174647.mp4",
+      "track_start": 0.0,
+      "track_end": 800.0
+    }
+  ]
+}

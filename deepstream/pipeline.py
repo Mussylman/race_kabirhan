@@ -52,6 +52,45 @@ DEFAULT_CAMERAS  = REPO_ROOT / "configs"   / "cameras_test_files.json"
 
 PERSON_CLASS_ID = 0
 
+# Tight crop preprocessing for DINOv2 SGIE — отрезаем голову/ноги/лошадь/
+# соседей, оставляем только торс с силком. Применяется через bbox-rewrite
+# в pre-SGIE probe; post-SGIE probe восстанавливает original bbox через
+# обратную математику (no shared state, no race conditions).
+#  X: 10-70% (центр сдвинут влево, отрезает соседей)
+#  Y: 0-55% (от верха до середины, отрезает ноги/лошадь)
+TIGHT_X_LO, TIGHT_X_HI = 0.10, 0.70   # → ширина = 0.60 от original
+TIGHT_Y_LO, TIGHT_Y_HI = 0.00, 0.55   # → высота = 0.55 от original
+_TIGHT_W_FRAC = TIGHT_X_HI - TIGHT_X_LO   # 0.60
+_TIGHT_H_FRAC = TIGHT_Y_HI - TIGHT_Y_LO   # 0.55
+
+# Tight bbox preprocessing was added for DINOv2 (which needed torso-only crops
+# to avoid head/legs/horse contamination of the embedding). OSNet was trained
+# on full-body person crops at 256x128 stretch and works on full bbox directly.
+# Disable via RV_TIGHT_SGIE=0 when running OSNet SGIE; default 1 keeps the
+# behaviour for DINOv2 fallback. Gates BOTH the pre-SGIE shrink probe AND the
+# post-SGIE reverse-math in DetectionProbe — they must move together.
+TIGHT_SGIE_ENABLED = os.environ.get("RV_TIGHT_SGIE", "1") == "1"
+
+
+class TightBboxShrinkProbe(BatchMetadataOperator):
+    """Pre-SGIE probe: shrink rect_params per-obj to torso-only zone.
+    SGIE (process-mode=2) crop'ит NvBufSurface по obj.rect_params, поэтому
+    модификация bbox здесь = SGIE подаст в TRT engine только torso region.
+    DetectionProbe потом восстанавливает original bbox через reverse math."""
+
+    def handle_metadata(self, batch_meta):
+        for frame_meta in batch_meta.frame_items:
+            for obj in frame_meta.object_items:
+                if obj.class_id != PERSON_CLASS_ID:
+                    continue
+                rp = obj.rect_params
+                orig_w = rp.width
+                orig_h = rp.height
+                rp.left   = rp.left + TIGHT_X_LO * orig_w
+                rp.top    = rp.top  + TIGHT_Y_LO * orig_h
+                rp.width  = _TIGHT_W_FRAC * orig_w
+                rp.height = _TIGHT_H_FRAC * orig_h
+
 # Color label → SHM color id (matches deepstream/src/config.h ColorId enum
 # and deepstream/configs/labels_color.txt order).
 _COLOR_NAME_TO_ID = {
@@ -240,12 +279,17 @@ class DetectionProbe(BatchMetadataOperator):
 
     def __init__(self, plugin: RVPlugin, shm_handle, cam_ids: list[str],
                  mux_width: int, mux_height: int, log_every: int = 50,
-                 cam_uris: list[str] | None = None):
+                 cam_uris: list[str] | None = None,
+                 sgie_active: bool = False):
         super().__init__()
         self.plugin       = plugin
         self.shm_handle   = shm_handle
         self.cam_ids      = cam_ids
         self.cam_uris: list[str] = list(cam_uris or [""] * len(cam_ids))
+        # When True: pre-SGIE probe shrinks bbox per-obj, this probe restores
+        # it via reverse math at start of _handle_metadata_impl. When False
+        # (no SGIE), bbox is untouched both ways.
+        self.sgie_active  = sgie_active
         # Stability state: (cam_id, track_id) -> {color, count}
         self._stability: dict[tuple[str, int], dict] = {}
         # Extract last IP octet per cam for OSD display
@@ -447,6 +491,25 @@ class DetectionProbe(BatchMetadataOperator):
 
         if self.debug_mode and self.debug_frames < 3:
             print(f"[probe.enter]", flush=True)
+
+        # Restore original bbox after SGIE consumed tight version (pre-SGIE
+        # probe shrinks rect_params; here we reverse the math to make
+        # downstream OSD/SHM/audit see full-body bbox as before).
+        # Float roundtrip in NvOSD_RectParams (gfloat) preserves exact bits.
+        # Only run if SGIE attached AND tight preprocessing is enabled
+        # (else pre-shrink probe didn't fire, reverse-math would corrupt bbox).
+        if self.sgie_active and TIGHT_SGIE_ENABLED:
+            for frame_meta in batch_meta.frame_items:
+                for obj in frame_meta.object_items:
+                    if obj.class_id != PERSON_CLASS_ID:
+                        continue
+                    rp = obj.rect_params
+                    orig_w = rp.width  / _TIGHT_W_FRAC
+                    orig_h = rp.height / _TIGHT_H_FRAC
+                    rp.left   = rp.left - TIGHT_X_LO * orig_w
+                    rp.top    = rp.top  - TIGHT_Y_LO * orig_h
+                    rp.width  = orig_w
+                    rp.height = orig_h
 
         for frame_meta in batch_meta.frame_items:
             pad = frame_meta.pad_index
@@ -927,7 +990,8 @@ def build_pipeline(cameras: list[CameraEntry], nvinfer_config: Path,
 
     probe_op = DetectionProbe(plugin, shm_handle, cam_ids,
                               mux_width=mux_width, mux_height=mux_height,
-                              cam_uris=cam_uris)
+                              cam_uris=cam_uris,
+                              sgie_active=(sgie_config is not None))
 
     pipe = Pipeline("rv-pipeline")
     pipe.add("nvstreammux", "mux", {
@@ -1001,6 +1065,12 @@ def build_pipeline(cameras: list[CameraEntry], nvinfer_config: Path,
     chain += chain_tail
     pipe.link(*chain)
 
+    # Pre-SGIE probe: shrink bbox to torso-only zone so SGIE crops a tight
+    # region. Only attach if SGIE is actually present (otherwise bbox would
+    # stay shrunk forever — DetectionProbe restore math would corrupt it).
+    # Skip when RV_TIGHT_SGIE=0 (OSNet SGIE wants full bbox).
+    if sgie_config is not None and TIGHT_SGIE_ENABLED:
+        pipe.attach("infer", Probe("rv_tight_pre_sgie", TightBboxShrinkProbe()))
     pipe.attach(probe_attach_id, Probe("rv_probe", probe_op))
 
     return pipe, probe_op, shm_handle

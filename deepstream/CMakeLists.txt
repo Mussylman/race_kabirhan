@@ -93,6 +93,8 @@ set(PLUGIN_SOURCES
     src/yolo_parser.cpp
     src/color_infer.cpp
     src/color_classifier_parser.cpp
+    src/dinov2_color_parser.cpp
+    src/osnet_color_parser.cpp
     src/shm_writer.cpp
     src/plugin.cpp
 )
