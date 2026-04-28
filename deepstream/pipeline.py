@@ -638,6 +638,89 @@ class DetectionProbe(BatchMetadataOperator):
         }
         return dets, classified_in_frame, counters
 
+    def _trigger_frame_saver(self, pad: int, classified_in_frame: list) -> None:
+        """Trigger FrameSaver to save snapshot if any colors classified.
+
+        Background thread asynchronously fetches frame from go2rtc
+        and writes JPEG to runs/exp_NNN/. No-op if FrameSaver was not
+        wired (RV_SNAP_MIN=0) or no classified colors on this frame.
+        """
+        if self.frame_saver is None or not classified_in_frame:
+            return
+        self.frame_saver.maybe_trigger(
+            self.cam_ids[pad],
+            [(cx, c) for cx, c, _, _ in classified_in_frame],
+        )
+
+    def _ingest_tracker(self, pad: int, dets: list, ts_us: int) -> None:
+        """Ingest passed detections into TimeTracker with stability gate.
+
+        Per-detection: extract color + track_id. Consecutive-stability
+        gate (self._stability counter, MIN_CONSEC). When stable color
+        seen N consecutive frames, mark for tracker.ingest. Sorts
+        rightmost-first (track ordering). Enqueues snapshot job for
+        new_arrivals. Prints [PASS] and [RANK] log lines on advance.
+        """
+        if self.tracker is None or not dets:
+            return
+        cam = self.cam_ids[pad]
+        now = ts_us / 1_000_000.0
+        stable_colors: list[tuple[float, str, float, float, tuple]] = []
+        for d in dets:
+            cname = _COLOR_ID_TO_NAME.get(d.color_id)
+            if not cname:
+                continue
+            tid = int(d.track_id or 0)
+            if tid <= 0 or tid >= 1_000_000_000:
+                # no tracker → accept immediately (fallback)
+                stable_colors.append(
+                    (d.center_x if hasattr(d,"center_x") else 0.5*(d.x1+d.x2),
+                     cname, float(d.color_conf), 0.0,
+                     (d.x1, d.y1, d.x2, d.y2)))
+                continue
+            key = (cam, tid)
+            st = self._stability.get(key)
+            if st is None or st["color"] != cname:
+                self._stability[key] = {"color": cname, "count": 1}
+                continue
+            st["count"] += 1
+            if st["count"] == self.MIN_CONSEC:
+                cx = 0.5 * (d.x1 + d.x2)
+                stable_colors.append(
+                    (cx, cname, float(d.color_conf), 0.0,
+                     (d.x1, d.y1, d.x2, d.y2)))
+
+        if stable_colors:
+            # Rightmost first for same-frame ties
+            ordered = sorted(stable_colors, key=lambda t: -t[0])
+            new_arrivals = []
+            for rank_idx, (cx, c, cf, lg, bb) in enumerate(ordered):
+                res = self.tracker.ingest(now + rank_idx * 1e-6, cam, c)
+                if res:
+                    new_arrivals.extend(res)
+                    if hasattr(self, "_pass_snap_q"):
+                        try:
+                            self._pass_snap_q.put_nowait({
+                                "cam_id": cam,
+                                "uri": (self.cam_uris[pad]
+                                        if pad < len(self.cam_uris) else ""),
+                                "frame_idx": self.frame_counts[pad],
+                                "color": c,
+                                "bbox": bb,
+                                "mux": (self.mux_width, self.mux_height),
+                                "cls": cf,
+                                "lg": lg,
+                            })
+                        except queue.Full:
+                            pass
+        if new_arrivals:
+            for c in new_arrivals:
+                print(f"[PASS] {cam}  {c}  ts={now:.2f}", flush=True)
+            rk = self.tracker.get_ranking()
+            line = "  ".join(f"{r['rank']}:{r['color']}@{r['last_camera']}"
+                             for r in rk[:6])
+            print(f"[RANK] {line}", flush=True)
+
     def handle_metadata(self, batch_meta):
         try:
             self._handle_metadata_impl(batch_meta)
@@ -678,74 +761,8 @@ class DetectionProbe(BatchMetadataOperator):
                       f"classified={counters['n_with_cls']}", flush=True)
                 self.debug_frames += 1
 
-            # Snapshot trigger: ≥N classified jockeys on this camera frame
-            if self.frame_saver is not None and classified_in_frame:
-                self.frame_saver.maybe_trigger(
-                    self.cam_ids[pad],
-                    [(cx, c) for cx, c, _, _ in classified_in_frame],
-                )
-
-            # Feed TimeTracker with temporal stability check:
-            #   a color must be classified on the SAME track_id MIN_CONSEC
-            #   times in a row before it counts.
-            if self.tracker is not None and dets:
-                cam = self.cam_ids[pad]
-                now = ts_us / 1_000_000.0
-                stable_colors: list[tuple[float, str, float, float, tuple]] = []
-                for d in dets:
-                    cname = _COLOR_ID_TO_NAME.get(d.color_id)
-                    if not cname:
-                        continue
-                    tid = int(d.track_id or 0)
-                    if tid <= 0 or tid >= 1_000_000_000:
-                        # no tracker → accept immediately (fallback)
-                        stable_colors.append(
-                            (d.center_x if hasattr(d,"center_x") else 0.5*(d.x1+d.x2),
-                             cname, float(d.color_conf), 0.0,
-                             (d.x1, d.y1, d.x2, d.y2)))
-                        continue
-                    key = (cam, tid)
-                    st = self._stability.get(key)
-                    if st is None or st["color"] != cname:
-                        self._stability[key] = {"color": cname, "count": 1}
-                        continue
-                    st["count"] += 1
-                    if st["count"] == self.MIN_CONSEC:
-                        cx = 0.5 * (d.x1 + d.x2)
-                        stable_colors.append(
-                            (cx, cname, float(d.color_conf), 0.0,
-                             (d.x1, d.y1, d.x2, d.y2)))
-
-                if stable_colors:
-                    # Rightmost first for same-frame ties
-                    ordered = sorted(stable_colors, key=lambda t: -t[0])
-                    new_arrivals = []
-                    for rank_idx, (cx, c, cf, lg, bb) in enumerate(ordered):
-                        res = self.tracker.ingest(now + rank_idx * 1e-6, cam, c)
-                        if res:
-                            new_arrivals.extend(res)
-                            if hasattr(self, "_pass_snap_q"):
-                                try:
-                                    self._pass_snap_q.put_nowait({
-                                        "cam_id": cam,
-                                        "uri": (self.cam_uris[pad]
-                                                if pad < len(self.cam_uris) else ""),
-                                        "frame_idx": self.frame_counts[pad],
-                                        "color": c,
-                                        "bbox": bb,
-                                        "mux": (self.mux_width, self.mux_height),
-                                        "cls": cf,
-                                        "lg": lg,
-                                    })
-                                except queue.Full:
-                                    pass
-                if new_arrivals:
-                    for c in new_arrivals:
-                        print(f"[PASS] {cam}  {c}  ts={now:.2f}", flush=True)
-                    rk = self.tracker.get_ranking()
-                    line = "  ".join(f"{r['rank']}:{r['color']}@{r['last_camera']}"
-                                     for r in rk[:6])
-                    print(f"[RANK] {line}", flush=True)
+            self._trigger_frame_saver(pad, classified_in_frame)
+            self._ingest_tracker(pad, dets, ts_us)
 
             # Global ranking overlay — large, top-center of every camera tile.
             # Who's #1 across the whole track.
