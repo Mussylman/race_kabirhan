@@ -294,6 +294,31 @@ class DetectionProbe(BatchMetadataOperator):
             return False
         return True
 
+    def _restore_tight_bboxes(self, batch_meta) -> None:
+        """Reverse pre-SGIE bbox shrink from TightBboxShrinkProbe.
+
+        Pre-SGIE probe shrinks rect_params to torso-only zone for
+        DINOv2 stretch preprocessing. Here we restore full-body bbox
+        so downstream OSD/SHM/audit see original geometry.
+
+        Float roundtrip in NvOSD_RectParams (gfloat) preserves
+        exact bits. Only runs if SGIE attached AND tight
+        preprocessing enabled.
+        """
+        if not (self.sgie_active and TIGHT_SGIE_ENABLED):
+            return
+        for frame_meta in batch_meta.frame_items:
+            for obj in frame_meta.object_items:
+                if obj.class_id != PERSON_CLASS_ID:
+                    continue
+                rp = obj.rect_params
+                orig_w = rp.width  / _TIGHT_W_FRAC
+                orig_h = rp.height / _TIGHT_H_FRAC
+                rp.left   = rp.left - TIGHT_X_LO * orig_w
+                rp.top    = rp.top  - TIGHT_Y_LO * orig_h
+                rp.width  = orig_w
+                rp.height = orig_h
+
     def handle_metadata(self, batch_meta):
         try:
             self._handle_metadata_impl(batch_meta)
@@ -309,24 +334,7 @@ class DetectionProbe(BatchMetadataOperator):
         if self.debug_mode and self.debug_frames < 3:
             print(f"[probe.enter]", flush=True)
 
-        # Restore original bbox after SGIE consumed tight version (pre-SGIE
-        # probe shrinks rect_params; here we reverse the math to make
-        # downstream OSD/SHM/audit see full-body bbox as before).
-        # Float roundtrip in NvOSD_RectParams (gfloat) preserves exact bits.
-        # Only run if SGIE attached AND tight preprocessing is enabled
-        # (else pre-shrink probe didn't fire, reverse-math would corrupt bbox).
-        if self.sgie_active and TIGHT_SGIE_ENABLED:
-            for frame_meta in batch_meta.frame_items:
-                for obj in frame_meta.object_items:
-                    if obj.class_id != PERSON_CLASS_ID:
-                        continue
-                    rp = obj.rect_params
-                    orig_w = rp.width  / _TIGHT_W_FRAC
-                    orig_h = rp.height / _TIGHT_H_FRAC
-                    rp.left   = rp.left - TIGHT_X_LO * orig_w
-                    rp.top    = rp.top  - TIGHT_Y_LO * orig_h
-                    rp.width  = orig_w
-                    rp.height = orig_h
+        self._restore_tight_bboxes(batch_meta)
 
         for frame_meta in batch_meta.frame_items:
             pad = frame_meta.pad_index
