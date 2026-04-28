@@ -787,6 +787,44 @@ class DetectionProbe(BatchMetadataOperator):
                 txt.bg_color = osd.Color(0, 0, 0, 0.75)
                 dm.add_text(txt)
 
+    def _finalize_frame(self, frame_meta, pad: int, dm,
+                        dets: list, ts_us: int) -> bool:
+        """Finalize per-frame processing.
+
+        Appends dm to frame_meta (if any), bumps per-cam and global
+        frame/detection counters, builds a CameraSlot and writes it
+        to SHM via plugin.write_camera, and triggers periodic
+        _log_snapshot every self.log_every frames.
+
+        Returns:
+            True if the SHM write was performed; the caller uses
+            this to gate the post-loop plugin.commit call. Currently
+            always True when reached (no early return today), but
+            kept as a bool for symmetry with future early-exits.
+        """
+        if dm is not None:
+            frame_meta.append(dm)
+
+        self.frame_counts[pad] += 1
+        self.det_counts[pad]   += len(dets)
+        self.total_frames      += 1
+
+        src_frame_num = getattr(frame_meta, "frame_number", 0) or 0
+        slot = make_camera_slot(
+            cam_id=self.cam_ids[pad],
+            frame_w=self.mux_width,
+            frame_h=self.mux_height,
+            timestamp_us=ts_us,
+            detections=dets,
+            source_frame_num=src_frame_num,
+        )
+        self.plugin.write_camera(self.shm_handle, pad, slot)
+
+        if self.total_frames % self.log_every == 0:
+            self._log_snapshot()
+
+        return True
+
     def handle_metadata(self, batch_meta):
         try:
             self._handle_metadata_impl(batch_meta)
@@ -832,28 +870,7 @@ class DetectionProbe(BatchMetadataOperator):
 
             self._draw_rankings_overlay(pad, dm)
 
-            # All texts for this frame are ready — now append the display_meta
-            if dm is not None:
-                frame_meta.append(dm)
-
-            self.frame_counts[pad] += 1
-            self.det_counts[pad]   += len(dets)
-            self.total_frames      += 1
-
-            src_frame_num = getattr(frame_meta, "frame_number", 0) or 0
-            slot = make_camera_slot(
-                cam_id=self.cam_ids[pad],
-                frame_w=self.mux_width,
-                frame_h=self.mux_height,
-                timestamp_us=ts_us,
-                detections=dets,
-                source_frame_num=src_frame_num,
-            )
-            self.plugin.write_camera(self.shm_handle, pad, slot)
-            wrote_any = True
-
-            if self.total_frames % self.log_every == 0:
-                self._log_snapshot()
+            wrote_any |= self._finalize_frame(frame_meta, pad, dm, dets, ts_us)
 
         if wrote_any:
             self.plugin.commit(self.shm_handle)
