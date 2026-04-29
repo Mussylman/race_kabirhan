@@ -91,9 +91,6 @@ export const ru = {
     // Footer
     footer: {
         horseRacingSystem: 'Система трансляции скачек',
-        switchToRealBackend: 'Переключить на реальный бэкенд',
-        switchToMockMode: 'Переключить на тестовый режим',
-        mockMode: 'Тестовый режим',
         backendConnected: 'Бэкенд подключен',
         connectionError: 'Ошибка подключения',
     },

@@ -91,9 +91,6 @@ export const tr = {
     // Footer
     footer: {
         horseRacingSystem: 'At Yarışı Yayın Sistemi',
-        switchToRealBackend: 'Gerçek Backend\'e Geç',
-        switchToMockMode: 'Test Moduna Geç',
-        mockMode: 'Test Modu',
         backendConnected: 'Backend Bağlı',
         connectionError: 'Bağlantı Hatası',
     },

@@ -57,7 +57,7 @@ export const findClosestSilkId = (detectedColor: string): number => {
  */
 export const getSilkImagePath = (silkId: number): string => {
     const validId = Math.max(1, Math.min(silkId || 1, TOTAL_SILKS));
-    return `/assets/silks/silk_${validId}.svg`;
+    return `/assets/silks/silk_${validId}.png`;
 };
 
 /**
@@ -77,24 +77,4 @@ export const getSilkColor = (silkId: number): string => {
  */
 export const getDefaultSilkId = (horseNumber: number): number => {
     return ((horseNumber - 1) % TOTAL_SILKS) + 1;
-};
-
-/**
- * Returns silk name (optional)
- */
-export const getSilkName = (silkId: number): string => {
-    const names: Record<number, string> = {
-        1: 'Red',
-        2: 'Blue',
-        3: 'Green',
-        4: 'Yellow',
-        5: 'Purple',
-        6: 'Orange',
-        7: 'Pink',
-        8: 'Cyan',
-        9: 'Lime',
-        10: 'Orange Alt',
-    };
-    const validId = Math.max(1, Math.min(silkId || 1, TOTAL_SILKS));
-    return names[validId] || `Silk ${validId}`;
 };

@@ -91,9 +91,6 @@ export const kk = {
     // Footer
     footer: {
         horseRacingSystem: 'Ат жарысын тарату жүйесі',
-        switchToRealBackend: 'Нақты бэкендке ауысу',
-        switchToMockMode: 'Тест режиміне ауысу',
-        mockMode: 'Тест режимі',
         backendConnected: 'Бэкенд қосылды',
         connectionError: 'Қосылу қатесі',
     },

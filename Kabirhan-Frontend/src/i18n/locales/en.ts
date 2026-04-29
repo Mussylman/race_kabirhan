@@ -91,9 +91,6 @@ export const en = {
     // Footer
     footer: {
         horseRacingSystem: 'Horse Racing Broadcast System',
-        switchToRealBackend: 'Switch to Real Backend',
-        switchToMockMode: 'Switch to Mock Mode',
-        mockMode: 'Mock Mode',
         backendConnected: 'Backend Connected',
         connectionError: 'Connection Error',
     },
