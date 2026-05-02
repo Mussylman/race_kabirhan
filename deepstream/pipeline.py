@@ -109,6 +109,11 @@ class DetectionProbe(BatchMetadataOperator):
         self.sgie_active  = sgie_active
         # Stability state: (cam_id, track_id) -> {color, count}
         self._stability: dict[tuple[str, int], dict] = {}
+        # Compact one-line diagnostics (RV_COMPACT_LOG=1).
+        self._compact_log = os.environ.get("RV_COMPACT_LOG", "0") == "1"
+        self._log_det_min = float(os.environ.get("RV_LOG_DET_MIN", "0.5"))
+        self._log_cls_min = float(os.environ.get("RV_LOG_CLS_MIN", "0.0"))
+        self._log_rej     = os.environ.get("RV_LOG_REJ", "1") == "1"
         # Extract last IP octet per cam for OSD display
         import re as _re
         self.cam_ips: list[str] = []
@@ -189,6 +194,14 @@ class DetectionProbe(BatchMetadataOperator):
             print(f"[probe] pass-snap saver → {self._pass_snap_dir}", flush=True)
         except Exception as e:
             print(f"[probe] pass-snap disabled: {e}", flush=True)
+
+    def _ts_compact(self, ts: float) -> str:
+        secs = int(ts)
+        ms = int((ts - secs) * 1000)
+        return time.strftime("%H:%M:%S", time.localtime(secs)) + f".{ms:03d}"
+
+    def _emit_compact(self, line: str) -> None:
+        print(line, flush=True)
 
     @staticmethod
     def _extract_color(obj) -> tuple[int, float]:
@@ -491,6 +504,14 @@ class DetectionProbe(BatchMetadataOperator):
                 )
 
             if not passed_filters or not inside_roi or not has_horse:
+                if (self._compact_log and self._log_rej
+                        and float(obj.confidence) >= self._log_det_min):
+                    self._emit_compact(
+                        f"[{self._ts_compact(ts_now)}] {self.cam_ids[pad]} "
+                        f"DET REJECT {reject_reason} "
+                        f"bbox=({int(x1)},{int(y1)},{int(x2)},{int(y2)}) "
+                        f"det_conf={float(obj.confidence):.2f}"
+                    )
                 rp.border_width = 0
                 tp = getattr(obj, "text_params", None)
                 if tp is not None:
@@ -666,9 +687,12 @@ class DetectionProbe(BatchMetadataOperator):
         cam = self.cam_ids[pad]
         now = ts_us / 1_000_000.0
         stable_colors: list[tuple[float, str, float, float, tuple]] = []
+        # Parallel to dets — (decision_kind, qualifier) for compact log.
+        per_det: list[tuple[str, str]] = []
         for d in dets:
             cname = _COLOR_ID_TO_NAME.get(d.color_id)
             if not cname:
+                per_det.append(("SKIP", "unknown_color"))
                 continue
             tid = int(d.track_id or 0)
             if tid <= 0 or tid >= 1_000_000_000:
@@ -677,11 +701,14 @@ class DetectionProbe(BatchMetadataOperator):
                     (d.center_x if hasattr(d,"center_x") else 0.5*(d.x1+d.x2),
                      cname, float(d.color_conf), 0.0,
                      (d.x1, d.y1, d.x2, d.y2)))
+                per_det.append(("STABLE", "no_tracker"))
                 continue
             key = (cam, tid)
             st = self._stability.get(key)
             if st is None or st["color"] != cname:
                 self._stability[key] = {"color": cname, "count": 1}
+                per_det.append(("PENDING",
+                                f"stability=1/{self.MIN_CONSEC}"))
                 continue
             st["count"] += 1
             if st["count"] == self.MIN_CONSEC:
@@ -689,11 +716,16 @@ class DetectionProbe(BatchMetadataOperator):
                 stable_colors.append(
                     (cx, cname, float(d.color_conf), 0.0,
                      (d.x1, d.y1, d.x2, d.y2)))
+                per_det.append(("STABLE", ""))
+            else:
+                per_det.append(("PENDING",
+                                f"stability={st['count']}/{self.MIN_CONSEC}"))
 
         # Defined unconditionally so the post-loop "if new_arrivals:" guard
         # below never raises UnboundLocalError when stable_colors is empty
         # (e.g. dets present but stability gate hasn't fired for any tid yet).
         new_arrivals: list[str] = []
+        tt_by_color: dict[str, tuple[str, str]] = {}
         if stable_colors:
             # Rightmost first for same-frame ties
             ordered = sorted(stable_colors, key=lambda t: -t[0])
@@ -702,6 +734,14 @@ class DetectionProbe(BatchMetadataOperator):
                 # sanity filter inside TimeTracker v2.
                 res = self.tracker.ingest(now + rank_idx * 1e-6, cam, c,
                                           bbox_x=cx)
+                if res.get("accepted"):
+                    tt_by_color[c] = ("ACCEPT",
+                                      "first-on-cam"
+                                      if res.get("is_first_on_cam")
+                                      else "update")
+                else:
+                    tt_by_color[c] = ("REJECT",
+                                      res.get("filter_reason", "?"))
                 if res.get("committed_colors"):
                     new_arrivals.extend(res["committed_colors"])
                     if hasattr(self, "_pass_snap_q"):
@@ -719,13 +759,46 @@ class DetectionProbe(BatchMetadataOperator):
                             })
                         except queue.Full:
                             pass
+
+        if self._compact_log:
+            ts_str = self._ts_compact(now)
+            for d, (decision, qual) in zip(dets, per_det):
+                det_conf = float(d.det_conf)
+                if det_conf < self._log_det_min:
+                    continue
+                color_conf = float(d.color_conf)
+                if color_conf < self._log_cls_min:
+                    continue
+                cname = _COLOR_ID_TO_NAME.get(d.color_id, "unknown")
+                if decision == "STABLE":
+                    tt_dec, tt_qual = tt_by_color.get(
+                        cname, ("STABLE", qual or "ready"))
+                    tt_str = f"TT {tt_dec} {tt_qual}".rstrip()
+                else:
+                    tt_str = f"TT {decision} {qual}".rstrip()
+                self._emit_compact(
+                    f"[{ts_str}] {cam} "
+                    f"DET bbox=({int(d.x1)},{int(d.y1)},"
+                    f"{int(d.x2)},{int(d.y2)}) "
+                    f"det_conf={det_conf:.2f} | "
+                    f"CLS {cname:7s} color_conf={color_conf:.2f} | {tt_str}"
+                )
+
         if new_arrivals:
-            for c in new_arrivals:
-                print(f"[PASS] {cam}  {c}  ts={now:.2f}", flush=True)
-            rk = self.tracker.get_ranking()
-            line = "  ".join(f"{r['rank']}:{r['color']}@{r['last_camera']}"
-                             for r in rk[:6])
-            print(f"[RANK] {line}", flush=True)
+            if self._compact_log:
+                rk = self.tracker.get_ranking()
+                line = " ".join(
+                    f"{r['rank']}:{r['color']}@{r['last_camera']}"
+                    for r in rk[:6])
+                self._emit_compact(f"[{self._ts_compact(now)}] RANK {line}")
+            else:
+                for c in new_arrivals:
+                    print(f"[PASS] {cam}  {c}  ts={now:.2f}", flush=True)
+                rk = self.tracker.get_ranking()
+                line = "  ".join(
+                    f"{r['rank']}:{r['color']}@{r['last_camera']}"
+                    for r in rk[:6])
+                print(f"[RANK] {line}", flush=True)
 
     def _draw_rankings_overlay(self, pad: int, dm) -> None:
         """Draw global and per-camera ranking overlay on display_meta.
@@ -896,6 +969,8 @@ class DetectionProbe(BatchMetadataOperator):
                 for i in range(len(self.cam_ids)) if self.det_counts[i] > 0]
         live.sort(key=lambda x: -x[1])
         head = ", ".join(f"{cid}:{d}/{f}" for cid, d, f in live[:6])
+        if self._compact_log:
+            return
         print(f"[probe] frames={self.total_frames}  "
               f"batch_fps={batches_per_s:.1f}  per_cam_fps={per_cam_fps:.1f}  "
               f"active={len(live)}  top: {head}")
