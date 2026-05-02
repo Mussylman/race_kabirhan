@@ -450,10 +450,14 @@ class DeepStreamPipeline:
                     color = d.get("color", "")
                     if color not in ALL_COLORS:
                         continue
-                    committed = self.time_tracker.ingest(
-                        tracker_ts, cam_det.cam_id, color
+                    # bbox = (x1, y1, x2, y2) in mux pixels — feed
+                    # x-center to TimeTracker v2 backward-motion filter.
+                    bbox = d.get("bbox") or (0, 0, 0, 0)
+                    bbox_x = 0.5 * (bbox[0] + bbox[2]) if bbox else None
+                    res = self.time_tracker.ingest(
+                        tracker_ts, cam_det.cam_id, color, bbox_x=bbox_x
                     )
-                    for c in committed:
+                    for c in res.get("committed_colors", []):
                         tt_new_passes.append((cam_det.cam_id, c))
             if tt_new_passes:
                 for cid, col in tt_new_passes:

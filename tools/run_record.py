@@ -616,7 +616,9 @@ def run(args: argparse.Namespace) -> int:
                 for det in cam_det.detections:
                     detections_total += 1
                     color = det.get("color", "unknown")
-                    tracker.ingest(ts, cam_id, color)
+                    bbox = det.get("bbox") or (0, 0, 0, 0)
+                    bbox_x = 0.5 * (bbox[0] + bbox[2]) if bbox else None
+                    tracker.ingest(ts, cam_id, color, bbox_x=bbox_x)
                     out.write_detection(ts, cam_id, frame_id, det, pos_m)
 
                     if not args.save_snapshots:

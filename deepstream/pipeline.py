@@ -698,9 +698,12 @@ class DetectionProbe(BatchMetadataOperator):
             # Rightmost first for same-frame ties
             ordered = sorted(stable_colors, key=lambda t: -t[0])
             for rank_idx, (cx, c, cf, lg, bb) in enumerate(ordered):
-                res = self.tracker.ingest(now + rank_idx * 1e-6, cam, c)
-                if res:
-                    new_arrivals.extend(res)
+                # bbox_x = center_x in mux pixels — feeds backward-motion
+                # sanity filter inside TimeTracker v2.
+                res = self.tracker.ingest(now + rank_idx * 1e-6, cam, c,
+                                          bbox_x=cx)
+                if res.get("committed_colors"):
+                    new_arrivals.extend(res["committed_colors"])
                     if hasattr(self, "_pass_snap_q"):
                         try:
                             self._pass_snap_q.put_nowait({
