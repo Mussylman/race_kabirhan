@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import os
 import threading
+import time
 from typing import Optional
 
 
@@ -70,6 +71,10 @@ class TimeTracker:
         self._last_ranking: list[str] = []
         # Cam from most recent ingest — its active set drives the ranking
         self._last_update_cam_id: Optional[str] = None
+        # Detailed rank-change diagnostic log. RV_RANK_LOG=/path enables
+        # a multi-line block per ranking change. Off by default.
+        self._rank_log_path: Optional[str] = (
+            os.environ.get("RV_RANK_LOG") or None)
 
     # ── Hot path ────────────────────────────────────────────────────────
 
@@ -149,6 +154,11 @@ class TimeTracker:
             new_ranking = self._compute_ranking_locked(ts)
             ranking_changed = new_ranking != self._last_ranking
             self._last_ranking = new_ranking
+
+            if ranking_changed and self._rank_log_path:
+                event_type = "first-on" if is_first_on_cam else "update"
+                self._log_rank_change_locked(
+                    ts, color, cam_id, event_type, new_ranking)
 
             return {
                 "accepted":         True,
@@ -299,3 +309,57 @@ class TimeTracker:
         if seg is None:
             return float(self.cam_idx.get(cam_id, 0))
         return 0.5 * (seg.track_start_m + seg.track_end_m)
+
+    # ── RV_RANK_LOG diagnostic ──────────────────────────────────────────
+
+    @staticmethod
+    def _format_ts(ts: float) -> str:
+        secs = int(ts)
+        ms = int((ts - secs) * 1000)
+        return time.strftime("%H:%M:%S", time.localtime(secs)) + f".{ms:03d}"
+
+    def _color_detail_locked(self, color: str) -> tuple[str, float]:
+        """Return (latest_cam, earliest_first_seen_ts) for a color across
+        all cams. Caller holds the lock. ('?', 0.0) if color unseen."""
+        latest_cam = "?"
+        latest_ts = -1.0
+        earliest_first = 0.0
+        for cam_id, cam_dict in self._cam_state.items():
+            j = cam_dict.get(color)
+            if j is None:
+                continue
+            if j["last_seen_ts"] > latest_ts:
+                latest_ts = j["last_seen_ts"]
+                latest_cam = cam_id
+            if earliest_first == 0.0 or j["first_seen_ts"] < earliest_first:
+                earliest_first = j["first_seen_ts"]
+        return latest_cam, earliest_first
+
+    def _log_rank_change_locked(self, ts: float, event_color: str,
+                                event_cam: str, event_type: str,
+                                new_ranking: list[str]) -> None:
+        """Append a multi-line block to RV_RANK_LOG file. Caller holds lock."""
+        if not self._rank_log_path:
+            return
+        ts_str = self._format_ts(ts)
+        indent = " " * 14
+        lines = [
+            f"[{ts_str}] EVENT: {event_color} {event_type} {event_cam}",
+            f"{indent}RANKING:",
+        ]
+        for pos in range(1, 5):
+            if pos <= len(new_ranking):
+                c = new_ranking[pos - 1]
+                cam, fst = self._color_detail_locked(c)
+                lines.append(
+                    f"{indent}{pos}. {c:7s}"
+                    f" (last_cam={cam}, first_seen={self._format_ts(fst)})"
+                )
+            else:
+                lines.append(f"{indent}{pos}. -")
+        lines.append("")
+        try:
+            with open(self._rank_log_path, "a") as f:
+                f.write("\n".join(lines) + "\n")
+        except OSError:
+            pass
