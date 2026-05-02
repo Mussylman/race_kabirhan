@@ -114,6 +114,10 @@ class DetectionProbe(BatchMetadataOperator):
         self._log_det_min = float(os.environ.get("RV_LOG_DET_MIN", "0.5"))
         self._log_cls_min = float(os.environ.get("RV_LOG_CLS_MIN", "0.0"))
         self._log_rej     = os.environ.get("RV_LOG_REJ", "1") == "1"
+        # Drop YOLO detections below this conf before SHM/SGIE/tracker.
+        # OSNet classifies anything with high embedding similarity, so weak
+        # YOLO dets become false-positive PASS events.
+        self._min_det_conf = float(os.environ.get("RV_MIN_DET_CONF", "0.5"))
         # Extract last IP octet per cam for OSD display
         import re as _re
         self.cam_ips: list[str] = []
@@ -464,6 +468,20 @@ class DetectionProbe(BatchMetadataOperator):
             y1 = rp.top
             x2 = x1 + rp.width
             y2 = y1 + rp.height
+
+            if float(obj.confidence) < self._min_det_conf:
+                if self._compact_log and self._log_rej:
+                    self._emit_compact(
+                        f"[{self._ts_compact(ts_now)}] {self.cam_ids[pad]} "
+                        f"DET REJECT low_det_conf "
+                        f"bbox=({int(x1)},{int(y1)},{int(x2)},{int(y2)}) "
+                        f"det_conf={float(obj.confidence):.2f}"
+                    )
+                rp.border_width = 0
+                tp = getattr(obj, "text_params", None)
+                if tp is not None:
+                    tp.display_text = b""
+                continue
 
             passed_filters = self._passes_filters(x1, y1, x2, y2)
             polys = self.roi_polygons.get(self.cam_ids[pad])
