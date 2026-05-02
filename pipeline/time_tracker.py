@@ -1,10 +1,9 @@
-"""TimeTracker v2 — per-camera order-of-appearance + global ranking.
+"""TimeTracker v2 — global first-seen ranking (Variant B, 2026-05-02).
 
-One color = one jockey. Each camera maintains its own list of jockeys in
-the order they first appeared in its FoV (frame-time). Global ranking on
-every ingest = jockeys active on the most-recently-updated camera (sorted
-by first_seen_ts ASC) followed by "laggards" (every other color seen so
-far) which keep their relative order from the previous global ranking.
+One color = one jockey. Global ranking = colors sorted by their earliest
+first_seen_ts across all cameras (ASC = earliest = leader). Stable from
+race start; does NOT reflect overtakes. See spec section 4 "Step C —
+Variant B" for rationale (active+laggards demoted leaders that exit FoV).
 
 Replaces the prior CNN-era forward-only-cam_idx implementation. v2 has
 no monotonic-progression assumption: backward camera updates are accepted,
@@ -13,7 +12,7 @@ the same (cam, color) pair refreshes state on every ingest, and the only
 sanity filter that drops obvious classifier flicker (bbox jumping right→
 left across a single camera).
 
-Spec: /tmp/timetracker_v2_spec.md (final, 2026-05-02).
+Spec: /tmp/timetracker_v2_spec.md (Variant B revision, 2026-05-02).
 """
 
 from __future__ import annotations
@@ -25,17 +24,17 @@ from typing import Optional
 
 # ── Tunables ────────────────────────────────────────────────────────────
 
-# Sliding window in seconds: a jockey on a camera is "active" iff its
-# last_seen_ts is within this window of the most recent ingest on that cam.
-# Default 8.0 covers a typical FoV traversal at ~15 m/s through a 110m
-# segment.
-ACTIVE_WINDOW_SEC = float(os.environ.get("RV_ACTIVE_WINDOW_SEC", "8.0"))
-
 # Backward-motion sanity margin in mux pixels. If a sighting on the same
 # (cam, color) drops bbox_x by more than this many pixels relative to the
 # previous sighting, the new sighting is treated as a classifier flicker
 # (right→left jump) and ignored. ~4% of 1280px mux width by default.
 SANITY_X_MARGIN = int(os.environ.get("RV_BACKWARD_MARGIN_PX", "50"))
+
+# Deprecated as of 2026-05-02 (Variant B switch). RV_ACTIVE_WINDOW_SEC is
+# still read so existing rv.sh / launch scripts don't error, but the value
+# no longer affects ranking. Kept for one release to avoid surprising
+# anyone scraping env vars.
+ACTIVE_WINDOW_SEC = float(os.environ.get("RV_ACTIVE_WINDOW_SEC", "8.0"))
 
 
 class TimeTracker:
@@ -236,52 +235,18 @@ class TimeTracker:
     def _compute_ranking_locked(self, now_ts: float) -> list[str]:
         """Build the global ranking. Must be called with self._lock held.
 
-        Algorithm (per spec section 4):
-          A) active_on_cam = colors on _last_update_cam_id with
-             last_seen_ts within ACTIVE_WINDOW_SEC; sorted by first_seen_ts
-             ASC (earlier appearance = leading position).
-          B) laggards = every color ever seen on any camera, minus the
-             active_on_cam set; sorted by their position in the previous
-             ranking (preserves stability across updates).
-          C) global = active_on_cam ++ laggards.
+        Variant B (2026-05-02): rank colors by min(first_seen_ts) across
+        all cameras. Earliest = leader. Stable across FoV exits — a leader
+        who first appeared at race start stays #1 even if later cameras
+        register them after others.
         """
-        cam_id = self._last_update_cam_id
-        if cam_id is None:
-            return []
-
-        cam_dict = self._cam_state.get(cam_id, {})
-        active = [
-            j for j in cam_dict.values()
-            if (now_ts - j["last_seen_ts"]) <= ACTIVE_WINDOW_SEC
-        ]
-        active.sort(key=lambda j: j["first_seen_ts"])
-        active_colors_in_order = [j["color"] for j in active]
-        active_set = set(active_colors_in_order)
-
-        # All ever-seen colors across all cameras
-        all_seen: set[str] = set()
-        for cd in self._cam_state.values():
-            all_seen.update(cd.keys())
-
-        laggards_set = all_seen - active_set
-        # Preserve relative order from prev ranking
-        laggards_ordered = [c for c in self._last_ranking if c in laggards_set]
-        # Any laggard not in prev ranking (rare: race just started edge
-        # case) → append by latest last_seen_ts DESC across all cams
-        unseen_laggards = laggards_set - set(laggards_ordered)
-        if unseen_laggards:
-            def _max_last_seen(color: str) -> float:
-                ts = 0.0
-                for cd in self._cam_state.values():
-                    j = cd.get(color)
-                    if j and j["last_seen_ts"] > ts:
-                        ts = j["last_seen_ts"]
-                return ts
-            laggards_ordered.extend(
-                sorted(unseen_laggards, key=lambda c: -_max_last_seen(c))
-            )
-
-        return active_colors_in_order + laggards_ordered
+        color_first_seen: dict[str, float] = {}
+        for cam_dict in self._cam_state.values():
+            for color, j in cam_dict.items():
+                ts0 = j["first_seen_ts"]
+                if color not in color_first_seen or ts0 < color_first_seen[color]:
+                    color_first_seen[color] = ts0
+        return sorted(color_first_seen, key=color_first_seen.get)
 
     def _build_legacy_ranking_locked(self) -> list[dict]:
         """Build the legacy list-of-dicts ranking. Caller holds the lock.
