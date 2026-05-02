@@ -128,10 +128,42 @@ export const useRaceStore = create<RaceState>((set, get) => ({
         };
     }),
 
-    updateRankings: (horses) => set(() => ({
-        horses,
-        rankings: [...horses].sort((a, b) => a.currentPosition - b.currentPosition)
-    })),
+    updateRankings: (horses) => set((state) => {
+        // [ANIM] TEMP DEBUG — remove after diagnostic
+        const prev = state.rankings;
+        const prevById = new Map(prev.map(h => [h.id, { pos: h.currentPosition, cam: h.lastCameraId }]));
+        const changes: string[] = [];
+        const camMoves: string[] = [];
+        let added = 0; let unchanged = 0;
+        for (const h of horses) {
+            const prevState = prevById.get(h.id);
+            if (prevState === undefined) { added++; continue; }
+            const posChanged = prevState.pos !== h.currentPosition;
+            const camChanged = prevState.cam !== h.lastCameraId;
+            if (posChanged || camChanged) {
+                const tag = h.color || ('#' + h.number);
+                changes.push(
+                    `${tag} ${prevState.cam || '?'}→${h.lastCameraId || '?'} pos=${prevState.pos}→${h.currentPosition}`
+                );
+                if (camChanged && !posChanged) camMoves.push(`${tag}@${h.lastCameraId}`);
+            } else {
+                unchanged++;
+            }
+        }
+        if (changes.length === 0 && added === 0 && unchanged === prev.length) {
+            console.log(`[ANIM] store update: same rankings (${horses.length} horses), no change`);
+        } else {
+            const summary = `${horses.length} horses · changed=[${changes.join(', ') || 'none'}]`
+                + (added > 0 ? ` · added=${added}` : '')
+                + ` · unchanged=${unchanged}`
+                + (camMoves.length > 0 ? ` · cam-only-moves=[${camMoves.join(', ')}]` : '');
+            console.log(`[ANIM] store update: ${summary}`);
+        }
+        return {
+            horses,
+            rankings: [...horses].sort((a, b) => a.currentPosition - b.currentPosition),
+        };
+    }),
 
     clearHorses: () => set(() => ({
         horses: [],
@@ -160,11 +192,11 @@ export const useRaceStore = create<RaceState>((set, get) => ({
     },
 
     initializeDefaultRace: () => {
-        const horses = createDefaultHorses(5);
+        // Empty — rankings appear only after backend WebSocket delivers them.
         set({
-            race: { ...defaultRace, horses },
-            horses,
-            rankings: horses
+            race: { ...defaultRace, horses: [] },
+            horses: [],
+            rankings: []
         });
     },
 

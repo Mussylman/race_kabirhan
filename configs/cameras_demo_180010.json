@@ -1,0 +1,43 @@
+{
+  "track_length": 800,
+  "max_active": 20,
+  "_note": "Demo session 180010 — 6 sequential cuts. cam_order along the track: cam-24 → cam-01 → cam-02 → cam-03 → cam-04 → cam-05. TimeTracker.cam_idx assigns 0..5 based on insertion order below; ranking sorts -cam_idx DESC so cam-05 (idx=5) ranks first when arrived.",
+  "analytics": [
+    {
+      "id": "cam-24",
+      "url": "file:///home/ipodrom/Рабочий стол/Ipodrom-Project/user/race_vision/data/videos/demo_180010/cam-24.mp4",
+      "track_start": 0.0,
+      "track_end": 130.0
+    },
+    {
+      "id": "cam-01",
+      "url": "file:///home/ipodrom/Рабочий стол/Ipodrom-Project/user/race_vision/data/videos/demo_180010/cam-01.mp4",
+      "track_start": 130.0,
+      "track_end": 260.0
+    },
+    {
+      "id": "cam-02",
+      "url": "file:///home/ipodrom/Рабочий стол/Ipodrom-Project/user/race_vision/data/videos/demo_180010/cam-02.mp4",
+      "track_start": 260.0,
+      "track_end": 400.0
+    },
+    {
+      "id": "cam-03",
+      "url": "file:///home/ipodrom/Рабочий стол/Ipodrom-Project/user/race_vision/data/videos/demo_180010/cam-03.mp4",
+      "track_start": 400.0,
+      "track_end": 530.0
+    },
+    {
+      "id": "cam-04",
+      "url": "file:///home/ipodrom/Рабочий стол/Ipodrom-Project/user/race_vision/data/videos/demo_180010/cam-04.mp4",
+      "track_start": 530.0,
+      "track_end": 660.0
+    },
+    {
+      "id": "cam-05",
+      "url": "file:///home/ipodrom/Рабочий стол/Ipodrom-Project/user/race_vision/data/videos/demo_180010/cam-05.mp4",
+      "track_start": 660.0,
+      "track_end": 800.0
+    }
+  ]
+}

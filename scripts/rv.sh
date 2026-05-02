@@ -26,10 +26,20 @@ RES_H="${RV_RES_H:-720}"
 RES_CHANNEL="${RV_RES_CHANNEL:-102}"   # Hikvision substream
 BITRATE="${RV_BITRATE:-8192}"          # kbps
 RES_INTERVAL="${RV_RES_INTERVAL:-60}"  # seconds
-ACTIVE_COLORS="${RV_ACTIVE_COLORS:-blue,green,purple,red,yellow}"
+ACTIVE_COLORS="${RV_ACTIVE_COLORS:-blue,green,red,yellow}"
 FRONTEND_DIR="${RV_FRONTEND_DIR:-Kabirhan-Frontend}"
 GO2RTC_BIN="${RV_GO2RTC_BIN:-bin/go2rtc}"
 GO2RTC_CFG="${RV_GO2RTC_CFG:-configs/go2rtc_live.yaml}"
+
+# ── video-only profile (file:// sources, no RTSP / go2rtc / Hikvision)
+VIDEO_MODE=0
+VIDEO_CAMERAS="${RV_VIDEO_CAMERAS:-configs/cameras_test_files_ordered.json}"
+VIDEO_ACTIVE_COLORS="${RV_VIDEO_ACTIVE_COLORS:-red,green,yellow}"
+
+# ── display profile (tiled X11 window with bbox/OSD; skips frontend)
+DISPLAY_MODE=0
+DISPLAY_W="${RV_DISPLAY_W:-1920}"
+DISPLAY_H="${RV_DISPLAY_H:-1080}"
 
 # ── paths ─────────────────────────────────────────────────────────────
 PID_DIR="/tmp/rv_pids"
@@ -105,6 +115,10 @@ start_ds() {
     if [[ -n "${RV_DS_LIMIT:-}" ]]; then
         ds_extra="--limit $RV_DS_LIMIT"
     fi
+    if [[ "$DISPLAY_MODE" -eq 1 ]]; then
+        ds_extra="$ds_extra --display --display-width $DISPLAY_W --display-height $DISPLAY_H"
+        export DISPLAY="${DISPLAY:-:0}"
+    fi
     RV_ACTIVE_COLORS="$ACTIVE_COLORS" \
       setsid python3 -m deepstream.main \
         --cameras "$CAMERAS_CFG" $ds_extra \
@@ -118,6 +132,13 @@ start_ds() {
     done
     if [[ -e /dev/shm/rv_detections ]]; then
         echo "          SHM ready"
+        local roi_line
+        roi_line=$(grep -m1 "ROI loaded for" "$(svc_log ds)" 2>/dev/null || true)
+        if [[ -n "$roi_line" ]]; then
+            echo "          $(color_green 'ROI active') — $roi_line"
+        else
+            echo "          $(color_red 'ROI log line NOT found') — detections will NOT be polygon-filtered"
+        fi
     else
         echo "          $(color_red 'SHM not created within 60s — check log')"
     fi
@@ -128,13 +149,20 @@ start_api() {
         echo "  api     $(color_dim "already running (PID $(svc_pid api))")"
         return
     fi
+    local api_extra=()
+    # Resolution enforcement moved to standalone tools/set_camera_resolution.py
+    # (main stream /101 1920x1080). api server no longer enforces anything.
+    # Set RV_ENFORCE_INAPI=1 to re-enable the old in-api enforcer.
+    if [[ "$VIDEO_MODE" -eq 0 ]] && [[ "${RV_ENFORCE_INAPI:-0}" -eq 1 ]]; then
+        api_extra+=(--enforce-resolution "${RES_W}x${RES_H}"
+                    --resolution-channel "$RES_CHANNEL"
+                    --bitrate "$BITRATE"
+                    --resolution-interval "$RES_INTERVAL")
+    fi
     setsid python3 -m api.server \
         --config "$CAMERAS_CFG" \
         --deepstream --auto-start \
-        --enforce-resolution "${RES_W}x${RES_H}" \
-        --resolution-channel "$RES_CHANNEL" \
-        --bitrate "$BITRATE" \
-        --resolution-interval "$RES_INTERVAL" \
+        "${api_extra[@]}" \
         >"$(svc_log api)" 2>&1 &
     echo $! > "$PID_DIR/api.pid"
     echo "  api     $(color_green started) PID=$! log=$(svc_log api)"
@@ -203,16 +231,56 @@ stop_svc() {
 cmd_start() {
     echo "==> starting Race Vision stack ($(date +%T))"
     echo "   cameras: $CAMERAS_CFG"
-    echo "   substream ch=$RES_CHANNEL ${RES_W}x${RES_H} @ ${BITRATE}kbps"
+    if [[ "$VIDEO_MODE" -eq 1 ]]; then
+        echo "   mode: $(color_green 'VIDEO (file://, no go2rtc, no Hikvision)')"
+    else
+        echo "   substream ch=$RES_CHANNEL ${RES_W}x${RES_H} @ ${BITRATE}kbps"
+    fi
+    if [[ "$DISPLAY_MODE" -eq 1 ]]; then
+        echo "   display: $(color_green "tiled ${DISPLAY_W}x${DISPLAY_H} on DISPLAY=${DISPLAY:-:0}") (frontend skipped)"
+    fi
     echo "   active colors: $ACTIVE_COLORS"
-    start_go2rtc
+    if [[ "$VIDEO_MODE" -eq 0 ]]; then
+        start_go2rtc
+    else
+        echo "  go2rtc  $(color_dim 'skipped (video mode)')"
+    fi
     start_ds
     start_api
-    start_frontend
+    if [[ "$DISPLAY_MODE" -eq 1 ]]; then
+        echo "  frontend $(color_dim 'skipped (display mode)')"
+    else
+        start_frontend
+    fi
     echo
     echo "  WebSocket : ws://localhost:8000/ws"
-    echo "  Frontend  : http://localhost:5173"
+    if [[ "$DISPLAY_MODE" -eq 0 ]]; then
+        echo "  Frontend  : http://localhost:5173"
+    fi
     echo "  Stats     : curl http://localhost:8000/api/stats"
+}
+
+apply_video_mode() {
+    VIDEO_MODE=1
+    CAMERAS_CFG="$VIDEO_CAMERAS"
+    ACTIVE_COLORS="$VIDEO_ACTIVE_COLORS"
+    export RV_SNAP_MIN="${RV_SNAP_MIN:-0}"
+}
+
+apply_display_mode() {
+    DISPLAY_MODE=1
+}
+
+parse_start_flags() {
+    local f
+    for f in "$@"; do
+        case "$f" in
+            --video)   apply_video_mode ;;
+            --display) apply_display_mode ;;
+            "") ;;
+            *) echo "unknown flag: $f (allowed: --video, --display)"; exit 1 ;;
+        esac
+    done
 }
 
 cmd_stop() {
@@ -247,12 +315,21 @@ cmd_logs() {
     esac
 }
 
-case "${1:-}" in
-    start)   cmd_start ;;
+CMD="${1:-}"
+shift || true
+
+case "$CMD" in
+    start)
+        parse_start_flags "$@"
+        cmd_start
+        ;;
     stop)    cmd_stop ;;
     status)  cmd_status ;;
-    logs)    cmd_logs "${2:-all}" ;;
-    restart) cmd_stop; sleep 1; cmd_start ;;
-    "") echo "usage: $0 {start|stop|status|logs [ds|api|frontend]|restart}"; exit 1 ;;
-    *)  echo "unknown: $1"; exit 1 ;;
+    logs)    cmd_logs "${1:-all}" ;;
+    restart)
+        parse_start_flags "$@"
+        cmd_stop; sleep 1; cmd_start
+        ;;
+    "") echo "usage: $0 {start [--video] [--display]|stop|status|logs [ds|api|frontend]|restart [--video] [--display]}"; exit 1 ;;
+    *)  echo "unknown: $CMD"; exit 1 ;;
 esac

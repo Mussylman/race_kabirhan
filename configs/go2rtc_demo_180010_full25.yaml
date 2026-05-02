@@ -1,0 +1,64 @@
+# go2rtc config — demo with 25 video files from yaris_20260421_180010
+# (file-mode replacement of go2rtc_live.yaml)
+# All files exposed as virtual RTSP via ffmpeg -re
+# Symlink: /tmp/yaris_180010 → data/videos/test_full_loop/yaris_20260421_180010
+
+streams:
+  cam-01:
+    - exec:ffmpeg -re -i /tmp/yaris_180010/kamera_01_180010_END180549.mp4 -c:v copy -an -f rtsp {output}
+  cam-02:
+    - exec:ffmpeg -re -i /tmp/yaris_180010/kamera_02_180011_END180549.mp4 -c:v copy -an -f rtsp {output}
+  cam-03:
+    - exec:ffmpeg -re -i /tmp/yaris_180010/kamera_03_180011_END180549.mp4 -c:v copy -an -f rtsp {output}
+  cam-04:
+    - exec:ffmpeg -re -i /tmp/yaris_180010/kamera_04_180012_END180549.mp4 -c:v copy -an -f rtsp {output}
+  cam-05:
+    - exec:ffmpeg -re -i /tmp/yaris_180010/kamera_05_180012_END180549.mp4 -c:v copy -an -f rtsp {output}
+  cam-06:
+    - exec:ffmpeg -re -i /tmp/yaris_180010/kamera_06_180013_END180549.mp4 -c:v copy -an -f rtsp {output}
+  cam-07:
+    - exec:ffmpeg -re -i /tmp/yaris_180010/kamera_07_180013_END180549.mp4 -c:v copy -an -f rtsp {output}
+  cam-08:
+    - exec:ffmpeg -re -i /tmp/yaris_180010/kamera_08_180014_END180549.mp4 -c:v copy -an -f rtsp {output}
+  cam-09:
+    - exec:ffmpeg -re -i /tmp/yaris_180010/kamera_09_180014_END180549.mp4 -c:v copy -an -f rtsp {output}
+  cam-10:
+    - exec:ffmpeg -re -i /tmp/yaris_180010/kamera_10_180015_END180549.mp4 -c:v copy -an -f rtsp {output}
+  cam-11:
+    - exec:ffmpeg -re -i /tmp/yaris_180010/kamera_11_180015_END180549.mp4 -c:v copy -an -f rtsp {output}
+  cam-12:
+    - exec:ffmpeg -re -i /tmp/yaris_180010/kamera_12_180016_END180549.mp4 -c:v copy -an -f rtsp {output}
+  cam-13:
+    - exec:ffmpeg -re -i /tmp/yaris_180010/kamera_13_180016_END180549.mp4 -c:v copy -an -f rtsp {output}
+  cam-14:
+    - exec:ffmpeg -re -i /tmp/yaris_180010/kamera_14_180017_END180549.mp4 -c:v copy -an -f rtsp {output}
+  cam-15:
+    - exec:ffmpeg -re -i /tmp/yaris_180010/kamera_15_180017_END180549.mp4 -c:v copy -an -f rtsp {output}
+  cam-16:
+    - exec:ffmpeg -re -i /tmp/yaris_180010/kamera_16_180018_END180549.mp4 -c:v copy -an -f rtsp {output}
+  cam-17:
+    - exec:ffmpeg -re -i /tmp/yaris_180010/kamera_17_180018_END180549.mp4 -c:v copy -an -f rtsp {output}
+  cam-18:
+    - exec:ffmpeg -re -i /tmp/yaris_180010/kamera_18_180019_END180549.mp4 -c:v copy -an -f rtsp {output}
+  cam-19:
+    - exec:ffmpeg -re -i /tmp/yaris_180010/kamera_19_180019_END180549.mp4 -c:v copy -an -f rtsp {output}
+  cam-20:
+    - exec:ffmpeg -re -i /tmp/yaris_180010/kamera_20_180020_END180549.mp4 -c:v copy -an -f rtsp {output}
+  cam-21:
+    - exec:ffmpeg -re -i /tmp/yaris_180010/kamera_21_180020_END180549.mp4 -c:v copy -an -f rtsp {output}
+  cam-22:
+    - exec:ffmpeg -re -i /tmp/yaris_180010/kamera_22_180021_END180549.mp4 -c:v copy -an -f rtsp {output}
+  cam-23:
+    - exec:ffmpeg -re -i /tmp/yaris_180010/kamera_23_180021_END180549.mp4 -c:v copy -an -f rtsp {output}
+  cam-24:
+    - exec:ffmpeg -re -i /tmp/yaris_180010/kamera_24_180022_END180549.mp4 -c:v copy -an -f rtsp {output}
+  cam-25:
+    - exec:ffmpeg -re -i /tmp/yaris_180010/kamera_25_180022_END180549.mp4 -c:v copy -an -f rtsp {output}
+
+api:
+  origin: "*"
+
+webrtc:
+  candidates:
+    - 127.0.0.1
+    - stun:stun.l.google.com:19302

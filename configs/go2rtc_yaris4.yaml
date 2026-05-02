@@ -1,0 +1,14 @@
+api:
+  listen: ":1984"
+
+rtsp:
+  listen: ":8554"
+
+webrtc:
+  listen: ":8555"
+
+streams:
+  cam-24: exec:ffmpeg -re -stream_loop -1 -i /home/ipodrom/Рабочий\ стол/Ipodrom-Project/user/race_vision/records-test/yaris_20260421_141439/kamera_24_141451_END141615.mp4 -c:v copy -rtsp_transport tcp -f rtsp rtsp://127.0.0.1:8554/cam-24-src#input=rtsp/tcp
+  cam-01: exec:ffmpeg -re -stream_loop -1 -i /home/ipodrom/Рабочий\ стол/Ipodrom-Project/user/race_vision/records-test/yaris_20260421_141439/kamera_01_141439_END141615.mp4 -c:v copy -rtsp_transport tcp -f rtsp rtsp://127.0.0.1:8554/cam-01-src#input=rtsp/tcp
+  cam-02: exec:ffmpeg -re -stream_loop -1 -i /home/ipodrom/Рабочий\ стол/Ipodrom-Project/user/race_vision/records-test/yaris_20260421_141439/kamera_02_141440_END141615.mp4 -c:v copy -rtsp_transport tcp -f rtsp rtsp://127.0.0.1:8554/cam-02-src#input=rtsp/tcp
+  cam-03: exec:ffmpeg -re -stream_loop -1 -i /home/ipodrom/Рабочий\ стол/Ipodrom-Project/user/race_vision/records-test/yaris_20260421_141439/kamera_03_141440_END141615.mp4 -c:v copy -rtsp_transport tcp -f rtsp rtsp://127.0.0.1:8554/cam-03-src#input=rtsp/tcp

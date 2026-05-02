@@ -93,12 +93,12 @@ export const TOP_HORSES_DISPLAY = 10;
 export const TOTAL_SILKS = 10;
 
 // Silk (Jockey Outfit) colors - Dominant color for each silk ID
+// (purple removed — not used in current race)
 export const SILK_COLORS: Record<number, string> = {
     1: '#DC2626',  // Red
     2: '#2563EB',  // Blue
     3: '#16A34A',  // Green
     4: '#FBBF24',  // Yellow
-    5: '#9333EA',  // Purple
     6: '#EA580C',  // Orange
     7: '#EC4899',  // Pink
     8: '#06B6D4',  // Cyan
@@ -108,10 +108,10 @@ export const SILK_COLORS: Record<number, string> = {
 
 // Color palette for horses
 export const HORSE_COLORS = [
-    '#DC2626', '#2563EB', '#16A34A', '#FBBF24', '#9333EA',
+    '#DC2626', '#2563EB', '#16A34A', '#FBBF24',
     '#EA580C', '#EC4899', '#06B6D4', '#84CC16', '#F97316',
-    '#8B5CF6', '#10B981', '#F59E0B', '#EF4444', '#3B82F6',
-    '#14B8A6', '#F472B6', '#A855F7', '#22C55E', '#FB923C'
+    '#10B981', '#F59E0B', '#EF4444', '#3B82F6',
+    '#14B8A6', '#F472B6', '#22C55E', '#FB923C'
 ];
 
 // Sample horse names

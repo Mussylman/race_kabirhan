@@ -229,6 +229,20 @@ input:focus-visible {
   outline-offset: 2px;
 }
 
+/* Leader silk — subtle gold pulse */
+@keyframes leader-glow {
+  0%, 100% {
+    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5)) drop-shadow(0 0 6px rgba(255,215,0,0.25));
+  }
+  50% {
+    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5)) drop-shadow(0 0 14px rgba(255,215,0,0.45));
+  }
+}
+
+.silk-leader-glow {
+  animation: leader-glow 2.5s ease-in-out infinite;
+}
+
 /* Reduced motion */
 @media (prefers-reduced-motion: reduce) {
 

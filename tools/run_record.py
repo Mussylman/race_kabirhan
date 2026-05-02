@@ -174,6 +174,7 @@ class TrackState:
     last_seen_frame: int = -1
     last_seen_cam: str = ""
     last_seen_det: dict = field(default_factory=dict)
+    last_seen_all_dets: list = field(default_factory=list)
     last_seen_src_w: int = 0
     last_seen_src_h: int = 0
     last_cam_for_color: str = ""  # for transition detection (per-color)
@@ -196,7 +197,8 @@ class SnapshotPolicy:
         self.total_saved = 0
 
     def evaluate(self, cam_id: str, det: dict, frame_id: int,
-                 src_w: int = 0, src_h: int = 0) -> list[str]:
+                 src_w: int = 0, src_h: int = 0,
+                 all_dets: Optional[list] = None) -> list[str]:
         """Return list of event types that fire for this detection."""
         events: list[str] = []
         color = det.get("color", "unknown")
@@ -212,6 +214,7 @@ class SnapshotPolicy:
         st.last_seen_frame = frame_id
         st.last_seen_cam = cam_id
         st.last_seen_det = det
+        st.last_seen_all_dets = list(all_dets) if all_dets else [det]
         st.last_seen_src_w = src_w
         st.last_seen_src_h = src_h
 
@@ -231,13 +234,16 @@ class SnapshotPolicy:
 
         return events
 
-    def finalize_last_seen(self) -> list[tuple[str, str, dict, int, int, int]]:
-        """At end of run: yield (cam_id, color, det, frame_id, src_w, src_h)."""
+    def finalize_last_seen(self) -> list[tuple[str, str, dict, list, int, int, int]]:
+        """At end of run: yield (cam_id, color, subject_det, all_dets,
+        frame_id, src_w, src_h)."""
         out = []
         for (cam_id, color), st in self._track_state.items():
             if st.last_seen_det:
                 out.append((cam_id, color, st.last_seen_det,
-                            st.last_seen_frame, st.last_seen_src_w, st.last_seen_src_h))
+                            st.last_seen_all_dets,
+                            st.last_seen_frame,
+                            st.last_seen_src_w, st.last_seen_src_h))
         return out
 
 
@@ -246,16 +252,24 @@ class SnapshotPolicy:
 def annotate_frame(frame, dets: list[dict], cam_id: str, frame_id: int,
                    ts: float, torn_retries: Optional[int] = None,
                    pos_lookup: Optional[dict] = None,
-                   src_w: int = 0, src_h: int = 0) -> "cv2.Mat":
+                   src_w: int = 0, src_h: int = 0,
+                   subject_det: Optional[dict] = None) -> "cv2.Mat":
     """Draw bboxes + metadata. Returns a copy with overlays.
 
     src_w/src_h are the frame dims the bboxes were computed against
     (CameraDetections.frame_width/height). If they differ from the cv2
-    frame size, bboxes are scaled. 0 disables scaling."""
+    frame size, bboxes are scaled. 0 disables scaling.
+
+    subject_det is the detection that triggered the snapshot event. It is
+    drawn with a thicker border (4px) and yellow inner highlight, so the
+    viewer can tell which jockey is the event subject vs. context."""
     img = frame.copy()
     h, w = img.shape[:2]
     sx = (w / src_w) if src_w > 0 else 1.0
     sy = (h / src_h) if src_h > 0 else 1.0
+
+    def _is_subject(d: dict) -> bool:
+        return subject_det is not None and d is subject_det
 
     for det in dets:
         x1, y1, x2, y2 = det["bbox"]
@@ -267,15 +281,21 @@ def annotate_frame(frame, dets: list[dict], cam_id: str, frame_id: int,
             continue
         color = det.get("color", "unknown")
         bgr = _COLOR_BGR.get(color, _COLOR_BGR["unknown"])
-        cv2.rectangle(img, (x1, y1), (x2, y2), bgr, 2)
+        is_subj = _is_subject(det)
+        # Subject: thicker bbox only (no outer outline — would be mistaken
+        # for a second jockey detection in another color).
+        thick = 4 if is_subj else 2
+        cv2.rectangle(img, (x1, y1), (x2, y2), bgr, thick)
 
         track_id = int(det.get("track_id", 0))
         conf = float(det.get("conf", 0.0))
-        label = f"ID:{track_id} | {color} ({conf:.2f})"
+        prefix = ">" if is_subj else " "
+        label = f"{prefix}ID:{track_id} | {color} ({conf:.2f})"
         if pos_lookup and color in pos_lookup:
             label += f" | pos:{pos_lookup[color]:.0f}m"
         cv2.putText(img, label, (x1, max(15, y1 - 6)),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, bgr, 1, cv2.LINE_AA)
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, bgr,
+                    2 if is_subj else 1, cv2.LINE_AA)
 
     header = f"{cam_id} | frame:{frame_id} | t:{ts:.3f}"
     cv2.putText(img, header, (8, 22), cv2.FONT_HERSHEY_SIMPLEX,
@@ -314,6 +334,8 @@ class OutputManager:
         self.snap_index_path: Optional[Path] = None
         self._snap_idx_fh = None
         self._snap_idx = None
+        # Memory-buffered rows for gallery.html generation on close()
+        self._snap_rows: list[dict] = []
         if save_snapshots:
             for d in self.EVENT_DIRS:
                 (self.snap_root / d).mkdir(parents=True, exist_ok=True)
@@ -351,18 +373,108 @@ class OutputManager:
             log.warning("imwrite failed for %s", out_path)
             return None
         rel = out_path.relative_to(self.run_dir).as_posix()
+        row = {
+            "snapshot_path": rel,
+            "event_type": event_type,
+            "camera_id": cam_id,
+            "frame_id": frame_id,
+            "track_id": track_id,
+            "color": det.get("color", "unknown"),
+            "color_confidence": float(det.get("conf", 0)),
+            "pos_m": pos_m,
+            "timestamp": ts,
+            "notes": notes,
+        }
         self._snap_idx.writerow([
             rel, event_type, cam_id, frame_id, track_id,
-            det.get("color", "unknown"), f"{float(det.get('conf', 0)):.4f}",
+            row["color"], f"{row['color_confidence']:.4f}",
             f"{pos_m:.2f}" if pos_m is not None else "",
             f"{ts:.6f}", notes,
         ])
+        self._snap_rows.append(row)
         return rel
+
+    def write_gallery_html(self) -> Optional[Path]:
+        """Render snapshots/gallery.html: one page, sectioned by event_type then
+        camera, with thumbnails + captions. SSH users serve via
+        `python -m http.server` from the run dir."""
+        if not self.save_snapshots or not self._snap_rows:
+            return None
+        gal = self.snap_root / "gallery.html"
+        rows = sorted(
+            self._snap_rows,
+            key=lambda r: (r["event_type"], r["camera_id"],
+                           r["color"], r["frame_id"]),
+        )
+        # Group: event_type → camera_id → list[row]
+        groups: dict[str, dict[str, list[dict]]] = {}
+        for r in rows:
+            groups.setdefault(r["event_type"], {}).setdefault(r["camera_id"], []).append(r)
+
+        from html import escape
+
+        parts = ["""<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<title>run_record snapshots</title>
+<style>
+  body { font-family: system-ui, sans-serif; background: #1a1a1a; color: #ddd; margin: 0; padding: 20px; }
+  h1 { color: #fff; }
+  h2 { color: #ffaf3a; border-bottom: 1px solid #444; padding-bottom: 4px; margin-top: 32px; }
+  h3 { color: #88ddff; margin: 16px 0 8px 0; font-size: 14px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 12px; }
+  .card { background: #2a2a2a; border-radius: 6px; overflow: hidden; }
+  .card img { width: 100%; display: block; }
+  .meta { padding: 6px 8px; font-size: 12px; color: #ccc; line-height: 1.4; }
+  .meta strong { color: #fff; }
+  .conf-low { color: #ff8a80; }
+  nav { position: sticky; top: 0; background: #1a1a1a; padding: 8px 0; border-bottom: 1px solid #444; margin-bottom: 16px; }
+  nav a { color: #88ddff; margin-right: 14px; text-decoration: none; }
+</style></head><body>"""]
+        parts.append("<h1>run_record snapshots</h1>")
+        parts.append("<nav>")
+        for ev in groups:
+            parts.append(f'<a href="#{escape(ev)}">{escape(ev)} ({sum(len(v) for v in groups[ev].values())})</a>')
+        parts.append("</nav>")
+
+        for ev in OutputManager.EVENT_DIRS:
+            cams = groups.get(ev)
+            if not cams:
+                continue
+            parts.append(f'<h2 id="{escape(ev)}">{escape(ev)} '
+                         f'<span style="color:#888;font-size:14px">'
+                         f'({sum(len(v) for v in cams.values())} files)</span></h2>')
+            for cam_id in sorted(cams):
+                rows_c = cams[cam_id]
+                parts.append(f'<h3>{escape(cam_id)} ({len(rows_c)})</h3>')
+                parts.append('<div class="grid">')
+                for r in rows_c:
+                    rel_to_gallery = "../" + r["snapshot_path"]
+                    conf = r["color_confidence"]
+                    conf_cls = "conf-low" if conf < LOW_CONF_THRESHOLD else ""
+                    pos_html = (f'pos:{r["pos_m"]:.0f}m'
+                                if r["pos_m"] is not None else "")
+                    parts.append(
+                        f'<div class="card">'
+                        f'<a href="{escape(rel_to_gallery)}" target="_blank">'
+                        f'<img src="{escape(rel_to_gallery)}" loading="lazy"></a>'
+                        f'<div class="meta">'
+                        f'<strong>{escape(r["color"])}</strong> '
+                        f'<span class="{conf_cls}">({conf:.2f})</span> '
+                        f'· frame {r["frame_id"]} · {pos_html}<br>'
+                        f'<em>{escape(r["notes"] or r["event_type"])}</em>'
+                        f'</div></div>'
+                    )
+                parts.append("</div>")
+
+        parts.append("</body></html>")
+        gal.write_text("\n".join(parts), encoding="utf-8")
+        return gal
 
     def close(self) -> None:
         self._csv_fh.close()
         if self._snap_idx_fh:
             self._snap_idx_fh.close()
+        self.write_gallery_html()
 
 
 # ─── Pipeline subprocess ──────────────────────────────────────────────
@@ -512,7 +624,8 @@ def run(args: argparse.Namespace) -> int:
 
                     events = policy.evaluate(cam_id, det, frame_id,
                                              src_w=cam_det.frame_width,
-                                             src_h=cam_det.frame_height)
+                                             src_h=cam_det.frame_height,
+                                             all_dets=cam_det.detections)
 
                     if not events:
                         continue
@@ -537,10 +650,12 @@ def run(args: argparse.Namespace) -> int:
                         elif ev == "low_confidence":
                             target_ev = "low_confidence"
 
-                        ann = annotate_frame(frame, [det], cam_id, frame_id, ts,
+                        ann = annotate_frame(frame, cam_det.detections, cam_id,
+                                             frame_id, ts,
                                              pos_lookup=pos_lookup,
                                              src_w=cam_det.frame_width,
-                                             src_h=cam_det.frame_height)
+                                             src_h=cam_det.frame_height,
+                                             subject_det=det)
                         notes = ev
                         out.save_snapshot(ann, target_ev, cam_id, frame_id,
                                           track_id, det, pos_m, ts, notes=notes)
@@ -583,7 +698,8 @@ def run(args: argparse.Namespace) -> int:
     finally:
         # finalize last_seen snapshots
         if args.save_snapshots and not snapshot_capped and fstore is not None:
-            for cam_id, color, det, frame_id, src_w, src_h in policy.finalize_last_seen():
+            for (cam_id, color, det, all_dets,
+                 frame_id, src_w, src_h) in policy.finalize_last_seen():
                 if snapshots_saved >= MAX_SNAPSHOTS:
                     break
                 # Seek back to the exact frame the detection was computed on —
@@ -591,8 +707,9 @@ def run(args: argparse.Namespace) -> int:
                 frame = fstore.seek_retrieve(cam_id, frame_id)
                 if frame is None:
                     continue
-                ann = annotate_frame(frame, [det], cam_id, frame_id,
-                                     time.time(), src_w=src_w, src_h=src_h)
+                ann = annotate_frame(frame, all_dets, cam_id, frame_id,
+                                     time.time(), src_w=src_w, src_h=src_h,
+                                     subject_det=det)
                 out.save_snapshot(ann, "track_events", cam_id, frame_id,
                                   int(det.get("track_id", 0)), det, None,
                                   time.time(), notes="last_seen")
@@ -633,8 +750,40 @@ def run(args: argparse.Namespace) -> int:
         for k in OutputManager.EVENT_DIRS:
             print(f"  {k}: {policy.counts.get(k, 0)}")
         print(f"  TOTAL: {snapshots_saved}{' (CAPPED)' if snapshot_capped else ''}")
+        gallery = run_dir / "snapshots" / "gallery.html"
+        if gallery.is_file():
+            print(f"Gallery HTML: {gallery}")
     print("=" * 60)
+
+    if args.serve is not None:
+        _serve(run_dir, args.serve)
+
     return 0
+
+
+def _serve(run_dir: Path, port: int) -> None:
+    """Spawn `python -m http.server` rooted at run_dir; block until Ctrl+C."""
+    import socket
+    try:
+        host = socket.gethostname()
+        ip = socket.gethostbyname(host)
+    except OSError:
+        host, ip = "localhost", "127.0.0.1"
+
+    cmd = [sys.executable, "-m", "http.server", str(port),
+           "--bind", "0.0.0.0", "--directory", str(run_dir)]
+    print()
+    print("=" * 60)
+    print(f"Serving {run_dir} on port {port}")
+    print(f"  Gallery: http://{ip}:{port}/snapshots/gallery.html")
+    print(f"  Index:   http://{ip}:{port}/")
+    print(f"  (host: {host})")
+    print("Press Ctrl+C to stop.")
+    print("=" * 60)
+    try:
+        subprocess.run(cmd, check=False)
+    except KeyboardInterrupt:
+        print("\nserver stopped")
 
 
 def parse_args() -> argparse.Namespace:
@@ -645,6 +794,10 @@ def parse_args() -> argparse.Namespace:
     ap.add_argument("--output", required=True, help="parent output directory")
     ap.add_argument("--save-snapshots", action="store_true",
                     help="annotate and save JPEG snapshots for events")
+    ap.add_argument("--serve", nargs="?", const=8765, type=int, default=None,
+                    metavar="PORT",
+                    help="after the run, start `python -m http.server` on the "
+                         "output dir (default port 8765); print the gallery URL")
     return ap.parse_args()
 
 

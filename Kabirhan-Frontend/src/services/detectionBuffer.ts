@@ -31,7 +31,7 @@ interface CameraBuffer {
 // --- Buffer storage ---
 
 const BUFFER_MAX_AGE_S = 2.0;   // keep last 2 seconds
-const STALE_THRESHOLD_MS = 300;  // clear overlay if no fresh data
+const STALE_THRESHOLD_MS = 5000;  // clear overlay if no fresh data (WS sends every 2-3s)
 
 const buffers = new Map<string, CameraBuffer>();
 

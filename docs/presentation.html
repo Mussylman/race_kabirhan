@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Race Vision — IT Conference</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;900&family=JetBrains+Mono:wght@400;700&display=swap');
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  :root {
+    --bg: #0a0a14; --accent: #00d4ff; --red: #ff4757; --green: #2ed573;
+    --yellow: #ffa502; --purple: #a855f7; --text: #e8e8f0; --muted: #6b7280; --card: #1a1a2e;
+  }
+  html { scroll-behavior: smooth; scroll-snap-type: y mandatory; overflow-y: scroll; }
+  body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); }
+  .slide {
+    width: 100vw; height: 100vh; display: flex; flex-direction: column;
+    justify-content: center; align-items: center; padding: 60px 80px;
+    scroll-snap-align: start; position: relative; overflow: hidden;
+  }
+  h1 { font-size: 3.5rem; font-weight: 900; line-height: 1.1; text-align: center; }
+  h2 { font-size: 2.8rem; font-weight: 700; line-height: 1.2; margin-bottom: 40px; text-align: center; }
+  .mono { font-family: 'JetBrains Mono', monospace; }
+  .accent { color: var(--accent); }
+  .red { color: var(--red); }
+  .green { color: var(--green); }
+  .muted { color: var(--muted); }
+  .slide-bg {
+    position: absolute; inset: 0; background-size: cover; background-position: center; z-index: 0;
+  }
+  .slide-bg::after {
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(180deg, rgba(10,10,20,0.7) 0%, rgba(10,10,20,0.92) 100%);
+  }
+  .slide > *:not(.slide-bg) { position: relative; z-index: 1; }
+  img.crop {
+    border-radius: 8px; image-rendering: pixelated;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.4); border: 2px solid rgba(255,255,255,0.1);
+  }
+  img.photo {
+    border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.5); max-width: 100%;
+  }
+  .card {
+    background: var(--card); border-radius: 16px; padding: 32px;
+    border: 1px solid rgba(255,255,255,0.06); text-align: center;
+  }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; width: 100%; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 30px; width: 100%; }
+  .grid-4 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; width: 100%; max-width: 1200px; }
+  .row { display: flex; gap: 40px; align-items: center; width: 100%; }
+  .sn {
+    position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
+    font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; color: rgba(255,255,255,0.15);
+  }
+  .progress {
+    position: fixed; right: 20px; top: 50%; transform: translateY(-50%);
+    display: flex; flex-direction: column; gap: 8px; z-index: 100;
+  }
+  .progress .dot {
+    width: 8px; height: 8px; border-radius: 50%; background: rgba(255,255,255,0.15); transition: all 0.3s;
+  }
+  .progress .dot.active { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+  @keyframes fadeUp { from { opacity:0; transform:translateY(30px); } to { opacity:1; transform:translateY(0); } }
+  @keyframes slideIn { from { opacity:0; transform:translateX(-40px); } to { opacity:1; transform:translateX(0); } }
+  .slide > * { animation: fadeUp 0.6s ease-out both; }
+  .slide > *:nth-child(2) { animation-delay: 0.1s; }
+  .slide > *:nth-child(3) { animation-delay: 0.2s; }
+  .slide > *:nth-child(4) { animation-delay: 0.3s; }
+  .code-line {
+    font-family: 'JetBrains Mono', monospace; font-size: 1.1rem;
+    background: rgba(0,212,255,0.08); border: 1px solid rgba(0,212,255,0.15);
+    border-radius: 8px; padding: 16px 24px; color: var(--accent);
+  }
+  .speed-block {
+    padding: 32px; border-radius: 16px; text-align: center; background: var(--card);
+  }
+</style>
+</head>
+<body>
+
+<!-- 1: TITLE -->
+<div class="slide">
+  <div class="slide-bg" style="background-image: none;">
+    <video autoplay muted loop playsinline style="width:100%;height:100%;object-fit:cover;">
+      <source src="conference_assets/hero_video.webm" type="video/webm">
+    </video>
+  </div>
+  <h1 style="font-size:4rem;">Мы видим скачки<br>глазами машины</h1>
+  <p style="font-size:1.5rem; color:var(--muted); margin-top:20px;">Без датчиков. Без транспондеров. Только камеры и AI.</p>
+  <p style="margin-top:60px; font-size:0.95rem; color:rgba(255,255,255,0.35);">Mussylman Kalzhanov</p>
+  <div class="sn">01 / 20</div>
+</div>
+
+<!-- 2: WHY -->
+<div class="slide">
+  <div style="display:flex; gap:60px; align-items:center; max-width:1000px;">
+    <div style="flex:1; text-align:center;">
+      <div style="font-size:3rem; margin-bottom:16px;">&#x26BD; &#x1F3CE;&#xFE0F; &#x1F3CA;</div>
+      <p style="font-size:1.6rem; font-weight:700;">GPS, датчики, телеметрия</p>
+      <p class="muted" style="margin-top:8px;">Давно стандарт</p>
+    </div>
+    <div style="font-size:3rem; color:var(--muted);">vs</div>
+    <div style="flex:1; text-align:center;">
+      <div style="font-size:3rem; margin-bottom:16px;">&#x1F40E;</div>
+      <p style="font-size:1.6rem; font-weight:700; color:var(--red);">Комментатор + фотофиниш</p>
+      <p class="muted" style="margin-top:8px;">Это всё</p>
+    </div>
+  </div>
+  <p style="margin-top:60px; font-size:1.1rem; color:var(--muted);">В Казахстане 70+ ипподромов. Ни на одном нет автоматического трекинга.</p>
+  <div class="sn">02 / 20</div>
+</div>
+
+<!-- 3: VISION -->
+<div class="slide">
+  <div class="grid-2" style="max-width:900px;">
+    <div class="card" style="border-top:4px solid var(--red); padding:50px 32px;">
+      <div style="font-size:3rem; margin-bottom:20px;">&#x1F4E1;</div>
+      <p style="font-size:2rem; font-weight:900;">$50,000+</p>
+      <p class="muted" style="margin-top:8px;">Датчики на каждую лошадь</p>
+    </div>
+    <div class="card" style="border-top:4px solid var(--green); padding:50px 32px;">
+      <div style="font-size:3rem; margin-bottom:20px;">&#x1F4F7;</div>
+      <p style="font-size:2rem; font-weight:900; color:var(--green);">Камеры + софт</p>
+      <p class="muted" style="margin-top:8px;">Камеры уже есть</p>
+    </div>
+  </div>
+  <div class="sn">03 / 20</div>
+</div>
+
+<!-- 4: WHY HARD -->
+<div class="slide">
+  <div class="grid-4" style="max-width:1000px;">
+    <div class="card" style="padding:40px;">
+      <div class="mono accent" style="font-size:3.5rem; font-weight:900;">25</div>
+      <p class="muted" style="margin-top:8px;">камер</p>
+    </div>
+    <div class="card" style="padding:40px;">
+      <div class="mono accent" style="font-size:3.5rem; font-weight:900;">60<span style="font-size:1.5rem;"> км/ч</span></div>
+      <p class="muted" style="margin-top:8px;">скорость</p>
+    </div>
+    <div class="card" style="padding:40px;">
+      <div class="mono accent" style="font-size:3.5rem; font-weight:900;">1<span style="font-size:1.5rem;"> GPU</span></div>
+      <p class="muted" style="margin-top:8px;">$330</p>
+    </div>
+    <div class="card" style="padding:40px; border:2px solid var(--accent); box-shadow:0 0 30px rgba(0,212,255,0.15);">
+      <div class="mono" style="font-size:3.5rem; font-weight:900; color:var(--yellow);">50<span style="font-size:1.5rem;"> px</span></div>
+      <p class="muted" style="margin-top:8px;">жокей в кадре</p>
+    </div>
+  </div>
+  <div class="sn">04 / 20</div>
+</div>
+
+<!-- 5: GOAL -->
+<div class="slide">
+  <div class="mono accent" style="font-size:6rem; font-weight:900;">&lt; 100 мс</div>
+  <p style="font-size:1.6rem; margin-top:20px;">от камеры до браузера зрителя</p>
+  <p class="muted" style="margin-top:12px; font-size:1.2rem;">В реальном времени</p>
+  <div class="sn">05 / 20</div>
+</div>
+
+<!-- 6: ARCHITECTURE (simple) -->
+<div class="slide">
+  <h2 style="margin-bottom:50px;">Как это работает</h2>
+  <div style="display:flex; align-items:center; gap:24px; max-width:1000px;">
+    <div class="card" style="flex:1; padding:30px; border-top:3px solid var(--accent);">
+      <div style="font-size:2rem; margin-bottom:8px;">&#x1F4F7;</div>
+      <strong>Видео</strong><br><span class="muted" style="font-size:0.9rem;">25 камер</span>
+    </div>
+    <div style="font-size:2rem; color:var(--muted);">&rarr;</div>
+    <div class="card" style="flex:1; padding:30px; border-top:3px solid var(--green);">
+      <div style="font-size:2rem; margin-bottom:8px;">&#x1F9E0;</div>
+      <strong>AI</strong><br><span class="muted" style="font-size:0.9rem;">детекция + цвет</span>
+    </div>
+    <div style="font-size:2rem; color:var(--muted);">&rarr;</div>
+    <div class="card" style="flex:1; padding:30px; border-top:3px solid var(--yellow);">
+      <div style="font-size:2rem; margin-bottom:8px;">&#x2699;&#xFE0F;</div>
+      <strong>Backend</strong><br><span class="muted" style="font-size:0.9rem;">позиции + рейтинг</span>
+    </div>
+    <div style="font-size:2rem; color:var(--muted);">&rarr;</div>
+    <div class="card" style="flex:1; padding:30px; border-top:3px solid var(--purple);">
+      <div style="font-size:2rem; margin-bottom:8px;">&#x1F4F1;</div>
+      <strong>Зритель</strong><br><span class="muted" style="font-size:0.9rem;">браузер</span>
+    </div>
+  </div>
+  <div class="sn">06 / 20</div>
+</div>
+
+<!-- 7: INDEPENDENT SPEEDS -->
+<div class="slide">
+  <h2 style="margin-bottom:50px;">4 независимых потока</h2>
+  <div style="max-width:800px; width:100%; display:flex; flex-direction:column; gap:16px;">
+    <div style="display:flex; align-items:center; gap:20px;">
+      <div class="mono" style="width:120px; text-align:right; font-size:1.8rem; font-weight:700; color:var(--accent);">38 fps</div>
+      <div style="flex:1; height:12px; border-radius:6px; background:linear-gradient(90deg, var(--accent), rgba(0,212,255,0.2)); position:relative;">
+        <div style="position:absolute;right:-8px;top:-6px;width:24px;height:24px;border-radius:50%;background:var(--accent);"></div>
+      </div>
+      <div class="muted" style="width:100px;">Аналитика</div>
+    </div>
+    <div style="display:flex; align-items:center; gap:20px;">
+      <div class="mono" style="width:120px; text-align:right; font-size:1.8rem; font-weight:700; color:var(--purple);">1000 hz</div>
+      <div style="flex:1; height:12px; border-radius:6px; background:linear-gradient(90deg, var(--purple), rgba(168,85,247,0.2)); position:relative;">
+        <div style="position:absolute;right:-8px;top:-6px;width:24px;height:24px;border-radius:50%;background:var(--purple);"></div>
+      </div>
+      <div class="muted" style="width:100px;">Чтение</div>
+    </div>
+    <div style="display:flex; align-items:center; gap:20px;">
+      <div class="mono" style="width:120px; text-align:right; font-size:1.8rem; font-weight:700; color:var(--yellow);">10 hz</div>
+      <div style="flex:1; height:12px; border-radius:6px; background:linear-gradient(90deg, var(--yellow), rgba(255,165,2,0.2)); position:relative;">
+        <div style="position:absolute;right:-8px;top:-6px;width:24px;height:24px;border-radius:50%;background:var(--yellow);"></div>
+      </div>
+      <div class="muted" style="width:100px;">Отправка</div>
+    </div>
+    <div style="display:flex; align-items:center; gap:20px;">
+      <div class="mono" style="width:120px; text-align:right; font-size:1.8rem; font-weight:700; color:var(--green);">60 fps</div>
+      <div style="flex:1; height:12px; border-radius:6px; background:linear-gradient(90deg, var(--green), rgba(46,213,115,0.2)); position:relative;">
+        <div style="position:absolute;right:-8px;top:-6px;width:24px;height:24px;border-radius:50%;background:var(--green);"></div>
+      </div>
+      <div class="muted" style="width:100px;">Экран</div>
+    </div>
+  </div>
+  <p class="muted" style="margin-top:40px; font-size:1.2rem;">Никто никого не ждёт</p>
+  <div class="sn">07 / 20</div>
+</div>
+
+<!-- 8: 50 PIXELS -->
+<div class="slide">
+  <div style="display:flex; gap:50px; align-items:flex-end; justify-content:center;">
+    <img src="conference_assets/05_crop_yellow.jpg" class="crop" style="height:320px;">
+    <img src="conference_assets/06_crop_green.jpg" class="crop" style="height:260px;">
+    <img src="conference_assets/07_crop_small.jpg" class="crop" style="height:200px;">
+  </div>
+  <p style="margin-top:40px; font-size:1.5rem; text-align:center;">Это всё, что видит модель</p>
+  <div class="sn">08 / 20</div>
+</div>
+
+<!-- 9: RESOLUTION -->
+<div class="slide">
+  <div class="grid-2" style="max-width:800px;">
+    <div class="card" style="border-top:4px solid var(--red); padding:50px 32px;">
+      <div class="mono red" style="font-size:4rem; font-weight:900;">14&times;15</div>
+      <p class="muted" style="margin-top:12px; font-size:1.2rem;">800 &times; 800</p>
+    </div>
+    <div class="card" style="border-top:4px solid var(--green); padding:50px 32px;">
+      <div class="mono green" style="font-size:4rem; font-weight:900;">59&times;117</div>
+      <p class="muted" style="margin-top:12px; font-size:1.2rem;">1920 &times; 1080</p>
+    </div>
+  </div>
+  <div class="sn">09 / 20</div>
+</div>
+
+<!-- 10: GRAVEYARD -->
+<div class="slide">
+  <h2 style="margin-bottom:50px; color:var(--red);">Кладбище моделей</h2>
+  <div class="grid-4" style="max-width:900px;">
+    <div class="card" style="opacity:0.5; padding:30px;">
+      <div style="font-size:2rem; margin-bottom:8px; text-decoration:line-through;">HSV</div>
+      <div class="mono red" style="font-size:2.5rem; font-weight:900;">18%</div>
+    </div>
+    <div class="card" style="opacity:0.5; padding:30px;">
+      <div style="font-size:2rem; margin-bottom:8px; text-decoration:line-through;">DINOv2</div>
+      <div class="mono red" style="font-size:2.5rem; font-weight:900;">17%</div>
+    </div>
+    <div class="card" style="opacity:0.5; padding:30px;">
+      <div style="font-size:2rem; margin-bottom:8px; text-decoration:line-through;">BoT-SORT</div>
+      <div class="mono red" style="font-size:2.5rem; font-weight:900;">125 ID</div>
+    </div>
+    <div class="card" style="opacity:0.5; padding:30px;">
+      <div style="font-size:2rem; margin-bottom:8px; text-decoration:line-through;">EfficientNet</div>
+      <div class="mono red" style="font-size:2.5rem; font-weight:900;">&#10007;</div>
+    </div>
+  </div>
+  <div class="sn">10 / 20</div>
+</div>
+
+<!-- 11: WHAT WORKED -->
+<div class="slide">
+  <div style="display:flex; gap:60px; align-items:center; max-width:1000px;">
+    <div style="text-align:center;">
+      <div class="mono green" style="font-size:5rem; font-weight:900;">2.4 MB</div>
+      <p style="font-size:1.3rem; margin-top:8px;">Кастомная CNN</p>
+      <p class="muted" style="margin-top:4px;">725 кропов с реальных камер</p>
+    </div>
+    <div style="width:2px; height:200px; background:rgba(255,255,255,0.1);"></div>
+    <div>
+      <div style="display:flex; align-items:center; gap:16px; margin-bottom:16px;">
+        <div style="width:28px;height:28px;border-radius:50%;background:#2ed573;"></div>
+        <span style="font-size:1.3rem;">Зелёный</span>
+        <span class="mono green" style="font-size:1.5rem; font-weight:700; margin-left:auto;">100%</span>
+      </div>
+      <div style="display:flex; align-items:center; gap:16px; margin-bottom:16px;">
+        <div style="width:28px;height:28px;border-radius:50%;background:#ff4757;"></div>
+        <span style="font-size:1.3rem;">Красный</span>
+        <span class="mono green" style="font-size:1.5rem; font-weight:700; margin-left:auto;">100%</span>
+      </div>
+      <div style="display:flex; align-items:center; gap:16px; margin-bottom:16px;">
+        <div style="width:28px;height:28px;border-radius:50%;background:#ffa502;"></div>
+        <span style="font-size:1.3rem;">Жёлтый</span>
+        <span class="mono green" style="font-size:1.5rem; font-weight:700; margin-left:auto;">100%</span>
+      </div>
+      <div style="display:flex; align-items:center; gap:16px;">
+        <div style="width:28px;height:28px;border-radius:50%;background:#3742fa;"></div>
+        <span style="font-size:1.3rem;">Синий</span>
+        <span class="mono green" style="font-size:1.5rem; font-weight:700; margin-left:auto;">99%</span>
+      </div>
+    </div>
+  </div>
+  <div class="sn">11 / 20</div>
+</div>
+
+<!-- 12: BUG — WRONG CAMERA -->
+<div class="slide">
+  <div style="display:flex; gap:80px; align-items:center; max-width:900px;">
+    <div style="text-align:center;">
+      <div class="mono green" style="font-size:4rem; font-weight:900;">100%</div>
+      <p class="muted">1 камера</p>
+    </div>
+    <div style="font-size:3rem; color:var(--muted);">&rarr;</div>
+    <div style="text-align:center;">
+      <div class="mono red" style="font-size:4rem; font-weight:900;">45%</div>
+      <p class="muted">5 камер</p>
+    </div>
+  </div>
+  <div class="code-line" style="margin-top:50px; font-size:1.3rem;">
+    surfaceList[<span class="red">source_id</span>] &rarr; surfaceList[<span class="green">batch_id</span>]
+  </div>
+  <p class="muted" style="margin-top:20px;">Одна строка. Недели отладки.</p>
+  <div class="sn">12 / 20</div>
+</div>
+
+<!-- 13: BUG — NV12 -->
+<div class="slide">
+  <div class="grid-2" style="max-width:700px;">
+    <div style="text-align:center;">
+      <div style="background:repeating-conic-gradient(#333 0% 25%, #666 0% 50%) 50%/20px 20px; width:200px; height:200px; margin:0 auto; border-radius:12px; filter:blur(1px);"></div>
+      <p class="red" style="margin-top:16px; font-size:1.3rem;">NV12 как RGBA</p>
+    </div>
+    <div style="text-align:center;">
+      <img src="conference_assets/05_crop_yellow.jpg" class="crop" style="height:200px;">
+      <p class="green" style="margin-top:16px; font-size:1.3rem;">Правильный формат</p>
+    </div>
+  </div>
+  <p style="margin-top:40px; font-size:1.5rem; text-align:center;">Формат решает всё</p>
+  <div class="sn">13 / 20</div>
+</div>
+
+<!-- 14: BUG — 900ms -->
+<div class="slide">
+  <div style="display:flex; gap:80px; align-items:center;">
+    <div style="text-align:center;">
+      <div class="mono red" style="font-size:5rem; font-weight:900;">900</div>
+      <p class="muted" style="font-size:1.2rem;">мс</p>
+    </div>
+    <div class="mono accent" style="font-size:3rem;">&rarr;</div>
+    <div style="text-align:center;">
+      <div class="mono green" style="font-size:5rem; font-weight:900;">340</div>
+      <p class="muted" style="font-size:1.2rem;">мс</p>
+    </div>
+  </div>
+  <p class="muted" style="margin-top:40px; font-size:1.3rem;">Одна оптимизация. Ускорение в 2.7 раз.</p>
+  <div class="sn">14 / 20</div>
+</div>
+
+<!-- 15: FUSION -->
+<div class="slide">
+  <h2 style="margin-bottom:30px;">25 камер &rarr; 1 результат</h2>
+  <div style="max-width:800px; width:100%;">
+    <div style="display:flex; gap:4px; margin-bottom:6px;">
+      <div style="flex:3;height:32px;background:linear-gradient(90deg,var(--accent),transparent);border-radius:6px 0 0 6px;display:flex;align-items:center;padding-left:10px;font-size:0.8rem;">Кам 1</div>
+      <div style="flex:6;height:32px;"></div>
+    </div>
+    <div style="display:flex; gap:4px; margin-bottom:6px;">
+      <div style="flex:1;height:32px;"></div>
+      <div style="flex:3;height:32px;background:linear-gradient(90deg,var(--purple),transparent);border-radius:6px 0 0 6px;display:flex;align-items:center;padding-left:10px;font-size:0.8rem;">Кам 2</div>
+      <div style="flex:5;height:32px;"></div>
+    </div>
+    <div style="display:flex; gap:4px; margin-bottom:6px;">
+      <div style="flex:2;height:32px;"></div>
+      <div style="flex:3;height:32px;background:linear-gradient(90deg,var(--yellow),transparent);border-radius:6px 0 0 6px;display:flex;align-items:center;padding-left:10px;font-size:0.8rem;">Кам 3</div>
+      <div style="flex:4;height:32px;"></div>
+    </div>
+    <div style="display:flex; gap:4px; margin-bottom:6px;">
+      <div style="flex:3;height:32px;"></div>
+      <div style="flex:3;height:32px;background:linear-gradient(90deg,var(--green),transparent);border-radius:6px 0 0 6px;display:flex;align-items:center;padding-left:10px;font-size:0.8rem;">...</div>
+      <div style="flex:3;height:32px;"></div>
+    </div>
+    <div style="text-align:center; margin:20px 0 0; font-size:2rem;">&darr;</div>
+    <div class="card" style="margin-top:10px; padding:20px; border:1px solid var(--accent);">
+      <span class="accent" style="font-size:1.3rem; font-weight:700;">Единый рейтинг позиций</span>
+    </div>
+  </div>
+  <p class="muted" style="margin-top:20px; font-size:0.95rem;">Vote Engine + Fusion Engine</p>
+  <div class="sn">15 / 20</div>
+</div>
+
+<!-- 16: WOW — LEADERBOARD -->
+<div class="slide">
+  <h2 style="margin-bottom:20px;">Что видит зритель</h2>
+  <div style="max-width:700px; width:100%;">
+    <div style="display:flex; padding:10px 20px; color:var(--muted); font-size:0.85rem; border-bottom:1px solid rgba(255,255,255,0.1);">
+      <div style="width:50px;"></div><div style="flex:1;"></div><div style="width:110px;text-align:right;">Скорость</div><div style="width:110px;text-align:right;">Отст.</div>
+    </div>
+    <!-- 1 -->
+    <div style="display:flex;align-items:center;padding:14px 20px;background:linear-gradient(90deg,rgba(255,215,0,0.15),transparent);border-left:4px solid #ffd700;border-radius:8px;margin:5px 0;animation:slideIn 0.8s ease-out both;">
+      <div style="width:50px;font-size:1.8rem;font-weight:900;color:#ffd700;" class="mono">1</div>
+      <div style="flex:1;display:flex;align-items:center;gap:12px;"><div style="width:32px;height:32px;border-radius:50%;background:#2ed573;"></div><strong>Kazbek</strong></div>
+      <div style="width:110px;text-align:right;" class="mono">58.2</div>
+      <div style="width:110px;text-align:right;color:var(--muted);">&mdash;</div>
+    </div>
+    <!-- 2 -->
+    <div style="display:flex;align-items:center;padding:14px 20px;background:rgba(255,255,255,0.03);border-left:4px solid rgba(255,255,255,0.2);border-radius:8px;margin:5px 0;animation:slideIn 1.0s ease-out both;">
+      <div style="width:50px;font-size:1.8rem;font-weight:900;color:rgba(255,255,255,0.4);" class="mono">2</div>
+      <div style="flex:1;display:flex;align-items:center;gap:12px;"><div style="width:32px;height:32px;border-radius:50%;background:#ff4757;"></div><strong>Sultan</strong></div>
+      <div style="width:110px;text-align:right;" class="mono">56.8</div>
+      <div style="width:110px;text-align:right;color:var(--yellow);">+0.8с</div>
+    </div>
+    <!-- 3 -->
+    <div style="display:flex;align-items:center;padding:14px 20px;background:rgba(255,255,255,0.02);border-left:4px solid rgba(255,255,255,0.1);border-radius:8px;margin:5px 0;animation:slideIn 1.2s ease-out both;">
+      <div style="width:50px;font-size:1.8rem;font-weight:900;color:rgba(255,255,255,0.3);" class="mono">3</div>
+      <div style="flex:1;display:flex;align-items:center;gap:12px;"><div style="width:32px;height:32px;border-radius:50%;background:#ffa502;"></div><strong>Tulpar</strong></div>
+      <div style="width:110px;text-align:right;" class="mono">55.1</div>
+      <div style="width:110px;text-align:right;color:var(--yellow);">+2.3с</div>
+    </div>
+    <!-- 4 -->
+    <div style="display:flex;align-items:center;padding:14px 20px;background:rgba(255,255,255,0.01);border-left:4px solid rgba(255,255,255,0.05);border-radius:8px;margin:5px 0;animation:slideIn 1.4s ease-out both;">
+      <div style="width:50px;font-size:1.8rem;font-weight:900;color:rgba(255,255,255,0.2);" class="mono">4</div>
+      <div style="flex:1;display:flex;align-items:center;gap:12px;"><div style="width:32px;height:32px;border-radius:50%;background:#3742fa;"></div><strong>Barak</strong></div>
+      <div style="width:110px;text-align:right;" class="mono">54.3</div>
+      <div style="width:110px;text-align:right;color:var(--yellow);">+3.7с</div>
+    </div>
+    <!-- 5 -->
+    <div style="display:flex;align-items:center;padding:14px 20px;background:rgba(255,255,255,0.005);border-left:4px solid rgba(255,255,255,0.03);border-radius:8px;margin:5px 0;animation:slideIn 1.6s ease-out both;">
+      <div style="width:50px;font-size:1.8rem;font-weight:900;color:rgba(255,255,255,0.15);" class="mono">5</div>
+      <div style="flex:1;display:flex;align-items:center;gap:12px;"><div style="width:32px;height:32px;border-radius:50%;background:#a855f7;"></div><strong>Akbar</strong></div>
+      <div style="width:110px;text-align:right;" class="mono">52.9</div>
+      <div style="width:110px;text-align:right;color:var(--yellow);">+5.1с</div>
+    </div>
+  </div>
+  <div class="sn">16 / 20</div>
+</div>
+
+<!-- 17: WHAT IT GIVES -->
+<div class="slide">
+  <div class="grid-4" style="max-width:1000px;">
+    <div class="card" style="padding:40px; border-top:3px solid var(--accent);">
+      <div style="font-size:2.5rem; margin-bottom:12px;">&#x1F4F1;</div>
+      <strong style="font-size:1.3rem;">Зрителям</strong><br><span class="muted">Позиции на телефоне</span>
+    </div>
+    <div class="card" style="padding:40px; border-top:3px solid var(--green);">
+      <div style="font-size:2.5rem; margin-bottom:12px;">&#x1F3C7;</div>
+      <strong style="font-size:1.3rem;">Тренерам</strong><br><span class="muted">Аналитика скоростей</span>
+    </div>
+    <div class="card" style="padding:40px; border-top:3px solid var(--yellow);">
+      <div style="font-size:2.5rem; margin-bottom:12px;">&#x1F4FA;</div>
+      <strong style="font-size:1.3rem;">Трансляциям</strong><br><span class="muted">Авто-камеры</span>
+    </div>
+    <div class="card" style="padding:40px; border-top:3px solid var(--purple);">
+      <div style="font-size:2.5rem; margin-bottom:12px;">&#x1F3DF;&#xFE0F;</div>
+      <strong style="font-size:1.3rem;">Ипподромам</strong><br><span class="muted">Ноль датчиков</span>
+    </div>
+  </div>
+  <div class="sn">17 / 20</div>
+</div>
+
+<!-- 18: TECH STACK (minimal) -->
+<div class="slide">
+  <h2 style="margin-bottom:50px; font-size:2rem; color:var(--muted);">Стек</h2>
+  <div style="display:flex; flex-wrap:wrap; gap:16px; justify-content:center; max-width:800px;">
+    <div style="background:var(--card);padding:12px 24px;border-radius:40px;font-size:1rem;">DeepStream</div>
+    <div style="background:var(--card);padding:12px 24px;border-radius:40px;font-size:1rem;">TensorRT</div>
+    <div style="background:var(--card);padding:12px 24px;border-radius:40px;font-size:1rem;">YOLOv11</div>
+    <div style="background:var(--card);padding:12px 24px;border-radius:40px;font-size:1rem;">Custom CNN</div>
+    <div style="background:var(--card);padding:12px 24px;border-radius:40px;font-size:1rem;">FastAPI</div>
+    <div style="background:var(--card);padding:12px 24px;border-radius:40px;font-size:1rem;">WebSocket</div>
+    <div style="background:var(--card);padding:12px 24px;border-radius:40px;font-size:1rem;">React</div>
+    <div style="background:var(--card);padding:12px 24px;border-radius:40px;font-size:1rem;">WebRTC</div>
+    <div style="background:var(--card);padding:12px 24px;border-radius:40px;font-size:1rem;">Docker</div>
+    <div style="background:var(--card);padding:12px 24px;border-radius:40px;font-size:1rem;">CUDA</div>
+    <div style="background:var(--card);padding:12px 24px;border-radius:40px;font-size:1rem;">POSIX SHM</div>
+    <div style="background:var(--card);padding:12px 24px;border-radius:40px;font-size:1rem;">go2rtc</div>
+  </div>
+  <div class="sn">18 / 20</div>
+</div>
+
+<!-- 19: FUTURE -->
+<div class="slide">
+  <h2 style="margin-bottom:50px;">Дальше</h2>
+  <div class="grid-3" style="max-width:1000px;">
+    <div class="card" style="padding:40px; border-top:3px solid var(--accent);">
+      <div style="font-size:2.5rem; margin-bottom:12px;">&#x1F30D;</div>
+      <strong style="font-size:1.3rem;">Любой ипподром</strong><br><span class="muted">за 1 день</span>
+    </div>
+    <div class="card" style="padding:40px; border-top:3px solid var(--green);">
+      <div style="font-size:2.5rem; margin-bottom:12px;">&#x1F4F1;</div>
+      <strong style="font-size:1.3rem;">Приложение</strong><br><span class="muted">для зрителей</span>
+    </div>
+    <div class="card" style="padding:40px; border-top:3px solid var(--yellow);">
+      <div style="font-size:2.5rem; margin-bottom:12px;">&#x1F4CA;</div>
+      <strong style="font-size:1.3rem;">Аналитика</strong><br><span class="muted">для тренеров</span>
+    </div>
+  </div>
+  <div class="sn">19 / 20</div>
+</div>
+
+<!-- 20: FINAL -->
+<div class="slide">
+  <div class="slide-bg" style="background-image: url('conference_assets/03_detection_close.jpg')"></div>
+  <div style="display:flex; gap:40px; align-items:center; justify-content:center;">
+    <div class="mono accent" style="font-size:3rem; font-weight:900;">25</div>
+    <div class="muted" style="font-size:1.5rem;">камер</div>
+    <div class="mono accent" style="font-size:3rem; font-weight:900;">1</div>
+    <div class="muted" style="font-size:1.5rem;">GPU</div>
+    <div class="mono accent" style="font-size:3rem; font-weight:900;">38</div>
+    <div class="muted" style="font-size:1.5rem;">fps</div>
+    <div class="mono accent" style="font-size:3rem; font-weight:900;">&lt;100</div>
+    <div class="muted" style="font-size:1.5rem;">мс</div>
+  </div>
+  <div style="margin-top:60px; text-align:center;">
+    <p style="font-size:1.1rem; color:rgba(255,255,255,0.5); font-weight:600;">Mussylman Kalzhanov</p>
+    <p style="font-size:0.9rem; color:rgba(255,255,255,0.25); margin-top:6px;">Ипподром «Кабирхан», Казахстан</p>
+    <div style="margin-top:24px; display:flex; gap:24px; justify-content:center; flex-wrap:wrap;">
+      <span style="font-size:0.85rem; color:rgba(255,255,255,0.3);">+7 777 592 50 57</span>
+      <span style="font-size:0.85rem; color:rgba(255,255,255,0.3);">musylman.kalzhanov@inbox.ru</span>
+      <span style="font-size:0.85rem; color:rgba(255,255,255,0.3);">mussylman.kalzhanov@gmail.com</span>
+    </div>
+  </div>
+  <div class="sn">20 / 20</div>
+</div>
+
+<script>
+const slides = document.querySelectorAll('.slide');
+const progress = document.createElement('div');
+progress.className = 'progress';
+slides.forEach((_, i) => {
+  const dot = document.createElement('div');
+  dot.className = 'dot';
+  dot.onclick = () => slides[i].scrollIntoView({ behavior: 'smooth' });
+  progress.appendChild(dot);
+});
+document.body.appendChild(progress);
+const observer = new IntersectionObserver(entries => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      const idx = [...slides].indexOf(e.target);
+      progress.querySelectorAll('.dot').forEach((d, i) => d.classList.toggle('active', i === idx));
+    }
+  });
+}, { threshold: 0.5 });
+slides.forEach(s => observer.observe(s));
+document.addEventListener('keydown', e => {
+  const active = [...slides].findIndex(s => {
+    const r = s.getBoundingClientRect();
+    return r.top >= -100 && r.top <= window.innerHeight / 2;
+  });
+  if (e.key === 'ArrowDown' || e.key === ' ' || e.key === 'PageDown') {
+    e.preventDefault();
+    if (active < slides.length - 1) slides[active + 1].scrollIntoView({ behavior: 'smooth' });
+  }
+  if (e.key === 'ArrowUp' || e.key === 'PageUp') {
+    e.preventDefault();
+    if (active > 0) slides[active - 1].scrollIntoView({ behavior: 'smooth' });
+  }
+});
+</script>
+</body>
+</html>

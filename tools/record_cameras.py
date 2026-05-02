@@ -5,7 +5,10 @@ from datetime import datetime
 
 # ===================== AYARLAR =====================
 
-KAYIT_KLASORU = "/home/user/recordings"
+KAYIT_KLASORU = os.environ.get(
+    "RV_REC_DIR",
+    "/home/ipodrom/Рабочий стол/Ipodrom-Project/user/race_vision/records-test",
+)
 
 RTSP_URLS = [
     "rtsp://admin:Zxcv2Zxcv2@10.223.70.32:554/Streaming/Channels/101",

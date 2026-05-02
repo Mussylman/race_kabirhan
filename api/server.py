@@ -442,10 +442,11 @@ async def ranking_broadcast_loop():
             for result_msg in pending:
                 await broadcast(result_msg)
 
-        # Broadcast rankings only when changed
-        if state.race_active:
-            rankings = state.get_rankings()
-            if rankings:
+        # Broadcast rankings only when changed (regardless of race_active
+        # so frontend sees the default roster + live updates from TimeTracker).
+        rankings = state.get_rankings()
+        if rankings:
+            if True:
                 # Hash by positions to detect changes
                 rankings_hash = "|".join(
                     f"{r.get('color','')}{r.get('position','')}{r.get('distanceCovered','')}"

@@ -1,0 +1,12 @@
+{
+  "track_length": 2500,
+  "max_active": 25,
+  "analytics": [
+    {
+      "id": "cam-13",
+      "url": "file:///home/ipodrom/Рабочий стол/Ipodrom-Project/user/recordings/yaris_20260303_164835/kamera_13_164841_END165759.mp4",
+      "track_start": 1200.0,
+      "track_end": 1310.0
+    }
+  ]
+}

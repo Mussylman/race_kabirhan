@@ -33,8 +33,8 @@ class ColorTracker:
     transient misclassifications are overridden.
     """
 
-    EMA_ALPHA = 0.3          # new observation weight (lower = smoother)
-    MIN_CONF = 0.60          # below this → "unknown"
+    EMA_ALPHA = 0.5          # new observation weight (higher = faster response)
+    MIN_CONF = 0.30          # below this → "unknown"
     COLOR_NAMES = ["blue", "green", "purple", "red", "yellow"]
 
     def __init__(self):
@@ -233,22 +233,12 @@ class DeepStreamPipeline:
         self.topology = topology
         self.fusion = FusionEngine(topology, colors=ALL_COLORS)
 
-        # Time-based tracker — physical camera order from CameraManager
-        # (insertion order matches the order in cameras_live_ordered.json).
+        # Simple forward-only tracker — one camera, one classification,
+        # one position change per jockey. Camera order comes from
+        # CameraManager insertion order.
         cam_order = [c.cam_id for c in camera_manager.get_analytics_cameras()]
-        self.time_tracker = TimeTracker(
-            cam_order=cam_order,
-            topology=topology,
-            confirm_frames=int(os.environ.get("RV_TT_CONFIRM_FRAMES", "3")),
-            confirm_window_sec=float(os.environ.get("RV_TT_WINDOW_SEC", "1.0")),
-            pack_min_colors=int(os.environ.get("RV_TT_PACK_MIN", "2")),
-        )
-        log.info("TimeTracker initialized with %d cameras "
-                 "(confirm=%d frames / %ss, pack_min=%d)",
-                 len(cam_order),
-                 self.time_tracker.confirm_frames,
-                 self.time_tracker.confirm_window,
-                 self.time_tracker.pack_min_colors)
+        self.time_tracker = TimeTracker(cam_order=cam_order, topology=topology)
+        log.info("TimeTracker initialized with %d cameras", len(cam_order))
 
         self._reader = SharedMemoryReader(timeout_ms=200)
         self._shm_thread: Optional[threading.Thread] = None
@@ -324,6 +314,11 @@ class DeepStreamPipeline:
 
     def start(self):
         self._running = True
+
+        # Seed frontend with the default 5-horse roster immediately so
+        # jockeys are visible before any detection arrives.
+        state.set_rankings(self._build_rankings([]))
+        log.info("seeded default 5-horse roster for frontend")
 
         # Thread 1: SHM Reader — reads at max speed, writes to DetectionBuffer
         self._shm_thread = threading.Thread(
@@ -440,8 +435,8 @@ class DeepStreamPipeline:
             t0 = time.monotonic()
             self.cycles += 1
 
-            if not state.race_active:
-                continue
+            # Note: race_active gate removed so TimeTracker always runs and
+            # the frontend keeps seeing jockeys (default roster before start).
 
             # --- TimeTracker ingest: feed every raw detection event ---
             # Tracker has its own confirm-frames/window debouncing, independent
@@ -455,8 +450,11 @@ class DeepStreamPipeline:
                     color = d.get("color", "")
                     if color not in ALL_COLORS:
                         continue
-                    if self.time_tracker.ingest(tracker_ts, cam_det.cam_id, color):
-                        tt_new_passes.append((cam_det.cam_id, color))
+                    committed = self.time_tracker.ingest(
+                        tracker_ts, cam_det.cam_id, color
+                    )
+                    for c in committed:
+                        tt_new_passes.append((cam_det.cam_id, c))
             if tt_new_passes:
                 for cid, col in tt_new_passes:
                     log.info("TT pass  %s  %s  ts=%.2f", cid, col, tracker_ts)
@@ -547,14 +545,15 @@ class DeepStreamPipeline:
                     })
 
             # --- Periodic TimeTracker snapshot (5 Hz) ---
-            # Keeps state.rankings fresh even when no new pass was confirmed
-            # (e.g. speed/ts timestamps in UI).
+            # Keeps state.rankings fresh. Always publishes — even with an
+            # empty tracker _build_rankings() returns the default 5-horse
+            # roster so the frontend has jockeys visible before the race.
             now_live = time.monotonic()
             if now_live - getattr(self, "_live_fusion_last", 0) >= 0.2:
                 self._live_fusion_last = now_live
-                tt_ranking = self.time_tracker.get_ranking()
-                if tt_ranking:
-                    state.set_rankings(self._build_rankings(tt_ranking))
+                state.set_rankings(
+                    self._build_rankings(self.time_tracker.get_ranking())
+                )
 
             # Inference FPS tracking
             fps_counter += 1

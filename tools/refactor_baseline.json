@@ -1,0 +1,33 @@
+{
+  "smoke_video": "data/videos/test_full_loop/yaris_20260421_174240/kamera_24_174252_END174647.mp4",
+  "config": "configs/cameras_smoke_osnet.json",
+  "env": {
+    "RV_TIGHT_SGIE": "0",
+    "RV_OSNET_MIN_SIM": "0.75",
+    "RV_AUDIT": "1",
+    "RV_FILE_MODE": "1"
+  },
+  "branch": "refactor/pipeline-modules",
+  "commit": "6698502b671fcb710035a2a99ffd2c820c2a659f",
+  "metrics": {
+    "total_detections_raw": 12586,
+    "total_detections_passed": 12545,
+    "color_distribution_pct": {
+      "blue": 24.026,
+      "red": 23.866,
+      "green": 25.229,
+      "yellow": 23.101,
+      "unknown": 3.778
+    },
+    "confidence_median_per_color": {
+      "blue": 0.898,
+      "red": 0.8285,
+      "green": 0.833,
+      "yellow": 0.868
+    },
+    "detections_jsonl_sha256": "dbd20f705f580b4184c9f5fc8eb15be6507d514e75c6439fc925815da6c87faa",
+    "detections_jsonl_bytes": 4599138,
+    "detections_jsonl_lines": 12586
+  },
+  "timestamp": "2026-04-28T12:11:15"
+}

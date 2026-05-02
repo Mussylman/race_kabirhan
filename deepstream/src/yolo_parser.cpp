@@ -17,8 +17,10 @@
 
 namespace rv {
 
-// Target class index (person in COCO, jockey in custom — both class 0)
-static constexpr int TARGET_CLASS = 0;
+// Target classes: 0 = person (jockey), 17 = horse (COCO).
+// Both are emitted so probe can gate "person overlapping horse" = real jockey.
+static constexpr int CLASS_PERSON = 0;
+static constexpr int CLASS_HORSE  = 17;
 // Number of bbox params (cx, cy, w, h)
 static constexpr int BBOX_PARAMS = 4;
 // NMS IoU threshold
@@ -27,6 +29,7 @@ static constexpr float NMS_IOU_THRESH = 0.50f;
 struct RawDetection {
     float x1, y1, x2, y2;
     float conf;
+    int cls;
 };
 
 static float iou(const RawDetection& a, const RawDetection& b) {
@@ -122,48 +125,38 @@ bool parseYoloV8(
     for (int i = 0; i < num_dets; ++i) {
         float cx, cy, w, h, conf;
         if (!transposed) {
-            // [84, num_dets] layout
             cx   = data[0 * num_dets + i];
             cy   = data[1 * num_dets + i];
             w    = data[2 * num_dets + i];
             h    = data[3 * num_dets + i];
-            conf = data[(BBOX_PARAMS + TARGET_CLASS) * num_dets + i];
+            conf = data[(BBOX_PARAMS + CLASS_PERSON) * num_dets + i];
         } else {
-            // [num_dets, 84] layout
             cx   = data[i * num_features + 0];
             cy   = data[i * num_features + 1];
             w    = data[i * num_features + 2];
             h    = data[i * num_features + 3];
-            conf = data[i * num_features + BBOX_PARAMS + TARGET_CLASS];
+            conf = data[i * num_features + BBOX_PARAMS + CLASS_PERSON];
         }
-
         if (conf < conf_thresh) continue;
-
-        // Convert cx,cy,w,h to x1,y1,x2,y2 in PIXEL coords (network scale)
-        // DeepStream expects coords in network input resolution, NOT normalized!
         RawDetection det;
-        det.x1   = cx - w / 2.0f;
-        det.y1   = cy - h / 2.0f;
-        det.x2   = cx + w / 2.0f;
-        det.y2   = cy + h / 2.0f;
+        det.x1 = cx - w / 2.0f;
+        det.y1 = cy - h / 2.0f;
+        det.x2 = cx + w / 2.0f;
+        det.y2 = cy + h / 2.0f;
         det.conf = conf;
-
-        // Clamp to network dimensions
+        det.cls  = CLASS_PERSON;
         det.x1 = std::max(0.0f, std::min(static_cast<float>(networkInfo.width),  det.x1));
         det.y1 = std::max(0.0f, std::min(static_cast<float>(networkInfo.height), det.y1));
         det.x2 = std::max(0.0f, std::min(static_cast<float>(networkInfo.width),  det.x2));
         det.y2 = std::max(0.0f, std::min(static_cast<float>(networkInfo.height), det.y2));
-
         raw_dets.push_back(det);
     }
 
-    // Apply NMS
     nms(raw_dets, NMS_IOU_THRESH);
 
-    // Convert to DeepStream format (pixel coords in network input space)
     for (const auto& d : raw_dets) {
         NvDsInferObjectDetectionInfo obj;
-        obj.classId       = TARGET_CLASS;
+        obj.classId       = d.cls;
         obj.detectionConfidence = d.conf;
         obj.left   = d.x1;
         obj.top    = d.y1;

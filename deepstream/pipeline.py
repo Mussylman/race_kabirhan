@@ -690,10 +690,13 @@ class DetectionProbe(BatchMetadataOperator):
                     (cx, cname, float(d.color_conf), 0.0,
                      (d.x1, d.y1, d.x2, d.y2)))
 
+        # Defined unconditionally so the post-loop "if new_arrivals:" guard
+        # below never raises UnboundLocalError when stable_colors is empty
+        # (e.g. dets present but stability gate hasn't fired for any tid yet).
+        new_arrivals: list[str] = []
         if stable_colors:
             # Rightmost first for same-frame ties
             ordered = sorted(stable_colors, key=lambda t: -t[0])
-            new_arrivals = []
             for rank_idx, (cx, c, cf, lg, bb) in enumerate(ordered):
                 res = self.tracker.ingest(now + rank_idx * 1e-6, cam, c)
                 if res:

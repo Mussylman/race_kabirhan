@@ -1,0 +1,120 @@
+{
+  "track_length": 1900,
+  "max_active": 19,
+  "analytics": [
+    {
+      "id": "cam-13",
+      "url": "file:///home/ipodrom/Рабочий стол/Ipodrom-Project/user/race_vision/data/videos/test_short/yaris_20260421_141439/kamera_13_141445_END141615.mp4",
+      "track_start": 0.0,
+      "track_end": 110.0
+    },
+    {
+      "id": "cam-08",
+      "url": "file:///home/ipodrom/Рабочий стол/Ipodrom-Project/user/race_vision/data/videos/test_short/yaris_20260421_141439/kamera_08_141443_END141615.mp4",
+      "track_start": 100.0,
+      "track_end": 210.0
+    },
+    {
+      "id": "cam-14",
+      "url": "file:///home/ipodrom/Рабочий стол/Ipodrom-Project/user/race_vision/data/videos/test_short/yaris_20260421_141439/kamera_14_141446_END141615.mp4",
+      "track_start": 200.0,
+      "track_end": 310.0
+    },
+    {
+      "id": "cam-11",
+      "url": "file:///home/ipodrom/Рабочий стол/Ipodrom-Project/user/race_vision/data/videos/test_short/yaris_20260421_141439/kamera_11_141444_END141615.mp4",
+      "track_start": 300.0,
+      "track_end": 410.0
+    },
+    {
+      "id": "cam-15",
+      "url": "file:///home/ipodrom/Рабочий стол/Ipodrom-Project/user/race_vision/data/videos/test_short/yaris_20260421_141439/kamera_15_141446_END141615.mp4",
+      "track_start": 400.0,
+      "track_end": 510.0
+    },
+    {
+      "id": "cam-16",
+      "url": "file:///home/ipodrom/Рабочий стол/Ipodrom-Project/user/race_vision/data/videos/test_short/yaris_20260421_141439/kamera_16_141447_END141615.mp4",
+      "track_start": 500.0,
+      "track_end": 610.0
+    },
+    {
+      "id": "cam-18",
+      "url": "file:///home/ipodrom/Рабочий стол/Ipodrom-Project/user/race_vision/data/videos/test_short/yaris_20260421_141439/kamera_18_141448_END141615.mp4",
+      "track_start": 600.0,
+      "track_end": 710.0
+    },
+    {
+      "id": "cam-19",
+      "url": "file:///home/ipodrom/Рабочий стол/Ipodrom-Project/user/race_vision/data/videos/test_short/yaris_20260421_141439/kamera_19_141448_END141615.mp4",
+      "track_start": 700.0,
+      "track_end": 810.0
+    },
+    {
+      "id": "cam-20",
+      "url": "file:///home/ipodrom/Рабочий стол/Ipodrom-Project/user/race_vision/data/videos/test_short/yaris_20260421_141439/kamera_20_141449_END141615.mp4",
+      "track_start": 800.0,
+      "track_end": 910.0
+    },
+    {
+      "id": "cam-21",
+      "url": "file:///home/ipodrom/Рабочий стол/Ipodrom-Project/user/race_vision/data/videos/test_short/yaris_20260421_141439/kamera_21_141449_END141615.mp4",
+      "track_start": 900.0,
+      "track_end": 1010.0
+    },
+    {
+      "id": "cam-22",
+      "url": "file:///home/ipodrom/Рабочий стол/Ipodrom-Project/user/race_vision/data/videos/test_short/yaris_20260421_141439/kamera_22_141450_END141615.mp4",
+      "track_start": 1000.0,
+      "track_end": 1110.0
+    },
+    {
+      "id": "cam-23",
+      "url": "file:///home/ipodrom/Рабочий стол/Ipodrom-Project/user/race_vision/data/videos/test_short/yaris_20260421_141439/kamera_23_141450_END141615.mp4",
+      "track_start": 1100.0,
+      "track_end": 1210.0
+    },
+    {
+      "id": "cam-24",
+      "url": "file:///home/ipodrom/Рабочий стол/Ipodrom-Project/user/race_vision/data/videos/test_short/yaris_20260421_141439/kamera_24_141451_END141615.mp4",
+      "track_start": 1200.0,
+      "track_end": 1310.0
+    },
+    {
+      "id": "cam-01",
+      "url": "file:///home/ipodrom/Рабочий стол/Ipodrom-Project/user/race_vision/data/videos/test_short/yaris_20260421_141439/kamera_01_141439_END141615.mp4",
+      "track_start": 1300.0,
+      "track_end": 1410.0
+    },
+    {
+      "id": "cam-02",
+      "url": "file:///home/ipodrom/Рабочий стол/Ipodrom-Project/user/race_vision/data/videos/test_short/yaris_20260421_141439/kamera_02_141440_END141615.mp4",
+      "track_start": 1400.0,
+      "track_end": 1510.0
+    },
+    {
+      "id": "cam-03",
+      "url": "file:///home/ipodrom/Рабочий стол/Ipodrom-Project/user/race_vision/data/videos/test_short/yaris_20260421_141439/kamera_03_141440_END141615.mp4",
+      "track_start": 1500.0,
+      "track_end": 1610.0
+    },
+    {
+      "id": "cam-04",
+      "url": "file:///home/ipodrom/Рабочий стол/Ipodrom-Project/user/race_vision/data/videos/test_short/yaris_20260421_141439/kamera_04_141441_END141615.mp4",
+      "track_start": 1600.0,
+      "track_end": 1710.0
+    },
+    {
+      "id": "cam-05",
+      "url": "file:///home/ipodrom/Рабочий стол/Ipodrom-Project/user/race_vision/data/videos/test_short/yaris_20260421_141439/kamera_05_141441_END141615.mp4",
+      "track_start": 1700.0,
+      "track_end": 1810.0
+    },
+    {
+      "id": "cam-06",
+      "url": "file:///home/ipodrom/Рабочий стол/Ipodrom-Project/user/race_vision/data/videos/test_short/yaris_20260421_141439/kamera_06_141442_END141615.mp4",
+      "track_start": 1800.0,
+      "track_end": 1910.0
+    }
+  ]
+}

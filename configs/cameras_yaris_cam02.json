@@ -1,0 +1,12 @@
+{
+  "track_length": 400,
+  "max_active": 4,
+  "analytics": [
+    {
+      "id": "cam-02",
+      "url": "file:///home/ipodrom/Рабочий стол/Ipodrom-Project/user/race_vision/data/videos/test_short/yaris_20260421_141439/kamera_02_141440_END141615.mp4",
+      "track_start": 200.0,
+      "track_end": 310.0
+    }
+  ]
+}

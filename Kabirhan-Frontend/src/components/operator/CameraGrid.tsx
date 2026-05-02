@@ -138,7 +138,6 @@ const VideoStream = ({ cameraId, videoRef: externalRef }: { cameraId: string; vi
 const COLOR_MAP: Record<string, string> = {
     blue: '#3b82f6',
     green: '#22c55e',
-    purple: '#a855f7',
     red: '#ef4444',
     yellow: '#eab308',
     unknown: '#6b7280',
@@ -154,7 +153,7 @@ const COLOR_MAP: Record<string, string> = {
  *   4. Draw or clear if stale
  */
 const SYNC_OFFSET = 0; // seconds — reserved for future temporal alignment
-const STALE_THRESHOLD_MS = 1000; // ms — clear overlay if no fresh detection data
+const STALE_THRESHOLD_MS = 5000; // ms — clear overlay if no fresh detection data
 
 const DetectionOverlay = ({ cameraId, videoRef }: { cameraId: string; videoRef?: React.RefObject<HTMLVideoElement | null> }) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -180,6 +179,12 @@ const DetectionOverlay = ({ cameraId, videoRef }: { cameraId: string; videoRef?:
                     // a calibration offset and is deferred — the ts_capture is unix epoch while
                     // currentTime is media time, so we can't directly compare them.
                     let frame: DetectionFrame | null = getLatestFrame(cameraId);
+                    // Debug: log every 3s if frame exists
+                    if ((window as any).__DEBUG_BBOX) {
+                        throttledLog(`DBG:${cameraId}`, 3000, () => {
+                            console.log(`[BBOX] ${cameraId}: frame=${frame ? 'YES' : 'NULL'} dets=${frame?.detections?.length ?? 0} canvas=${canvas.width}x${canvas.height}`);
+                        });
+                    }
                     if (frame) {
                         const age = (Date.now() / 1000 - frame.ts_client_recv) * 1000;
                         if (age > STALE_THRESHOLD_MS) {
@@ -193,31 +198,18 @@ const DetectionOverlay = ({ cameraId, videoRef }: { cameraId: string; videoRef?:
                     }
 
                     if (frame && frame.detections.length > 0) {
-                        // Bbox coords are in mux space (e.g. 1520x1520 square).
-                        // Video is 16:9 letterboxed inside the square mux with maintain-aspect-ratio.
-                        // We need to undo the letterbox padding before scaling to canvas.
-                        const muxW = frame.frame_w;
-                        const muxH = frame.frame_h;
-                        const videoAspect = canvas.width / canvas.height; // display aspect (16:9)
-                        const muxAspect = muxW / muxH;
-                        let padX = 0, padY = 0, activeW = muxW, activeH = muxH;
-                        if (muxAspect > videoAspect) {
-                            // pillarbox — black bars on sides
-                            activeW = muxH * videoAspect;
-                            padX = (muxW - activeW) / 2;
-                        } else {
-                            // letterbox — black bars top/bottom
-                            activeH = muxW / videoAspect;
-                            padY = (muxH - activeH) / 2;
-                        }
-                        const scaleX = canvas.width / activeW;
-                        const scaleY = canvas.height / activeH;
+                        // Bbox coords are in mux space.
+                        // Map directly from mux space to canvas space.
+                        const muxW = frame.frame_w || 2688;
+                        const muxH = frame.frame_h || 1520;
+                        const scaleX = canvas.width / muxW;
+                        const scaleY = canvas.height / muxH;
 
                         for (const det of frame.detections) {
                             if (!det.bbox) continue;
                             const [x1, y1, x2, y2] = det.bbox;
-                            const sx = (x1 - padX) * scaleX;
-                            const sy = (y1 - padY) * scaleY;
+                            const sx = x1 * scaleX;
+                            const sy = y1 * scaleY;
                             const sw = (x2 - x1) * scaleX;
                             const sh = (y2 - y1) * scaleY;
 
@@ -283,7 +275,7 @@ const DetectionOverlay = ({ cameraId, videoRef }: { cameraId: string; videoRef?:
 const CameraCell = ({ cameraId, go2rtcId }: { cameraId: string; go2rtcId: string }) => {
     const videoRef = useRef<HTMLVideoElement>(null);
     return (
-        <div className="relative aspect-video bg-black">
+        <div className="relative aspect-video bg-black w-full h-full">
             <VideoStream cameraId={go2rtcId} videoRef={videoRef} />
             <DetectionOverlay cameraId={cameraId} videoRef={videoRef} />
         </div>
@@ -347,6 +339,11 @@ export const CameraGrid = () => {
                                         : 'border border-[var(--border)]'}
                             `}
                         >
+                            {/* Camera name overlay — top-left */}
+                            <div className="absolute top-2 left-2 z-10 bg-black/60 text-white text-xs font-mono px-2 py-0.5 rounded">
+                                {camera.name}
+                            </div>
+
                             {/* ACTIVE badge — top-right overlay */}
                             {isActive && (
                                 <div className="absolute top-2 right-2 z-10 flex items-center gap-1.5 bg-green-500 text-white text-xs font-bold px-2.5 py-1 rounded-full shadow-lg animate-pulse">
@@ -387,7 +384,6 @@ export const CameraGrid = () => {
                                             const colorMap: Record<string, string> = {
                                                 blue: 'bg-blue-500',
                                                 green: 'bg-green-500',
-                                                purple: 'bg-purple-500',
                                                 red: 'bg-red-500',
                                                 yellow: 'bg-yellow-400',
                                             };

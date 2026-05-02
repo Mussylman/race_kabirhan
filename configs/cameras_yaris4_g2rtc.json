@@ -1,0 +1,30 @@
+{
+  "track_length": 400,
+  "max_active": 4,
+  "analytics": [
+    {
+      "id": "cam-24",
+      "url": "rtsp://localhost:8554/cam-24",
+      "track_start": 0,
+      "track_end": 110
+    },
+    {
+      "id": "cam-01",
+      "url": "rtsp://localhost:8554/cam-01",
+      "track_start": 100,
+      "track_end": 210
+    },
+    {
+      "id": "cam-02",
+      "url": "rtsp://localhost:8554/cam-02",
+      "track_start": 200,
+      "track_end": 310
+    },
+    {
+      "id": "cam-03",
+      "url": "rtsp://localhost:8554/cam-03",
+      "track_start": 300,
+      "track_end": 410
+    }
+  ]
+}

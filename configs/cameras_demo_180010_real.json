@@ -1,0 +1,43 @@
+{
+  "track_length": 800,
+  "max_active": 20,
+  "_note": "Demo session 180010 with WALL-CLOCK ALIGNED real footage. All 6 cuts taken from 77s..290s of original videos (213s long each). Jockey activity windows fall on the same demo-relative t: cam-24 [0..21s], cam-01 [60..78s], cam-02 [103..123s], cam-03 [145..163s], cam-04 [180..190s], cam-05 [203..213s]. No black padding — empty track footage between activity windows.",
+  "analytics": [
+    {
+      "id": "cam-24",
+      "url": "file:///home/ipodrom/Рабочий стол/Ipodrom-Project/user/race_vision/data/videos/demo_180010_real/cam-24.mp4",
+      "track_start": 0.0,
+      "track_end": 130.0
+    },
+    {
+      "id": "cam-01",
+      "url": "file:///home/ipodrom/Рабочий стол/Ipodrom-Project/user/race_vision/data/videos/demo_180010_real/cam-01.mp4",
+      "track_start": 130.0,
+      "track_end": 260.0
+    },
+    {
+      "id": "cam-02",
+      "url": "file:///home/ipodrom/Рабочий стол/Ipodrom-Project/user/race_vision/data/videos/demo_180010_real/cam-02.mp4",
+      "track_start": 260.0,
+      "track_end": 400.0
+    },
+    {
+      "id": "cam-03",
+      "url": "file:///home/ipodrom/Рабочий стол/Ipodrom-Project/user/race_vision/data/videos/demo_180010_real/cam-03.mp4",
+      "track_start": 400.0,
+      "track_end": 530.0
+    },
+    {
+      "id": "cam-04",
+      "url": "file:///home/ipodrom/Рабочий стол/Ipodrom-Project/user/race_vision/data/videos/demo_180010_real/cam-04.mp4",
+      "track_start": 530.0,
+      "track_end": 660.0
+    },
+    {
+      "id": "cam-05",
+      "url": "file:///home/ipodrom/Рабочий стол/Ipodrom-Project/user/race_vision/data/videos/demo_180010_real/cam-05.mp4",
+      "track_start": 660.0,
+      "track_end": 800.0
+    }
+  ]
+}

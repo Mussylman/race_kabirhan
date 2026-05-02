@@ -7,28 +7,60 @@ import { useRaceStore } from '../store/raceStore';
 import { useCameraStore } from '../store/cameraStore';
 import { Go2RTCPlayer } from '../components/Go2RTCPlayer';
 import { getSilkImagePath } from '../utils/silkUtils';
+import { DebugRankingBar } from '../components/public-display/DebugRankingBar'; // [DEBUG-RANKING-BAR] TEMP — remove with component
 
 // Track position changes per horse for arc animations
-const usePositionChanges = (rankings: { id: string; currentPosition: number }[]) => {
+const usePositionChanges = (rankings: { id: string; currentPosition: number; lastCameraId?: string; color?: string; number?: number }[]) => {
     const prevPositions = useRef<Record<string, number>>({});
+    const prevCamIds = useRef<Record<string, string>>({});
     const [deltas, setDeltas] = useState<Record<string, number>>({});
 
     useEffect(() => {
         const newDeltas: Record<string, number> = {};
         let hasChange = false;
+        // [ANIM] TEMP DEBUG — track per-horse cam change for log
+        const horseDebugInfo: string[] = [];
+        const camMoves: string[] = [];
 
         for (const horse of rankings) {
             const prev = prevPositions.current[horse.id];
+            const prevCam = prevCamIds.current[horse.id];
+            const curCam = horse.lastCameraId || '?';
+            const tag = horse.color || ('#' + (horse.number ?? '?'));
             if (prev !== undefined && prev !== horse.currentPosition) {
                 newDeltas[horse.id] = horse.currentPosition - prev;
                 hasChange = true;
+                horseDebugInfo.push(
+                    `${tag}(${prevCam || '?'}→${curCam}):${prev > horse.currentPosition ? '↑' : '↓'}${horse.currentPosition - prev > 0 ? '+' : ''}${horse.currentPosition - prev}`
+                );
+            } else if (prevCam !== undefined && prevCam !== curCam) {
+                // cam changed but position didn't — interesting for diagnosing PASS events
+                camMoves.push(`${tag}:${prevCam}→${curCam}`);
             }
             prevPositions.current[horse.id] = horse.currentPosition;
+            prevCamIds.current[horse.id] = curCam;
+        }
+
+        // [ANIM] TEMP DEBUG — remove after diagnostic
+        if (hasChange) {
+            console.log(
+                `[ANIM] position change detected (${rankings.length} horses): ${horseDebugInfo.join(', ')}`
+                + (camMoves.length > 0 ? ` · cam-only-moves=[${camMoves.join(', ')}]` : '')
+            );
+        } else if (camMoves.length > 0) {
+            console.log(
+                `[ANIM] usePositionChanges effect: NO position change but cam-only-moves=[${camMoves.join(', ')}] (${rankings.length} horses)`
+            );
+        } else {
+            console.log(`[ANIM] usePositionChanges effect ran: no change (${rankings.length} horses)`);
         }
 
         if (hasChange) {
             setDeltas(newDeltas);
-            const timer = setTimeout(() => setDeltas({}), 10000);
+            const timer = setTimeout(() => {
+                console.log(`[ANIM] deltas timeout fired — clearing all deltas after 10s`);
+                setDeltas({});
+            }, 10000);
             return () => clearTimeout(timer);
         }
     }, [rankings]);
@@ -108,8 +140,19 @@ export const PublicDisplay = () => {
     // Track position changes for arc animation
     const positionDeltas = usePositionChanges(rankings);
 
+    // [ANIM] TEMP DEBUG — remove after diagnostic
+    console.log(
+        `[ANIM] render PublicDisplay: rankings=[${rankings
+            .slice(0, 10)
+            .map(h => `${h.color || '#'+h.number}@${h.currentPosition}/${h.lastCameraId || '?'}`)
+            .join(',')}] activeDeltas=${Object.keys(positionDeltas).length}`
+    );
+
     return (
         <div className="h-screen w-screen bg-black relative overflow-hidden">
+            {/* [DEBUG-RANKING-BAR] TEMP — visual diagnostic; toggleable via 'D' */}
+            <DebugRankingBar />
+
             {/* PTZ Video Background via WebRTC */}
             {activePTZ && (
                 <Go2RTCPlayer
@@ -184,6 +227,23 @@ export const PublicDisplay = () => {
                                                 duration: 2.5,
                                                 ease: 'easeInOut',
                                             },
+                                        }}
+                                        // [ANIM] TEMP DEBUG — remove after diagnostic
+                                        onAnimationStart={(definition) => {
+                                            console.log(
+                                                `[ANIM] anim start: horse=${horse.color || '#'+horse.number} (id=${horse.id.substring(0, 8)})`
+                                                + ` cam=${horse.lastCameraId || '?'}`
+                                                + ` pos=${horse.currentPosition} delta=${delta}`
+                                                + ` definition=${JSON.stringify(definition)}`
+                                            );
+                                        }}
+                                        onAnimationComplete={(definition) => {
+                                            console.log(
+                                                `[ANIM] anim complete: horse=${horse.color || '#'+horse.number} (id=${horse.id.substring(0, 8)})`
+                                                + ` cam=${horse.lastCameraId || '?'}`
+                                                + ` pos=${horse.currentPosition}`
+                                                + ` definition=${JSON.stringify(definition)}`
+                                            );
                                         }}
                                         className="absolute bottom-2 flex flex-col items-center w-[80px]"
                                         style={{

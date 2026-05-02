@@ -18,13 +18,13 @@ from PIL import Image
 # ── Config ──
 DATASET_DIR = Path("data/color_dataset")
 COLORS = ["blue", "green", "purple", "red", "yellow"]
-IMG_SIZE = 64
+IMG_SIZE = 128
 BATCH_SIZE = 32
-EPOCHS = 50
+EPOCHS = 80
 LR = 0.001
 VAL_SPLIT = 0.2
-SAVE_PATH = "models/color_classifier_v3.pt"
-ONNX_PATH = "models/color_classifier_v3.onnx"
+SAVE_PATH = "models/color_classifier_v4.pt"
+ONNX_PATH = "models/color_classifier_v4.onnx"
 
 
 # ── Model (same as v1) ──
@@ -210,15 +210,17 @@ def train():
 
     # Build TRT engine
     import subprocess
+    engine_path = SAVE_PATH.replace(".pt", ".engine")
     r = subprocess.run(
-        ["/tmp/build_engine", ONNX_PATH,
-         SAVE_PATH.replace(".pt", ".engine"), "--fp16"],
-        capture_output=True, text=True, cwd="models"
+        ["trtexec", "--onnx=" + ONNX_PATH, "--saveEngine=" + engine_path,
+         "--fp16", "--minShapes=input:1x3x128x128",
+         "--optShapes=input:8x3x128x128", "--maxShapes=input:128x3x128x128"],
+        capture_output=True, text=True
     )
     if r.returncode == 0:
-        print(f"Engine: {SAVE_PATH.replace('.pt', '.engine')}")
+        print(f"Engine: {engine_path}")
     else:
-        print(f"Engine build failed: {r.stderr}")
+        print(f"Engine build failed: {r.stderr[-500:]}")
 
 
 if __name__ == "__main__":

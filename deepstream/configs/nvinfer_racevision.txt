@@ -20,7 +20,7 @@ network-mode=2
 network-input-order=0
 
 # GPU optimization flags
-interval=2
+interval=1
 output-tensor-meta=0
 
 # Input dimensions
@@ -46,7 +46,7 @@ custom-lib-path=/home/ipodrom/Рабочий стол/Ipodrom-Project/user/race_
 output-blob-names=output0
 
 [class-attrs-all]
-pre-cluster-threshold=0.35
+pre-cluster-threshold=0.2
 
 [class-attrs-0]
-pre-cluster-threshold=0.35
+pre-cluster-threshold=0.2

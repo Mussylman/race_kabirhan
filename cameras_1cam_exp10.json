@@ -1,0 +1,10 @@
+{
+  "analytics": [
+    {
+      "id": "cam-01",
+      "url": "file:///home/user/race_vision/data/videos/exp10_cam1.mp4",
+      "track_start": 0,
+      "track_end": 100
+    }
+  ]
+}

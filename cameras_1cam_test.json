@@ -1,0 +1,10 @@
+{
+  "analytics": [
+    {
+      "id": "cam-05",
+      "url": "rtsp://localhost:8554/cam-05",
+      "track_start": 400,
+      "track_end": 510
+    }
+  ]
+}

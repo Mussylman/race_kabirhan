@@ -42,6 +42,7 @@ debug_*/
 *.bak[0-9]*
 *.backup
 *.v[0-9]*_backup
+*.bak_*
 
 # Environment secrets
 *.env
