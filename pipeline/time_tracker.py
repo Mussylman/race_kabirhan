@@ -1,9 +1,11 @@
-"""TimeTracker v2 — global first-seen ranking (Variant B, 2026-05-02).
+"""TimeTracker v2 — per-last-camera ranking (Variant C, 2026-05-02).
 
-One color = one jockey. Global ranking = colors sorted by their earliest
-first_seen_ts across all cameras (ASC = earliest = leader). Stable from
-race start; does NOT reflect overtakes. See spec section 4 "Step C —
-Variant B" for rationale (active+laggards demoted leaders that exit FoV).
+One color = one jockey. Global ranking = colors that have appeared on
+the most-recently-updated camera, sorted by their first_seen_ts on
+that camera (ASC = earliest = leader). When a color first appears on
+a new camera in a different order, ranking jumps — overtakes visible.
+See spec section 4 "Step C — Variant C" for rationale (Variant B was
+fixed at race start; user wants overtake visibility).
 
 Replaces the prior CNN-era forward-only-cam_idx implementation. v2 has
 no monotonic-progression assumption: backward camera updates are accepted,
@@ -245,18 +247,18 @@ class TimeTracker:
     def _compute_ranking_locked(self, now_ts: float) -> list[str]:
         """Build the global ranking. Must be called with self._lock held.
 
-        Variant B (2026-05-02): rank colors by min(first_seen_ts) across
-        all cameras. Earliest = leader. Stable across FoV exits — a leader
-        who first appeared at race start stays #1 even if later cameras
-        register them after others.
+        Variant C (2026-05-02, replaces B): ranking = colors on the
+        most-recently-updated camera sorted by first_seen_ts ASC. When
+        a color overtakes on a new camera, ranking jumps to that order.
+        Earlier-camera orderings are not retained.
         """
-        color_first_seen: dict[str, float] = {}
-        for cam_dict in self._cam_state.values():
-            for color, j in cam_dict.items():
-                ts0 = j["first_seen_ts"]
-                if color not in color_first_seen or ts0 < color_first_seen[color]:
-                    color_first_seen[color] = ts0
-        return sorted(color_first_seen, key=color_first_seen.get)
+        cam_id = self._last_update_cam_id
+        if cam_id is None:
+            return []
+        cam_dict = self._cam_state.get(cam_id, {})
+        sorted_jockeys = sorted(cam_dict.values(),
+                                key=lambda j: j["first_seen_ts"])
+        return [j["color"] for j in sorted_jockeys]
 
     def _build_legacy_ranking_locked(self) -> list[dict]:
         """Build the legacy list-of-dicts ranking. Caller holds the lock.
