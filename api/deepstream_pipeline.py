@@ -590,8 +590,11 @@ class DeepStreamPipeline:
         # Always emit all 5 horses
         rankings = []
         rank_counter = 1
-        # First: detected horses sorted by distance (descending = leading)
-        sorted_detected = sorted(detected.items(), key=lambda x: -x[1]["distance"])
+        # First: detected horses in TimeTracker rank order. Sorting by
+        # position_m (distance) here would break Variant B because cam
+        # midpoints are not monotonic by race progress (cam-01=55m comes
+        # AFTER cam-24=155m on the actual loop).
+        sorted_detected = sorted(detected.items(), key=lambda x: x[1]["rank"])
         for color, data in sorted_detected:
             horse_info = COLOR_TO_HORSE[color]
             rankings.append({
