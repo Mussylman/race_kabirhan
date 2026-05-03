@@ -159,6 +159,24 @@ const DetectionOverlay = ({ cameraId, videoRef }: { cameraId: string; videoRef?:
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const rafRef = useRef<number>(0);
 
+    // ResizeObserver — sync canvas pixel dims with display dims only on actual
+    // resize, not every rAF tick. 25 cams × 60 fps = 1500/sec layout reads if
+    // done per-tick.
+    useEffect(() => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const ro = new ResizeObserver((entries) => {
+            for (const e of entries) {
+                const w = Math.round(e.contentRect.width);
+                const h = Math.round(e.contentRect.height);
+                if (canvas.width !== w) canvas.width = w;
+                if (canvas.height !== h) canvas.height = h;
+            }
+        });
+        ro.observe(canvas);
+        return () => ro.disconnect();
+    }, []);
+
     useEffect(() => {
         let running = true;
 
@@ -169,9 +187,6 @@ const DetectionOverlay = ({ cameraId, videoRef }: { cameraId: string; videoRef?:
             if (canvas) {
                 const ctx = canvas.getContext('2d');
                 if (ctx) {
-                    const rect = canvas.getBoundingClientRect();
-                    canvas.width = rect.width;
-                    canvas.height = rect.height;
                     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
                     // Use latest frame with staleness check.
