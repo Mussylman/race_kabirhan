@@ -214,17 +214,35 @@ const DetectionOverlay = ({ cameraId, videoRef }: { cameraId: string; videoRef?:
 
                     if (frame && frame.detections.length > 0) {
                         // Bbox coords are in mux space.
-                        // Map directly from mux space to canvas space.
                         const muxW = frame.frame_w || 2688;
                         const muxH = frame.frame_h || 1520;
-                        const scaleX = canvas.width / muxW;
-                        const scaleY = canvas.height / muxH;
+
+                        // Account for video object-contain letterbox: <video>
+                        // is rendered into canvas-sized box but real frame is
+                        // scaled to fit, leaving black bars on two sides. Map
+                        // bbox to that inner rectangle, not the whole canvas.
+                        const v = videoRef?.current;
+                        const vidW = v?.videoWidth ?? 0;
+                        const vidH = v?.videoHeight ?? 0;
+                        let displayW = canvas.width;
+                        let displayH = canvas.height;
+                        let offsetX = 0;
+                        let offsetY = 0;
+                        if (vidW > 0 && vidH > 0) {
+                            const fit = Math.min(canvas.width / vidW, canvas.height / vidH);
+                            displayW = vidW * fit;
+                            displayH = vidH * fit;
+                            offsetX = (canvas.width - displayW) / 2;
+                            offsetY = (canvas.height - displayH) / 2;
+                        }
+                        const scaleX = displayW / muxW;
+                        const scaleY = displayH / muxH;
 
                         for (const det of frame.detections) {
                             if (!det.bbox) continue;
                             const [x1, y1, x2, y2] = det.bbox;
-                            const sx = x1 * scaleX;
-                            const sy = y1 * scaleY;
+                            const sx = offsetX + x1 * scaleX;
+                            const sy = offsetY + y1 * scaleY;
                             const sw = (x2 - x1) * scaleX;
                             const sh = (y2 - y1) * scaleY;
 
