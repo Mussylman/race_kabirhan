@@ -4,7 +4,7 @@ import { useCameraStore } from '../../store/cameraStore';
 import { useRaceStore } from '../../store/raceStore';
 import { GO2RTC_URL } from '../../config/go2rtc';
 import { TRACK_LENGTH } from '../../types';
-import { getLatestFrame, type DetectionFrame } from '../../services/detectionBuffer';
+import { getLatestFrame, selectFrame, type DetectionFrame } from '../../services/detectionBuffer';
 import { flog, throttledLog } from '../../utils/frameLogger';
 
 /**
@@ -158,6 +158,11 @@ const STALE_THRESHOLD_MS = 5000; // ms — clear overlay if no fresh detection d
 const DetectionOverlay = ({ cameraId, videoRef }: { cameraId: string; videoRef?: React.RefObject<HTMLVideoElement | null> }) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const rafRef = useRef<number>(0);
+    // Calibration: ts_capture is unix-epoch seconds, video.currentTime is
+    // media-time relative to MSE stream start. Once both are available,
+    // wallClockOffset = ts_capture - currentTime locks the mapping; later
+    // we query selectFrame(camId, currentTime + offset).
+    const wallClockOffsetRef = useRef<number | null>(null);
 
     // ResizeObserver — sync canvas pixel dims with display dims only on actual
     // resize, not every rAF tick. 25 cams × 60 fps = 1500/sec layout reads if
@@ -189,11 +194,27 @@ const DetectionOverlay = ({ cameraId, videoRef }: { cameraId: string; videoRef?:
                 if (ctx) {
                     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-                    // Use latest frame with staleness check.
-                    // Note: full temporal alignment (video.currentTime vs ts_capture) requires
-                    // a calibration offset and is deferred — the ts_capture is unix epoch while
-                    // currentTime is media time, so we can't directly compare them.
-                    let frame: DetectionFrame | null = getLatestFrame(cameraId);
+                    // Time-aware frame selection. ts_capture (unix epoch)
+                    // and video.currentTime (media-time) live in different
+                    // clocks — calibrate once, then use selectFrame.
+                    let frame: DetectionFrame | null = null;
+                    const videoTime = videoRef?.current?.currentTime ?? 0;
+                    if (wallClockOffsetRef.current === null) {
+                        // Try to lock the offset.
+                        const latest = getLatestFrame(cameraId);
+                        if (latest && latest.ts_capture > 0 && videoTime > 0) {
+                            wallClockOffsetRef.current = latest.ts_capture - videoTime;
+                        }
+                        frame = latest;
+                    } else {
+                        const targetT = videoTime + wallClockOffsetRef.current;
+                        const sel = selectFrame(cameraId, targetT, SYNC_OFFSET);
+                        if (sel.status === 'DRAW') {
+                            frame = sel.frame;
+                        } else {
+                            frame = getLatestFrame(cameraId);
+                        }
+                    }
                     // Debug: log every 3s if frame exists
                     if ((window as any).__DEBUG_BBOX) {
                         throttledLog(`DBG:${cameraId}`, 3000, () => {
