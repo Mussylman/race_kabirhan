@@ -1,11 +1,14 @@
-"""TimeTracker v2 — per-last-camera ranking (Variant C, 2026-05-02).
+"""TimeTracker v2 — insertion-up ranking (Variant E, 2026-05-03).
 
-One color = one jockey. Global ranking = colors that have appeared on
-the most-recently-updated camera, sorted by their first_seen_ts on
-that camera (ASC = earliest = leader). When a color first appears on
-a new camera in a different order, ranking jumps — overtakes visible.
-See spec section 4 "Step C — Variant C" for rationale (Variant B was
-fixed at race start; user wants overtake visibility).
+One color = one jockey. On every ingest, each color on the active
+camera (sorted by first_seen_ts ASC on that cam) is "moved up" in the
+global ranking to its earned position if and only if that position is
+better than where it currently sits. Standard race overtake semantic:
+jockeys between the mover's old and new position shift down by 1;
+jockeys below the old position are not touched.
+
+See spec section 4 "Step C — Variant E" for rationale (Variant C
+demoted leaders too aggressively when focal camera changed).
 
 Replaces the prior CNN-era forward-only-cam_idx implementation. v2 has
 no monotonic-progression assumption: backward camera updates are accepted,
@@ -247,18 +250,33 @@ class TimeTracker:
     def _compute_ranking_locked(self, now_ts: float) -> list[str]:
         """Build the global ranking. Must be called with self._lock held.
 
-        Variant C (2026-05-02, replaces B): ranking = colors on the
-        most-recently-updated camera sorted by first_seen_ts ASC. When
-        a color overtakes on a new camera, ranking jumps to that order.
-        Earlier-camera orderings are not retained.
+        Variant E (2026-05-03, replaces C): each color on the active
+        camera is moved UP to its earned position (= rank by
+        first_seen_ts ASC on that camera) if better than current
+        global position. Insertion-up — colors only ever move up; the
+        ones between old and new position shift down by 1; colors
+        below the mover's old position are untouched.
         """
         cam_id = self._last_update_cam_id
         if cam_id is None:
-            return []
+            return list(self._last_ranking)
+
         cam_dict = self._cam_state.get(cam_id, {})
-        sorted_jockeys = sorted(cam_dict.values(),
-                                key=lambda j: j["first_seen_ts"])
-        return [j["color"] for j in sorted_jockeys]
+        on_cam_sorted = sorted(cam_dict.values(),
+                               key=lambda j: j["first_seen_ts"])
+        on_cam_colors = [j["color"] for j in on_cam_sorted]
+
+        new_ranking = list(self._last_ranking)
+        for new_pos, color in enumerate(on_cam_colors):
+            if color in new_ranking:
+                old_pos = new_ranking.index(color)
+                if new_pos < old_pos:
+                    new_ranking.pop(old_pos)
+                    new_ranking.insert(new_pos, color)
+                # else: уже на этой позиции или выше — не трогаем
+            else:
+                new_ranking.insert(new_pos, color)
+        return new_ranking
 
     def _build_legacy_ranking_locked(self) -> list[dict]:
         """Build the legacy list-of-dicts ranking. Caller holds the lock.
