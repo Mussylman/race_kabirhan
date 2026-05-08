@@ -7,7 +7,6 @@ import { useRaceStore } from '../store/raceStore';
 import { useCameraStore } from '../store/cameraStore';
 import { Go2RTCPlayer } from '../components/Go2RTCPlayer';
 import { getSilkImagePath } from '../utils/silkUtils';
-import { DebugRankingBar } from '../components/public-display/DebugRankingBar'; // [DEBUG-RANKING-BAR] TEMP — remove with component
 
 // Track position changes per horse for arc animations
 const usePositionChanges = (rankings: { id: string; currentPosition: number; lastCameraId?: string; color?: string; number?: number }[]) => {
@@ -150,9 +149,6 @@ export const PublicDisplay = () => {
 
     return (
         <div className="h-screen w-screen bg-black relative overflow-hidden">
-            {/* [DEBUG-RANKING-BAR] TEMP — visual diagnostic; toggleable via 'D' */}
-            <DebugRankingBar />
-
             {/* PTZ Video Background via WebRTC */}
             {activePTZ && (
                 <Go2RTCPlayer
