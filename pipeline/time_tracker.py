@@ -80,6 +80,13 @@ class TimeTracker:
         # a multi-line block per ranking change. Off by default.
         self._rank_log_path: Optional[str] = (
             os.environ.get("RV_RANK_LOG") or None)
+        # Auto-reset every N seconds of wall clock. Triggered lazily on the
+        # next ingest after the interval elapses. Pairs with go2rtc
+        # -stream_loop -1 so each video loop becomes a fresh "race" for
+        # ranking purposes (PASS events re-fire, animations restart).
+        self._reset_interval_sec = float(
+            os.environ.get("RV_RESET_INTERVAL_SEC", "300.0"))
+        self._last_reset_ts = time.time()
 
     # ── Hot path ────────────────────────────────────────────────────────
 
@@ -119,6 +126,25 @@ class TimeTracker:
             return self._reject("empty_color_or_cam")
 
         with self._lock:
+            # Auto-reset window: wall-clock based, not derived from ingest
+            # ts (so a quiet pipeline doesn't drift the timer).
+            now_wall = time.time()
+            if now_wall - self._last_reset_ts >= self._reset_interval_sec:
+                self._cam_state.clear()
+                self._last_ranking = []
+                self._last_update_cam_id = None
+                self._last_reset_ts = now_wall
+                if self._rank_log_path:
+                    try:
+                        with open(self._rank_log_path, "a") as f:
+                            f.write(
+                                f"\n[{self._format_ts(now_wall)}] "
+                                f"=== RESET (every "
+                                f"{int(self._reset_interval_sec)}s) ===\n\n"
+                            )
+                    except OSError:
+                        pass
+
             cam_dict = self._cam_state.setdefault(cam_id, {})
             prev = cam_dict.get(color)
 
