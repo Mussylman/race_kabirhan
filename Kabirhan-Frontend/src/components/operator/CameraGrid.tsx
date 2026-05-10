@@ -320,7 +320,7 @@ const DetectionOverlay = ({ cameraId, videoRef }: { cameraId: string; videoRef?:
     return (
         <canvas
             ref={canvasRef}
-            className="absolute inset-0 z-10 pointer-events-none"
+            className="absolute inset-0 w-full h-full z-10 pointer-events-none"
         />
     );
 };
