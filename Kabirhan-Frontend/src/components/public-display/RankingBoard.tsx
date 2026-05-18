@@ -1,6 +1,9 @@
 import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
 import { useEffect, useRef, useState } from 'react';
+import { Eye, ChevronUp, ChevronDown } from 'lucide-react';
 import { getSilkImagePath } from '../../utils/silkUtils';
+import { useRaceStore } from '../../store/raceStore';
+import { useCameraStore } from '../../store/cameraStore';
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -11,6 +14,7 @@ interface Horse {
     jockeyName?: string;
     silkId: number;
     currentPosition: number;
+    currentLap?: number;
     lastCameraId?: string;
     color?: string;
 }
@@ -19,93 +23,21 @@ interface Props {
     rankings: Horse[];
 }
 
-// ── Design tokens ──────────────────────────────────────────────────────
+// ── Design tokens (light editorial broadcast theme) ────────────────────
 
-const POSITION_COLOR: Record<number, { strip: string; rgba: string; label: string }> = {
-    1: { strip: '#FFB800', rgba: 'rgba(255, 184, 0, 0.55)',  label: '01' },
-    2: { strip: '#C0C7D1', rgba: 'rgba(192, 199, 209, 0.45)', label: '02' },
-    3: { strip: '#CD7F32', rgba: 'rgba(205, 127, 50, 0.45)',  label: '03' },
-    4: { strip: '#6B7280', rgba: 'rgba(107, 114, 128, 0.40)', label: '04' },
-};
+const COLOR_BG       = '#FAFAF8';
+const COLOR_STRIP    = '#F0EFEB';
+const COLOR_FG       = '#1A1A1A';
+const COLOR_MUTED    = '#6B6B6B';
+const COLOR_LEADER   = '#B8860B';   // dark gold reads better on light bg than #FFB800
+const COLOR_UP       = '#15803D';
+const COLOR_DOWN     = '#B91C1C';
+const COLOR_DIVIDER  = 'rgba(0, 0, 0, 0.08)';
 
 const FONT_DISPLAY = '"Inter", system-ui, sans-serif';
 const FONT_MONO    = '"JetBrains Mono", "SF Mono", monospace';
 
-// ── Sparkline (15 sec position history) ────────────────────────────────
-
-const SPARK_W = 56;
-const SPARK_H = 10;
-const SPARK_MAX_POINTS = 15;
-
-const Sparkline = ({ history, color }: { history: number[]; color: string }) => {
-    if (history.length < 2) {
-        return <div style={{ width: SPARK_W, height: SPARK_H }} />;
-    }
-    // Lower position number = better → draw "up" on the sparkline.
-    // We invert so y is bigger for worse positions.
-    const min = Math.min(...history);
-    const max = Math.max(...history);
-    const span = Math.max(1, max - min);
-    const step = SPARK_W / (history.length - 1);
-    const points = history
-        .map((pos, i) => {
-            const x = i * step;
-            // pos is 1-based; smaller is better → smaller y (top of svg).
-            const y = ((pos - min) / span) * (SPARK_H - 2) + 1;
-            return `${x.toFixed(1)},${y.toFixed(1)}`;
-        })
-        .join(' ');
-    return (
-        <svg
-            width={SPARK_W}
-            height={SPARK_H}
-            viewBox={`0 0 ${SPARK_W} ${SPARK_H}`}
-            style={{ display: 'block' }}
-        >
-            <motion.polyline
-                fill="none"
-                stroke={color}
-                strokeWidth={1.25}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                points={points}
-                initial={{ pathLength: 0.85, opacity: 0.6 }}
-                animate={{ pathLength: 1, opacity: 0.95 }}
-                transition={{ duration: 0.5, ease: 'easeOut' }}
-            />
-        </svg>
-    );
-};
-
-// ── Per-horse position history hook ────────────────────────────────────
-
-function usePositionHistory(rankings: Horse[]): Record<string, number[]> {
-    const [history, setHistory] = useState<Record<string, number[]>>({});
-    const prevRef = useRef<Record<string, number>>({});
-
-    useEffect(() => {
-        const next: Record<string, number[]> = { ...history };
-        let changed = false;
-        for (const h of rankings) {
-            const prev = prevRef.current[h.id];
-            if (prev !== h.currentPosition) {
-                const arr = (next[h.id] || []).concat(h.currentPosition);
-                next[h.id] = arr.slice(-SPARK_MAX_POINTS);
-                prevRef.current[h.id] = h.currentPosition;
-                changed = true;
-            } else if (!(h.id in next)) {
-                next[h.id] = [h.currentPosition];
-                prevRef.current[h.id] = h.currentPosition;
-                changed = true;
-            }
-        }
-        if (changed) setHistory(next);
-    }, [rankings]);
-
-    return history;
-}
-
-// ── Position change tracker (for LED-flash overtake animation) ─────────
+// ── Position-change deltas (3 sec arrow indicator) ─────────────────────
 
 function usePositionDeltas(rankings: Horse[]): Record<string, number> {
     const [deltas, setDeltas] = useState<Record<string, number>>({});
@@ -124,7 +56,7 @@ function usePositionDeltas(rankings: Horse[]): Record<string, number> {
         }
         if (changed) {
             setDeltas(next);
-            const t = setTimeout(() => setDeltas({}), 1500);
+            const t = setTimeout(() => setDeltas({}), 3000);
             return () => clearTimeout(t);
         }
     }, [rankings]);
@@ -132,286 +64,380 @@ function usePositionDeltas(rankings: Horse[]): Record<string, number> {
     return deltas;
 }
 
-// ── Jockey card ────────────────────────────────────────────────────────
+// ── Jockey cell ────────────────────────────────────────────────────────
 
-const JockeyCard = ({
+const JockeyCell = ({
     horse,
-    history,
-    delta,
     isLeader,
+    delta,
+    isLast,
 }: {
     horse: Horse;
-    history: number[];
-    delta: number;
     isLeader: boolean;
+    delta: number;
+    isLast: boolean;
 }) => {
-    const pc = POSITION_COLOR[horse.currentPosition] || POSITION_COLOR[4];
-    const isOvertake = delta < 0;
-    const isFallback = delta > 0;
-    // Cards are static — breathing is now exclusive to the LEADER callout
-    // (motion exclusivity = differentiation without size change).
-    void isLeader;
+    const isUp = delta < 0;
+    const isDown = delta > 0;
 
     return (
         <motion.div
             layout
-            className="relative flex-1 flex items-stretch h-full overflow-hidden"
+            className="relative flex-1 flex items-center gap-4 h-full"
+            style={{ paddingLeft: 28, paddingRight: 28 }}
             transition={{ layout: { duration: 0.5, ease: [0.25, 0.1, 0.25, 1] } }}
         >
-            {/* Position color strip */}
+            {/* Circular silk */}
             <div
-                className="w-1.5 h-full"
-                style={{ background: pc.strip, boxShadow: isLeader ? `0 0 12px ${pc.strip}` : undefined }}
-            />
-
-            {/* Card body */}
-            <div className="flex-1 flex items-center gap-5 px-5 relative">
-                {/* Micro position watermark — quiet "lane number" in same
-                    column where the big P1 used to live, ~2.5x smaller. */}
-                <div className="flex items-center justify-center min-w-[26px]">
-                    <span
-                        style={{
-                            fontFamily: FONT_MONO,
-                            fontWeight: 700,
-                            fontSize: 13,
-                            color: pc.strip,
-                            opacity: 0.55,
-                            letterSpacing: '-0.01em',
-                            fontVariantNumeric: 'tabular-nums',
-                            lineHeight: 1,
-                        }}
-                    >
-                        {pc.label}
-                    </span>
-                </div>
-
-                {/* Silk image — static (no breathing on cards) */}
+                className="flex-shrink-0 rounded-full overflow-hidden"
+                style={{
+                    width: 56,
+                    height: 56,
+                    background: 'rgba(0,0,0,0.04)',
+                    boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.08)',
+                }}
+            >
                 <img
                     src={getSilkImagePath(horse.silkId)}
                     alt={`#${horse.number ?? '?'}`}
-                    className="object-contain"
-                    style={{ height: 64, width: 'auto' }}
+                    className="w-full h-full object-cover"
                 />
-
-                {/* Inline #N + surname, sparkline below */}
-                <div className="flex flex-col gap-1 min-w-0 flex-1">
-                    <div className="flex items-baseline gap-2">
-                        <span
-                            style={{
-                                fontFamily: FONT_MONO,
-                                fontWeight: 700,
-                                fontSize: 14,
-                                color: pc.strip,
-                                opacity: 0.7,
-                                fontVariantNumeric: 'tabular-nums',
-                                lineHeight: 1,
-                            }}
-                        >
-                            #{horse.number ?? '?'}
-                        </span>
-                        <span
-                            style={{
-                                fontFamily: FONT_DISPLAY,
-                                fontWeight: 700,
-                                fontSize: 18,
-                                color: '#F5F7FA',
-                                letterSpacing: '0.05em',
-                                textTransform: 'uppercase',
-                                lineHeight: 1,
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap',
-                            }}
-                        >
-                            {horse.jockeyName || horse.name || '—'}
-                        </span>
-                    </div>
-                    <Sparkline history={history || []} color={pc.strip} />
-                    {/* TODO: dynamic status when lap/gap/track-position data available */}
-                </div>
             </div>
 
-            {/* LED-flash overtake indicator (top→bottom sweep) */}
-            <AnimatePresence>
-                {isOvertake && (
-                    <motion.div
-                        key="overtake"
-                        className="absolute left-0 right-0 pointer-events-none"
+            {/* Name + (optional) LEADER label */}
+            <div className="flex flex-col gap-0.5 min-w-0 flex-1">
+                {isLeader && (
+                    <span
                         style={{
-                            height: 10,
-                            background:
-                                'linear-gradient(180deg, transparent 0%, #00FF88 50%, transparent 100%)',
-                            boxShadow: '0 0 14px rgba(0, 255, 136, 0.9)',
+                            fontFamily: FONT_DISPLAY,
+                            fontSize: 10,
+                            fontWeight: 600,
+                            color: COLOR_LEADER,
+                            letterSpacing: '0.22em',
+                            textTransform: 'uppercase',
+                            lineHeight: 1,
                         }}
-                        initial={{ top: 0, opacity: 0 }}
-                        animate={{ top: '100%', opacity: [0, 1, 1, 0] }}
-                        exit={{ opacity: 0 }}
-                        transition={{ duration: 0.4, ease: 'easeOut' }}
-                    />
+                    >
+                        Leader
+                    </span>
                 )}
-                {isFallback && (
+                <span
+                    style={{
+                        fontFamily: FONT_DISPLAY,
+                        fontSize: 20,
+                        fontWeight: 600,
+                        color: COLOR_FG,
+                        letterSpacing: '0.04em',
+                        textTransform: 'uppercase',
+                        lineHeight: 1.05,
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                    }}
+                >
+                    {horse.jockeyName || horse.name || '—'}
+                </span>
+            </div>
+
+            {/* Position change arrow */}
+            <AnimatePresence>
+                {(isUp || isDown) && (
                     <motion.div
-                        key="fallback"
-                        className="absolute left-0 right-0 pointer-events-none"
-                        style={{
-                            height: 10,
-                            background:
-                                'linear-gradient(180deg, transparent 0%, #FF3B3B 50%, transparent 100%)',
-                            boxShadow: '0 0 14px rgba(255, 59, 59, 0.9)',
-                        }}
-                        initial={{ bottom: 0, opacity: 0 }}
-                        animate={{ bottom: '100%', opacity: [0, 1, 1, 0] }}
-                        exit={{ opacity: 0 }}
-                        transition={{ duration: 0.4, ease: 'easeOut' }}
-                    />
+                        key={isUp ? 'up' : 'down'}
+                        className="flex-shrink-0 flex items-center justify-center"
+                        style={{ width: 28, height: 28 }}
+                        initial={{ opacity: 0, x: 8, scale: 0.85 }}
+                        animate={{ opacity: 1, x: 0, scale: 1 }}
+                        exit={{ opacity: 0, x: -8, scale: 0.85 }}
+                        transition={{ duration: 0.3, ease: 'easeOut' }}
+                    >
+                        {isUp
+                            ? <ChevronUp size={28} color={COLOR_UP} strokeWidth={3} />
+                            : <ChevronDown size={28} color={COLOR_DOWN} strokeWidth={3} />}
+                    </motion.div>
                 )}
             </AnimatePresence>
+
+            {/* Diagonal divider between cells */}
+            {!isLast && (
+                <div
+                    className="absolute pointer-events-none"
+                    style={{
+                        right: -1,
+                        top: '15%',
+                        bottom: '15%',
+                        width: 1,
+                        background: COLOR_DIVIDER,
+                        transform: 'skewX(-10deg)',
+                    }}
+                />
+            )}
         </motion.div>
     );
 };
 
-// ── Leader callout (right side of bar) ─────────────────────────────────
+// ── Info strip (TRACK / LAP / TIME / DISTANCE) ─────────────────────────
 
-const LeaderCallout = ({ leader }: { leader: Horse | undefined }) => {
-    if (!leader) {
-        return <div className="w-[240px]" style={{ marginLeft: 12 }} />;
-    }
+const formatTime = (s: number): string => {
+    const total = Math.max(0, Math.floor(s));
+    const m = Math.floor(total / 60);
+    const sec = total % 60;
+    return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+};
+
+const InfoStrip = ({
+    track,
+    lap,
+    totalLaps,
+    timeSec,
+    distance,
+}: {
+    track: string;
+    lap: number;
+    totalLaps: number;
+    timeSec: number;
+    distance: number;
+}) => {
+    const cells: Array<[string, string]> = [
+        ['Track', track],
+        ['Lap', `${lap}/${totalLaps}`],
+        ['Time', formatTime(timeSec)],
+        ['Distance', `${distance}M`],
+    ];
     return (
         <div
-            className="relative w-[240px] flex items-stretch"
-            style={{ marginLeft: 12 }}
+            className="h-8 flex items-stretch"
+            style={{ background: COLOR_STRIP, borderTop: `1px solid ${COLOR_DIVIDER}` }}
         >
-            {/* Double gold strip — 2px + 4px gap + 2px (total 8px footprint) */}
-            <div className="flex items-stretch" style={{ gap: 4 }}>
-                <div style={{ width: 2, background: '#FFB800', boxShadow: '0 0 8px rgba(255,184,0,0.55)' }} />
-                <div style={{ width: 2, background: '#FFB800', boxShadow: '0 0 8px rgba(255,184,0,0.55)' }} />
-            </div>
-
-            {/* Callout body — radial-gradient warming the center, layered
-                over the very subtle gold wash that was here before. */}
-            <div
-                className="flex-1 flex items-center justify-center px-4"
-                style={{
-                    background:
-                        'radial-gradient(circle at 30% 50%, rgba(20, 37, 64, 0.45) 0%, rgba(10, 22, 40, 0) 65%), rgba(255, 184, 0, 0.04)',
-                }}
-            >
-                <AnimatePresence mode="wait">
-                    <motion.div
-                        key={leader.id}
-                        className="flex items-center gap-3"
-                        initial={{ opacity: 0, scale: 0.95 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.95 }}
-                        transition={{ duration: 0.35, ease: 'easeOut' }}
+            {cells.map(([label, value], i) => (
+                <div
+                    key={label}
+                    className="flex-1 flex items-center gap-3 px-7"
+                    style={{
+                        borderRight: i < cells.length - 1 ? `1px solid ${COLOR_DIVIDER}` : undefined,
+                    }}
+                >
+                    <span
+                        style={{
+                            fontFamily: FONT_DISPLAY,
+                            fontSize: 9,
+                            fontWeight: 600,
+                            color: COLOR_MUTED,
+                            letterSpacing: '0.24em',
+                            textTransform: 'uppercase',
+                            opacity: 0.7,
+                        }}
                     >
-                        <motion.div className="relative" style={{ height: 96 }}>
-                            {/* Gold halo (expansion on leader change) */}
-                            <motion.div
-                                className="absolute inset-0 rounded-full pointer-events-none"
-                                style={{
-                                    boxShadow: '0 0 24px rgba(255, 184, 0, 0.55)',
-                                }}
-                                initial={{ scale: 0.4, opacity: 0 }}
-                                animate={{ scale: 1.1, opacity: [0, 0.9, 0] }}
-                                transition={{ duration: 0.6, ease: 'easeOut' }}
-                            />
-                            {/* LEADER silk — only element in the bar that breathes. */}
-                            <motion.img
-                                src={getSilkImagePath(leader.silkId)}
-                                alt={`#${leader.number ?? '?'}`}
-                                className="object-contain relative"
-                                style={{
-                                    height: 96,
-                                    width: 'auto',
-                                    filter: 'drop-shadow(0 0 18px rgba(255, 184, 0, 0.45))',
-                                }}
-                                animate={{ scale: [1, 1.02, 1] }}
-                                transition={{ duration: 4, ease: 'easeInOut', repeat: Infinity }}
-                            />
-                        </motion.div>
-                        <div className="flex flex-col gap-1">
-                            <span
-                                style={{
-                                    fontFamily: FONT_MONO,
-                                    fontWeight: 700,
-                                    fontSize: 22,
-                                    color: '#FFB800',
-                                    lineHeight: 1,
-                                }}
-                            >
-                                #{leader.number ?? '?'}
-                            </span>
-                            <span
-                                style={{
-                                    fontFamily: FONT_DISPLAY,
-                                    fontWeight: 800,
-                                    fontSize: 18,
-                                    color: '#FFFFFF',
-                                    letterSpacing: '0.08em',
-                                    textTransform: 'uppercase',
-                                    lineHeight: 1.1,
-                                }}
-                            >
-                                {leader.jockeyName || leader.name || '—'}
-                            </span>
-                            {/* 2px solid gold underline with pulsing glow
-                                (no opacity fade — glow blur radius pulses). */}
-                            <motion.div
-                                className="mt-1"
-                                style={{
-                                    height: 2,
-                                    width: 60,
-                                    background: '#FFB800',
-                                }}
-                                animate={{
-                                    boxShadow: [
-                                        '0 0 4px rgba(255,184,0,0.85)',
-                                        '0 0 12px rgba(255,184,0,0.95)',
-                                        '0 0 4px rgba(255,184,0,0.85)',
-                                    ],
-                                }}
-                                transition={{ duration: 2, ease: 'easeInOut', repeat: Infinity }}
-                            />
-                        </div>
-                    </motion.div>
-                </AnimatePresence>
-            </div>
+                        {label}
+                    </span>
+                    <span
+                        style={{
+                            fontFamily: FONT_MONO,
+                            fontSize: 13,
+                            fontWeight: 600,
+                            color: COLOR_FG,
+                            letterSpacing: '-0.01em',
+                            fontVariantNumeric: 'tabular-nums',
+                        }}
+                    >
+                        {value}
+                    </span>
+                </div>
+            ))}
         </div>
     );
 };
 
-// ── Main bar ───────────────────────────────────────────────────────────
+// ── IN FOCUS floating card ─────────────────────────────────────────────
+
+const InFocusCard = ({ horse }: { horse: Horse | null }) => {
+    return (
+        <AnimatePresence>
+            {horse && (
+                <motion.div
+                    style={{
+                        position: 'fixed',
+                        bottom: 164,
+                        right: 24,
+                        width: 280,
+                        background: COLOR_BG,
+                        boxShadow: '0 12px 32px rgba(0,0,0,0.25), 0 1px 0 rgba(0,0,0,0.05)',
+                        borderRadius: 6,
+                        overflow: 'hidden',
+                        zIndex: 30,
+                    }}
+                    initial={{ x: 320, opacity: 0 }}
+                    animate={{ x: 0, opacity: 1 }}
+                    exit={{ x: 320, opacity: 0 }}
+                    transition={{ duration: 0.4, ease: [0.25, 0.1, 0.25, 1] }}
+                >
+                    {/* Header */}
+                    <div
+                        className="flex items-center justify-between px-4 py-2"
+                        style={{ background: 'rgba(0,0,0,0.04)', borderBottom: `1px solid ${COLOR_DIVIDER}` }}
+                    >
+                        <span
+                            style={{
+                                fontFamily: FONT_DISPLAY,
+                                fontSize: 10,
+                                fontWeight: 600,
+                                color: COLOR_FG,
+                                letterSpacing: '0.22em',
+                                textTransform: 'uppercase',
+                            }}
+                        >
+                            In Focus
+                        </span>
+                        <Eye size={14} color={COLOR_MUTED} />
+                    </div>
+
+                    {/* Body */}
+                    <div className="flex items-center gap-4 p-4">
+                        <div
+                            className="flex-shrink-0 overflow-hidden"
+                            style={{
+                                width: 64,
+                                height: 64,
+                                background: 'rgba(0,0,0,0.04)',
+                                boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.08)',
+                                borderRadius: 4,
+                            }}
+                        >
+                            <img
+                                src={getSilkImagePath(horse.silkId)}
+                                alt={`#${horse.number ?? '?'}`}
+                                className="w-full h-full object-cover"
+                            />
+                        </div>
+                        <div className="flex flex-col gap-1 min-w-0 flex-1">
+                            <span
+                                style={{
+                                    fontFamily: FONT_DISPLAY,
+                                    fontSize: 20,
+                                    fontWeight: 700,
+                                    color: COLOR_FG,
+                                    letterSpacing: '0.04em',
+                                    textTransform: 'uppercase',
+                                    lineHeight: 1,
+                                    whiteSpace: 'nowrap',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                }}
+                            >
+                                {horse.jockeyName || horse.name || '—'}
+                            </span>
+                            <span
+                                style={{
+                                    fontFamily: FONT_DISPLAY,
+                                    fontSize: 13,
+                                    color: COLOR_MUTED,
+                                    lineHeight: 1.2,
+                                    whiteSpace: 'nowrap',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                }}
+                            >
+                                {horse.name || '—'}
+                            </span>
+                        </div>
+                    </div>
+
+                    {/* Footer: trainer (placeholder — no real data field yet) */}
+                    <div
+                        className="px-4 py-2 flex justify-between items-baseline"
+                        style={{ borderTop: `1px solid ${COLOR_DIVIDER}` }}
+                    >
+                        <span
+                            style={{
+                                fontFamily: FONT_DISPLAY,
+                                fontSize: 9,
+                                fontWeight: 600,
+                                color: COLOR_MUTED,
+                                letterSpacing: '0.24em',
+                                textTransform: 'uppercase',
+                                opacity: 0.7,
+                            }}
+                        >
+                            Trainer
+                        </span>
+                        <span
+                            style={{
+                                fontFamily: FONT_DISPLAY,
+                                fontSize: 12,
+                                fontWeight: 500,
+                                color: COLOR_FG,
+                            }}
+                        >
+                            —
+                        </span>
+                    </div>
+                </motion.div>
+            )}
+        </AnimatePresence>
+    );
+};
+
+// ── Main ───────────────────────────────────────────────────────────────
 
 export const RankingBoard = ({ rankings }: Props) => {
     const top4 = rankings.slice(0, 4);
     const sorted = [...top4].sort((a, b) => a.currentPosition - b.currentPosition);
     const leader = sorted[0];
-    const history = usePositionHistory(top4);
     const deltas = usePositionDeltas(top4);
 
+    const { race } = useRaceStore();
+    const { activePTZCameraId } = useCameraStore();
+
+    // Race-time ticker (1 Hz).
+    const [now, setNow] = useState(Date.now());
+    useEffect(() => {
+        const t = setInterval(() => setNow(Date.now()), 1000);
+        return () => clearInterval(t);
+    }, []);
+    const timeSec = race.startTime ? Math.max(0, (now - race.startTime) / 1000) : 0;
+    const lap = leader?.currentLap ?? 1;
+    const totalLaps = race.totalLaps ?? 1;
+    const distance = race.trackLength ?? 2500;
+
+    // IN FOCUS — pick jockey on the active PTZ camera, fallback to leader.
+    const inFocus: Horse | null = activePTZCameraId
+        ? top4.find(h => h.lastCameraId === activePTZCameraId) ?? leader ?? null
+        : null;
+
     return (
-        <div
-            className="w-full h-[120px] flex items-stretch border-t border-white/10"
-            style={{
-                background:
-                    'linear-gradient(to right, #0A1628, #0E1A30, #0A1628)',
-            }}
-        >
-            <LayoutGroup id="ranking-board">
-                <div className="flex-1 flex items-stretch">
-                    {sorted.map((horse) => (
-                        <JockeyCard
-                            key={horse.id}
-                            horse={horse}
-                            history={history[horse.id] || []}
-                            delta={deltas[horse.id] || 0}
-                            isLeader={horse.id === leader?.id}
-                        />
-                    ))}
+        <>
+            <InFocusCard horse={inFocus} />
+            <div className="w-full">
+                {/* Main ranking bar */}
+                <div
+                    className="h-[120px] flex items-stretch"
+                    style={{
+                        background: COLOR_BG,
+                        backdropFilter: 'blur(8px)',
+                        WebkitBackdropFilter: 'blur(8px)',
+                    }}
+                >
+                    <LayoutGroup id="ranking-board">
+                        {sorted.map((h, i) => (
+                            <JockeyCell
+                                key={h.id}
+                                horse={h}
+                                isLeader={i === 0}
+                                delta={deltas[h.id] || 0}
+                                isLast={i === sorted.length - 1}
+                            />
+                        ))}
+                    </LayoutGroup>
                 </div>
-            </LayoutGroup>
-            <LeaderCallout leader={leader} />
-        </div>
+                {/* Info strip */}
+                <InfoStrip
+                    track="Good to Firm"
+                    lap={lap}
+                    totalLaps={totalLaps}
+                    timeSec={timeSec}
+                    distance={distance}
+                />
+            </div>
+        </>
     );
 };
