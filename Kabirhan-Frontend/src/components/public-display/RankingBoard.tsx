@@ -148,8 +148,9 @@ const JockeyCard = ({
     const pc = POSITION_COLOR[horse.currentPosition] || POSITION_COLOR[4];
     const isOvertake = delta < 0;
     const isFallback = delta > 0;
-    // Leader breathes 3x amplitude; others very subtle.
-    const breathAmp = isLeader ? 1.015 : 1.005;
+    // Cards are static — breathing is now exclusive to the LEADER callout
+    // (motion exclusivity = differentiation without size change).
+    void isLeader;
 
     return (
         <motion.div
@@ -184,18 +185,12 @@ const JockeyCard = ({
                     </span>
                 </div>
 
-                {/* Silk image with breathing animation */}
-                <motion.img
+                {/* Silk image — static (no breathing on cards) */}
+                <img
                     src={getSilkImagePath(horse.silkId)}
                     alt={`#${horse.number ?? '?'}`}
                     className="object-contain"
                     style={{ height: 64, width: 'auto' }}
-                    animate={{ scale: [1, breathAmp, 1] }}
-                    transition={{
-                        duration: 4,
-                        ease: 'easeInOut',
-                        repeat: Infinity,
-                    }}
                 />
 
                 {/* Inline #N + surname, sparkline below */}
@@ -279,98 +274,109 @@ const JockeyCard = ({
 
 const LeaderCallout = ({ leader }: { leader: Horse | undefined }) => {
     if (!leader) {
-        return <div className="w-[240px] border-l border-white/10" />;
+        return <div className="w-[240px]" style={{ marginLeft: 12 }} />;
     }
     return (
         <div
-            className="w-[240px] flex flex-col items-center justify-center gap-1 border-l border-white/10 px-4"
-            style={{ background: 'rgba(255, 184, 0, 0.04)' }}
+            className="relative w-[240px] flex items-stretch"
+            style={{ marginLeft: 12 }}
         >
-            <span
+            {/* Double gold strip — 2px + 4px gap + 2px (total 8px footprint) */}
+            <div className="flex items-stretch" style={{ gap: 4 }}>
+                <div style={{ width: 2, background: '#FFB800', boxShadow: '0 0 8px rgba(255,184,0,0.55)' }} />
+                <div style={{ width: 2, background: '#FFB800', boxShadow: '0 0 8px rgba(255,184,0,0.55)' }} />
+            </div>
+
+            {/* Callout body — radial-gradient warming the center, layered
+                over the very subtle gold wash that was here before. */}
+            <div
+                className="flex-1 flex items-center justify-center px-4"
                 style={{
-                    fontFamily: FONT_DISPLAY,
-                    fontWeight: 600,
-                    fontSize: 11,
-                    color: '#FFB800',
-                    letterSpacing: '0.18em',
-                    textTransform: 'uppercase',
-                    opacity: 0.85,
+                    background:
+                        'radial-gradient(circle at 30% 50%, rgba(20, 37, 64, 0.45) 0%, rgba(10, 22, 40, 0) 65%), rgba(255, 184, 0, 0.04)',
                 }}
             >
-                ◆ Leader
-            </span>
-            <AnimatePresence mode="wait">
-                <motion.div
-                    key={leader.id}
-                    className="flex items-center gap-3"
-                    initial={{ opacity: 0, scale: 0.95 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.95 }}
-                    transition={{ duration: 0.35, ease: 'easeOut' }}
-                >
-                    <motion.div className="relative" style={{ height: 96 }}>
-                        {/* Gold halo (expansion on leader change) */}
-                        <motion.div
-                            className="absolute inset-0 rounded-full pointer-events-none"
-                            style={{
-                                boxShadow: '0 0 24px rgba(255, 184, 0, 0.55)',
-                            }}
-                            initial={{ scale: 0.4, opacity: 0 }}
-                            animate={{ scale: 1.1, opacity: [0, 0.9, 0] }}
-                            transition={{ duration: 0.6, ease: 'easeOut' }}
-                        />
-                        <motion.img
-                            src={getSilkImagePath(leader.silkId)}
-                            alt={`#${leader.number ?? '?'}`}
-                            className="object-contain relative"
-                            style={{
-                                height: 96,
-                                width: 'auto',
-                                filter: 'drop-shadow(0 0 18px rgba(255, 184, 0, 0.45))',
-                            }}
-                            animate={{ scale: [1, 1.015, 1] }}
-                            transition={{ duration: 4, ease: 'easeInOut', repeat: Infinity }}
-                        />
+                <AnimatePresence mode="wait">
+                    <motion.div
+                        key={leader.id}
+                        className="flex items-center gap-3"
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.95 }}
+                        transition={{ duration: 0.35, ease: 'easeOut' }}
+                    >
+                        <motion.div className="relative" style={{ height: 96 }}>
+                            {/* Gold halo (expansion on leader change) */}
+                            <motion.div
+                                className="absolute inset-0 rounded-full pointer-events-none"
+                                style={{
+                                    boxShadow: '0 0 24px rgba(255, 184, 0, 0.55)',
+                                }}
+                                initial={{ scale: 0.4, opacity: 0 }}
+                                animate={{ scale: 1.1, opacity: [0, 0.9, 0] }}
+                                transition={{ duration: 0.6, ease: 'easeOut' }}
+                            />
+                            {/* LEADER silk — only element in the bar that breathes. */}
+                            <motion.img
+                                src={getSilkImagePath(leader.silkId)}
+                                alt={`#${leader.number ?? '?'}`}
+                                className="object-contain relative"
+                                style={{
+                                    height: 96,
+                                    width: 'auto',
+                                    filter: 'drop-shadow(0 0 18px rgba(255, 184, 0, 0.45))',
+                                }}
+                                animate={{ scale: [1, 1.02, 1] }}
+                                transition={{ duration: 4, ease: 'easeInOut', repeat: Infinity }}
+                            />
+                        </motion.div>
+                        <div className="flex flex-col gap-1">
+                            <span
+                                style={{
+                                    fontFamily: FONT_MONO,
+                                    fontWeight: 700,
+                                    fontSize: 22,
+                                    color: '#FFB800',
+                                    lineHeight: 1,
+                                }}
+                            >
+                                #{leader.number ?? '?'}
+                            </span>
+                            <span
+                                style={{
+                                    fontFamily: FONT_DISPLAY,
+                                    fontWeight: 800,
+                                    fontSize: 18,
+                                    color: '#FFFFFF',
+                                    letterSpacing: '0.08em',
+                                    textTransform: 'uppercase',
+                                    lineHeight: 1.1,
+                                }}
+                            >
+                                {leader.jockeyName || leader.name || '—'}
+                            </span>
+                            {/* 2px solid gold underline with pulsing glow
+                                (no opacity fade — glow blur radius pulses). */}
+                            <motion.div
+                                className="mt-1"
+                                style={{
+                                    height: 2,
+                                    width: 60,
+                                    background: '#FFB800',
+                                }}
+                                animate={{
+                                    boxShadow: [
+                                        '0 0 4px rgba(255,184,0,0.85)',
+                                        '0 0 12px rgba(255,184,0,0.95)',
+                                        '0 0 4px rgba(255,184,0,0.85)',
+                                    ],
+                                }}
+                                transition={{ duration: 2, ease: 'easeInOut', repeat: Infinity }}
+                            />
+                        </div>
                     </motion.div>
-                    <div className="flex flex-col gap-0.5">
-                        <span
-                            style={{
-                                fontFamily: FONT_MONO,
-                                fontWeight: 700,
-                                fontSize: 22,
-                                color: '#FFB800',
-                                lineHeight: 1,
-                            }}
-                        >
-                            #{leader.number ?? '?'}
-                        </span>
-                        <span
-                            style={{
-                                fontFamily: FONT_DISPLAY,
-                                fontWeight: 700,
-                                fontSize: 18,
-                                color: '#F5F7FA',
-                                letterSpacing: '0.05em',
-                                textTransform: 'uppercase',
-                                lineHeight: 1.1,
-                            }}
-                        >
-                            {leader.jockeyName || leader.name || '—'}
-                        </span>
-                        {/* Subtle gold accent line + idle pulse */}
-                        <motion.div
-                            className="mt-1"
-                            style={{
-                                height: 2,
-                                width: 60,
-                                background: 'linear-gradient(90deg, #FFB800 0%, rgba(255,184,0,0) 100%)',
-                            }}
-                            animate={{ opacity: [0.4, 1, 0.4] }}
-                            transition={{ duration: 2, ease: 'easeInOut', repeat: Infinity }}
-                        />
-                    </div>
-                </motion.div>
-            </AnimatePresence>
+                </AnimatePresence>
+            </div>
         </div>
     );
 };
