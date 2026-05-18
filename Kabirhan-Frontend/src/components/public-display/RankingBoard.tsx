@@ -22,10 +22,10 @@ interface Props {
 // ── Design tokens ──────────────────────────────────────────────────────
 
 const POSITION_COLOR: Record<number, { strip: string; rgba: string; label: string }> = {
-    1: { strip: '#FFB800', rgba: 'rgba(255, 184, 0, 0.55)',  label: 'P1' },
-    2: { strip: '#C0C7D1', rgba: 'rgba(192, 199, 209, 0.45)', label: 'P2' },
-    3: { strip: '#CD7F32', rgba: 'rgba(205, 127, 50, 0.45)',  label: 'P3' },
-    4: { strip: '#6B7280', rgba: 'rgba(107, 114, 128, 0.40)', label: 'P4' },
+    1: { strip: '#FFB800', rgba: 'rgba(255, 184, 0, 0.55)',  label: '01' },
+    2: { strip: '#C0C7D1', rgba: 'rgba(192, 199, 209, 0.45)', label: '02' },
+    3: { strip: '#CD7F32', rgba: 'rgba(205, 127, 50, 0.45)',  label: '03' },
+    4: { strip: '#6B7280', rgba: 'rgba(107, 114, 128, 0.40)', label: '04' },
 };
 
 const FONT_DISPLAY = '"Inter", system-ui, sans-serif';
@@ -164,17 +164,20 @@ const JockeyCard = ({
             />
 
             {/* Card body */}
-            <div className="flex-1 flex items-center gap-4 px-4 relative">
-                {/* Position label */}
-                <div className="flex flex-col items-start min-w-[44px]">
+            <div className="flex-1 flex items-center gap-5 px-5 relative">
+                {/* Micro position watermark — quiet "lane number" in same
+                    column where the big P1 used to live, ~2.5x smaller. */}
+                <div className="flex items-center justify-center min-w-[26px]">
                     <span
                         style={{
                             fontFamily: FONT_MONO,
                             fontWeight: 700,
-                            fontSize: 28,
+                            fontSize: 13,
                             color: pc.strip,
+                            opacity: 0.55,
+                            letterSpacing: '-0.01em',
+                            fontVariantNumeric: 'tabular-nums',
                             lineHeight: 1,
-                            letterSpacing: '-0.02em',
                         }}
                     >
                         {pc.label}
@@ -195,15 +198,17 @@ const JockeyCard = ({
                     }}
                 />
 
-                {/* Number + name + sparkline */}
-                <div className="flex flex-col gap-0.5 min-w-0 flex-1">
+                {/* Inline #N + surname, sparkline below */}
+                <div className="flex flex-col gap-1 min-w-0 flex-1">
                     <div className="flex items-baseline gap-2">
                         <span
                             style={{
                                 fontFamily: FONT_MONO,
                                 fontWeight: 700,
-                                fontSize: 18,
+                                fontSize: 14,
                                 color: pc.strip,
+                                opacity: 0.7,
+                                fontVariantNumeric: 'tabular-nums',
                                 lineHeight: 1,
                             }}
                         >
@@ -212,10 +217,10 @@ const JockeyCard = ({
                         <span
                             style={{
                                 fontFamily: FONT_DISPLAY,
-                                fontWeight: 600,
+                                fontWeight: 700,
                                 fontSize: 18,
                                 color: '#F5F7FA',
-                                letterSpacing: '0.04em',
+                                letterSpacing: '0.05em',
                                 textTransform: 'uppercase',
                                 lineHeight: 1,
                                 overflow: 'hidden',
