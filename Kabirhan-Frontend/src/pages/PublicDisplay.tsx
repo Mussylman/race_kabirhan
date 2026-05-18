@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence, useSpring, useTransform } from 'framer-motion';
 import { Trophy } from 'lucide-react';
@@ -7,65 +7,7 @@ import { useRaceStore } from '../store/raceStore';
 import { useCameraStore } from '../store/cameraStore';
 import { Go2RTCPlayer } from '../components/Go2RTCPlayer';
 import { getSilkImagePath } from '../utils/silkUtils';
-
-// Track position changes per horse for arc animations
-const usePositionChanges = (rankings: { id: string; currentPosition: number; lastCameraId?: string; color?: string; number?: number }[]) => {
-    const prevPositions = useRef<Record<string, number>>({});
-    const prevCamIds = useRef<Record<string, string>>({});
-    const [deltas, setDeltas] = useState<Record<string, number>>({});
-
-    useEffect(() => {
-        const newDeltas: Record<string, number> = {};
-        let hasChange = false;
-        // [ANIM] TEMP DEBUG — track per-horse cam change for log
-        const horseDebugInfo: string[] = [];
-        const camMoves: string[] = [];
-
-        for (const horse of rankings) {
-            const prev = prevPositions.current[horse.id];
-            const prevCam = prevCamIds.current[horse.id];
-            const curCam = horse.lastCameraId || '?';
-            const tag = horse.color || ('#' + (horse.number ?? '?'));
-            if (prev !== undefined && prev !== horse.currentPosition) {
-                newDeltas[horse.id] = horse.currentPosition - prev;
-                hasChange = true;
-                horseDebugInfo.push(
-                    `${tag}(${prevCam || '?'}→${curCam}):${prev > horse.currentPosition ? '↑' : '↓'}${horse.currentPosition - prev > 0 ? '+' : ''}${horse.currentPosition - prev}`
-                );
-            } else if (prevCam !== undefined && prevCam !== curCam) {
-                // cam changed but position didn't — interesting for diagnosing PASS events
-                camMoves.push(`${tag}:${prevCam}→${curCam}`);
-            }
-            prevPositions.current[horse.id] = horse.currentPosition;
-            prevCamIds.current[horse.id] = curCam;
-        }
-
-        // [ANIM] TEMP DEBUG — remove after diagnostic
-        if (hasChange) {
-            console.log(
-                `[ANIM] position change detected (${rankings.length} horses): ${horseDebugInfo.join(', ')}`
-                + (camMoves.length > 0 ? ` · cam-only-moves=[${camMoves.join(', ')}]` : '')
-            );
-        } else if (camMoves.length > 0) {
-            console.log(
-                `[ANIM] usePositionChanges effect: NO position change but cam-only-moves=[${camMoves.join(', ')}] (${rankings.length} horses)`
-            );
-        } else {
-            console.log(`[ANIM] usePositionChanges effect ran: no change (${rankings.length} horses)`);
-        }
-
-        if (hasChange) {
-            setDeltas(newDeltas);
-            const timer = setTimeout(() => {
-                console.log(`[ANIM] deltas timeout fired — clearing all deltas after 10s`);
-                setDeltas({});
-            }, 10000);
-            return () => clearTimeout(timer);
-        }
-    }, [rankings]);
-
-    return deltas;
-};
+import { RankingBoard } from '../components/public-display/RankingBoard';
 
 // Format time as MM:SS.d
 const formatTime = (seconds: number): string => {
@@ -129,23 +71,8 @@ export const PublicDisplay = () => {
     const activePTZ = ptzCameras.find(c => c.id === activePTZCameraId);
 
     const leader = rankings[0];
-    const speed = leader ? leader.speed * 3.6 : 0;
     const time = leader?.timeElapsed || 0;
     const winner = rankings[0];
-
-    // Top horses for ranking display
-    const topHorses = rankings.slice(0, 10);
-
-    // Track position changes for arc animation
-    const positionDeltas = usePositionChanges(rankings);
-
-    // [ANIM] TEMP DEBUG — remove after diagnostic
-    console.log(
-        `[ANIM] render PublicDisplay: rankings=[${rankings
-            .slice(0, 10)
-            .map(h => `${h.color || '#'+h.number}@${h.currentPosition}/${h.lastCameraId || '?'}`)
-            .join(',')}] activeDeltas=${Object.keys(positionDeltas).length}`
-    );
 
     return (
         <div className="h-screen w-screen bg-black relative overflow-hidden">
@@ -170,142 +97,9 @@ export const PublicDisplay = () => {
                 </div>
             </div>
 
-            {/* BOTTOM - Professional TV Racing Bar */}
+            {/* BOTTOM - Broadcast-style ranking bar */}
             <div className="absolute bottom-0 left-0 right-0 z-20">
-                <div
-                    className="border-t border-green-900/50"
-                    style={{
-                        background: 'linear-gradient(to right, #0a1a0a, #0d1f0d, #0a1a0a)'
-                    }}
-                >
-                    <div className="flex items-center h-[140px]">
-
-                        {/* LEFT - Position Marker */}
-                        <div className="flex items-center justify-center w-24 h-full border-r border-green-900/30">
-                            <div className="relative flex flex-col items-center">
-                                <div className="w-12 h-12 rounded-full bg-red-600 border-4 border-white shadow-lg z-10"></div>
-                                <div className="w-1.5 h-14 bg-gradient-to-b from-gray-300 to-gray-500 -mt-1"></div>
-                            </div>
-                        </div>
-
-                        {/* CENTER - Jockeys with Numbers */}
-                        <div className="flex-1 relative overflow-visible" style={{ minHeight: 140 }}>
-                            {topHorses.map((horse, index) => {
-                                const delta = positionDeltas[horse.id] || 0;
-                                const isOvertake = delta < 0;
-                                const isFallback = delta > 0;
-
-                                const slotWidth = 90;
-                                const containerCenter = 50;
-                                const offsetPx = (index - (topHorses.length - 1) / 2) * slotWidth;
-
-                                return (
-                                    <motion.div
-                                        key={horse.id}
-                                        animate={{
-                                            x: offsetPx,
-                                            y: delta < 0 ? [-80, 0] : delta > 0 ? [50, 0] : 0,
-                                            scale: delta !== 0 ? [1.3, 1] : 1,
-                                        }}
-                                        transition={{
-                                            x: {
-                                                type: 'tween',
-                                                duration: 3,
-                                                ease: [0.25, 0.1, 0.25, 1],
-                                            },
-                                            y: {
-                                                type: 'tween',
-                                                duration: 3,
-                                                ease: [0.25, 0.1, 0.25, 1],
-                                            },
-                                            scale: {
-                                                type: 'tween',
-                                                duration: 2.5,
-                                                ease: 'easeInOut',
-                                            },
-                                        }}
-                                        // [ANIM] TEMP DEBUG — remove after diagnostic
-                                        onAnimationStart={(definition) => {
-                                            console.log(
-                                                `[ANIM] anim start: horse=${horse.color || '#'+horse.number} (id=${horse.id.substring(0, 8)})`
-                                                + ` cam=${horse.lastCameraId || '?'}`
-                                                + ` pos=${horse.currentPosition} delta=${delta}`
-                                                + ` definition=${JSON.stringify(definition)}`
-                                            );
-                                        }}
-                                        onAnimationComplete={(definition) => {
-                                            console.log(
-                                                `[ANIM] anim complete: horse=${horse.color || '#'+horse.number} (id=${horse.id.substring(0, 8)})`
-                                                + ` cam=${horse.lastCameraId || '?'}`
-                                                + ` pos=${horse.currentPosition}`
-                                                + ` definition=${JSON.stringify(definition)}`
-                                            );
-                                        }}
-                                        className="absolute bottom-2 flex flex-col items-center w-[80px]"
-                                        style={{
-                                            left: `${containerCenter}%`,
-                                            marginLeft: -40,
-                                        }}
-                                    >
-                                        {/* Position change indicator arrow */}
-                                        {isOvertake && (
-                                            <motion.div
-                                                className="absolute -top-8 left-1/2 -translate-x-1/2 text-green-400 font-bold text-lg z-10"
-                                                initial={{ opacity: 0, y: 10 }}
-                                                animate={{ opacity: [0, 1, 1, 0], y: [10, -12, -12, -30] }}
-                                                transition={{ duration: 10, times: [0, 0.05, 0.85, 1] }}
-                                            >
-                                                ▲ +{Math.abs(delta)}
-                                            </motion.div>
-                                        )}
-                                        {isFallback && (
-                                            <motion.div
-                                                className="absolute -top-8 left-1/2 -translate-x-1/2 text-red-400 font-bold text-lg z-10"
-                                                initial={{ opacity: 0, y: -10 }}
-                                                animate={{ opacity: [0, 1, 1, 0], y: [-10, 0, 0, 15] }}
-                                                transition={{ duration: 10, times: [0, 0.05, 0.85, 1] }}
-                                            >
-                                                ▼ -{Math.abs(delta)}
-                                            </motion.div>
-                                        )}
-
-                                        {/* Jockey Icon with glow on change */}
-                                        <img
-                                            src={getSilkImagePath(horse.silkId)}
-                                            alt={`#${horse.number}`}
-                                            className="h-[70px] w-auto object-contain"
-                                            style={{
-                                                filter: isOvertake
-                                                    ? 'drop-shadow(0 0 20px rgba(74, 222, 128, 0.9)) drop-shadow(0 0 40px rgba(74, 222, 128, 0.4)) drop-shadow(0 2px 4px rgba(0,0,0,0.5))'
-                                                    : isFallback
-                                                        ? 'drop-shadow(0 0 20px rgba(248, 113, 113, 0.8)) drop-shadow(0 0 40px rgba(248, 113, 113, 0.3)) drop-shadow(0 2px 4px rgba(0,0,0,0.5))'
-                                                        : 'drop-shadow(0 2px 4px rgba(0,0,0,0.5))',
-                                            }}
-                                        />
-
-                                        {/* Horse Number */}
-                                        <div className={`font-bold text-xl mt-1 ${
-                                            isOvertake ? 'text-green-300' : isFallback ? 'text-red-300' : 'text-white'
-                                        }`}>
-                                            {horse.number}
-                                        </div>
-                                    </motion.div>
-                                );
-                            })}
-                        </div>
-
-                        {/* RIGHT - Speedometer */}
-                        <div className="w-36 h-full flex items-center justify-center border-l border-green-900/30 bg-black/30">
-                            <div className="text-center">
-                                <div className="text-4xl font-bold text-white font-mono tabular-nums">
-                                    <AnimatedNumber value={speed} decimals={1} />
-                                </div>
-                                <div className="text-sm text-gray-400 mt-1">km/h</div>
-                            </div>
-                        </div>
-
-                    </div>
-                </div>
+                <RankingBoard rankings={rankings.slice(0, 4)} />
             </div>
 
             {/* Race Finished Overlay */}
