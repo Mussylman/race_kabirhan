@@ -83,8 +83,8 @@ const JockeyCell = ({
     return (
         <motion.div
             layout
-            className="relative flex-1 flex items-center gap-4 h-full"
-            style={{ paddingLeft: 28, paddingRight: 28 }}
+            className="relative flex-1 flex items-center gap-3 h-full"
+            style={{ paddingLeft: 20, paddingRight: 20 }}
             transition={{ layout: { duration: 0.5, ease: [0.25, 0.1, 0.25, 1] } }}
         >
             {/* Circular silk */}
@@ -257,7 +257,7 @@ const InFocusCard = ({ horse }: { horse: Horse | null }) => {
                 <motion.div
                     style={{
                         position: 'fixed',
-                        bottom: 164,
+                        bottom: 188,
                         right: 24,
                         width: 280,
                         background: COLOR_BG,
@@ -407,14 +407,32 @@ export const RankingBoard = ({ rankings }: Props) => {
     return (
         <>
             <InFocusCard horse={inFocus} />
-            <div className="w-full">
+            {/* Floating centered card — 65vw / max 1200px, bottom-anchored
+                to viewport. Self-positions via position:fixed so any wrapper
+                in PublicDisplay (absolute bottom-0) is ignored. */}
+            <div
+                style={{
+                    position: 'fixed',
+                    bottom: 24,
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    width: '65vw',
+                    maxWidth: 1200,
+                    minWidth: 720,
+                    borderRadius: 16,
+                    overflow: 'hidden',
+                    boxShadow:
+                        '0 12px 36px rgba(0, 0, 0, 0.28), 0 1px 0 rgba(255, 255, 255, 0.06)',
+                    zIndex: 20,
+                }}
+            >
                 {/* Main ranking bar */}
                 <div
                     className="h-[120px] flex items-stretch"
                     style={{
                         background: COLOR_BG,
-                        backdropFilter: 'blur(8px)',
-                        WebkitBackdropFilter: 'blur(8px)',
+                        backdropFilter: 'blur(10px)',
+                        WebkitBackdropFilter: 'blur(10px)',
                     }}
                 >
                     <LayoutGroup id="ranking-board">
@@ -429,7 +447,7 @@ export const RankingBoard = ({ rankings }: Props) => {
                         ))}
                     </LayoutGroup>
                 </div>
-                {/* Info strip */}
+                {/* Info strip — bottom section of the same floating block */}
                 <InfoStrip
                     track="Good to Firm"
                     lap={lap}
