@@ -42,10 +42,10 @@ TRACK_LENGTH = 2500
 # ============================================================
 
 COLOR_TO_HORSE = {
-    "red":    {"id": "horse-1", "number": 1, "name": "Red Runner",    "silkId": 1, "color": "#DC2626", "jockeyName": "Jockey 1"},
-    "blue":   {"id": "horse-2", "number": 2, "name": "Blue Storm",    "silkId": 2, "color": "#2563EB", "jockeyName": "Jockey 2"},
-    "green":  {"id": "horse-3", "number": 3, "name": "Green Flash",   "silkId": 3, "color": "#16A34A", "jockeyName": "Jockey 3"},
-    "yellow": {"id": "horse-4", "number": 4, "name": "Yellow Thunder","silkId": 4, "color": "#FBBF24", "jockeyName": "Jockey 4"},
+    "red":    {"id": "horse-1", "number": 1, "name": "Red Runner",    "silkId": 1, "color": "#DC2626", "jockeyName": "Шабандоз 1"},
+    "blue":   {"id": "horse-2", "number": 2, "name": "Blue Storm",    "silkId": 2, "color": "#2563EB", "jockeyName": "Шабандоз 2"},
+    "green":  {"id": "horse-3", "number": 3, "name": "Green Flash",   "silkId": 3, "color": "#16A34A", "jockeyName": "Шабандоз 3"},
+    "yellow": {"id": "horse-4", "number": 4, "name": "Yellow Thunder","silkId": 4, "color": "#FBBF24", "jockeyName": "Шабандоз 4"},
 }
 
 ALL_COLORS = list(COLOR_TO_HORSE.keys())

@@ -213,14 +213,14 @@ export const RaceSettings = () => {
                                     />
                                 </div>
 
-                                {/* Jockey Name */}
+                                {/* Шабандоз Name */}
                                 <div className="flex-1 min-w-0">
-                                    <label className="text-[10px] text-[var(--text-muted)] block mb-0.5">Jockey Name</label>
+                                    <label className="text-[10px] text-[var(--text-muted)] block mb-0.5">Шабандоз Name</label>
                                     <input
                                         type="text" value={horse.jockeyName}
                                         onChange={(e) => updateHorse(horse.id, { jockeyName: e.target.value })}
                                         className="w-full text-sm py-1 px-2"
-                                        placeholder="Jockey Name"
+                                        placeholder="Шабандоз Name"
                                     />
                                 </div>
 

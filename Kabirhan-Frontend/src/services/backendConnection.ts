@@ -167,7 +167,7 @@ const handleBackendMessage = (message: BackendMessage) => {
                     name: horse.name || `Horse ${horse.number}`,
                     number: horse.number,
                     color: detectedColor,
-                    jockeyName: horse.jockeyName || `Jockey ${horse.number}`,
+                    jockeyName: horse.jockeyName || `Шабандоз ${horse.number}`,
                     silkId: silkId,
                     silkColor: getSilkColor(silkId),
                 });
@@ -196,7 +196,7 @@ const handleBackendMessage = (message: BackendMessage) => {
                         name: r.name || `Horse ${r.number}`,
                         number: r.number,
                         color: detectedColor,
-                        jockeyName: r.jockeyName || `Jockey ${r.number}`,
+                        jockeyName: r.jockeyName || `Шабандоз ${r.number}`,
                         currentPosition: r.position || index + 1,
                         distanceCovered: r.distanceCovered || 0,
                         currentLap: r.currentLap || 1,

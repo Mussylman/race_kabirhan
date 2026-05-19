@@ -58,7 +58,7 @@ export const en = {
         removeHorse: 'Remove Horse',
         horseName: 'Horse Name',
         horseNumber: 'Horse Number',
-        jockeyName: 'Jockey Name',
+        jockeyName: 'Шабандоз Name',
         color: 'Color',
     },
 

@@ -58,7 +58,7 @@ export const ru = {
         removeHorse: 'Удалить лошадь',
         horseName: 'Имя лошади',
         horseNumber: 'Номер лошади',
-        jockeyName: 'Имя жокея',
+        jockeyName: 'Имя шабандоза',
         color: 'Цвет',
     },
 

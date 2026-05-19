@@ -96,7 +96,7 @@ export const useRaceStore = create<RaceState>((set, get) => ({
             name: horseData.name || `Horse ${horseData.number}`,
             number: horseData.number,
             color: horseData.color || HORSE_COLORS[(horseData.number - 1) % HORSE_COLORS.length],
-            jockeyName: horseData.jockeyName || `Jockey ${horseData.number}`,
+            jockeyName: horseData.jockeyName || `Шабандоз ${horseData.number}`,
             currentPosition: horseData.currentPosition || state.horses.length + 1,
             currentLap: horseData.currentLap || 1,
             timeElapsed: horseData.timeElapsed || 0,
