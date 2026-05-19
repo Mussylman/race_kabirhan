@@ -62,7 +62,7 @@ classifier-async-mode=0
 # 0.75 — best balanced on golden cam-13 (98.2% jockey acc, 99.2% NJ
 # reject). Production env override via RV_OSNET_MIN_SIM (parser uses
 # max of two).
-classifier-threshold=0.75
+classifier-threshold=0.65
 
 # Tensor I/O — OSNet input 3x256x128, output [1, 512] embedding
 infer-dims=3;256;128
