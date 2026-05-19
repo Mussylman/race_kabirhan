@@ -31,6 +31,15 @@ FRONTEND_DIR="${RV_FRONTEND_DIR:-Kabirhan-Frontend}"
 GO2RTC_BIN="${RV_GO2RTC_BIN:-bin/go2rtc}"
 GO2RTC_CFG="${RV_GO2RTC_CFG:-configs/go2rtc_live.yaml}"
 
+# ── DS tunables (production defaults; override via env) ───────────────
+TIGHT_SGIE="${RV_TIGHT_SGIE:-0}"                    # 0=OSNet, 1=DINOv2 fallback
+MIN_CONSEC="${RV_MIN_CONSEC:-1}"                    # stability gate frames (1=disable)
+MIN_DET_CONF="${RV_MIN_DET_CONF:-0.5}"              # YOLO conf gate before SHM/SGIE
+COMPACT_LOG="${RV_COMPACT_LOG:-1}"                  # 1=compact diag, 0=legacy
+LOG_REJ="${RV_LOG_REJ:-0}"                          # 1=log DET REJECT lines
+RANK_LOG="${RV_RANK_LOG:-/tmp/rank_log.txt}"        # ranking-change history file
+RESET_INTERVAL_SEC="${RV_RESET_INTERVAL_SEC:-300}"  # TimeTracker auto-reset window (sec)
+
 # ── video-only profile (file:// sources, no RTSP / go2rtc / Hikvision)
 VIDEO_MODE=0
 VIDEO_CAMERAS="${RV_VIDEO_CAMERAS:-configs/cameras_test_files_ordered.json}"
@@ -120,6 +129,13 @@ start_ds() {
         export DISPLAY="${DISPLAY:-:0}"
     fi
     RV_ACTIVE_COLORS="$ACTIVE_COLORS" \
+      RV_TIGHT_SGIE="$TIGHT_SGIE" \
+      RV_MIN_CONSEC="$MIN_CONSEC" \
+      RV_MIN_DET_CONF="$MIN_DET_CONF" \
+      RV_COMPACT_LOG="$COMPACT_LOG" \
+      RV_LOG_REJ="$LOG_REJ" \
+      RV_RANK_LOG="$RANK_LOG" \
+      RV_RESET_INTERVAL_SEC="$RESET_INTERVAL_SEC" \
       setsid python3 -m deepstream.main \
         --cameras "$CAMERAS_CFG" $ds_extra \
         >"$(svc_log ds)" 2>&1 &
