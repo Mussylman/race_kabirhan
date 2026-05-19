@@ -25,17 +25,18 @@ interface Props {
 
 // ── Design tokens (light editorial broadcast theme) ────────────────────
 
-const COLOR_BG       = '#FAFAF8';
-const COLOR_STRIP    = '#F0EFEB';
-const COLOR_FG       = '#1A1A1A';
-const COLOR_MUTED    = '#6B6B6B';
-const COLOR_LEADER   = '#B8860B';   // dark gold reads better on light bg than #FFB800
-const COLOR_UP       = '#15803D';
-const COLOR_DOWN     = '#B91C1C';
+const COLOR_BG       = 'rgba(255, 255, 255, 0.96)';
+const COLOR_STRIP    = '#F5F5F7';   // Apple-style neutral
+const COLOR_FG       = '#0A0A0A';   // deeper black, premium
+const COLOR_MUTED    = '#71717A';   // Zinc-500
+const COLOR_LEADER   = '#C77800';   // amber gold, less olive
+const COLOR_UP       = '#10B981';   // Emerald-500
+const COLOR_DOWN     = '#EF4444';   // Red-500
 const COLOR_DIVIDER  = 'rgba(0, 0, 0, 0.08)';
+const COLOR_BORDER   = 'rgba(0, 0, 0, 0.06)';  // hairline for light-on-light contrast
 
-const FONT_DISPLAY = '"Inter", system-ui, sans-serif';
-const FONT_MONO    = '"JetBrains Mono", "SF Mono", monospace';
+const FONT_DISPLAY = '"Geist", system-ui, sans-serif';
+const FONT_MONO    = '"Geist Mono", "SF Mono", monospace';
 
 // ── Position-change deltas (3 sec arrow indicator) ─────────────────────
 
@@ -261,7 +262,10 @@ const InFocusCard = ({ horse }: { horse: Horse | null }) => {
                         right: 24,
                         width: 280,
                         background: COLOR_BG,
-                        boxShadow: '0 12px 32px rgba(0,0,0,0.25), 0 1px 0 rgba(0,0,0,0.05)',
+                        backdropFilter: 'blur(10px)',
+                        WebkitBackdropFilter: 'blur(10px)',
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.05), 0 12px 40px rgba(0,0,0,0.12)',
+                        border: `0.5px solid ${COLOR_BORDER}`,
                         borderRadius: 6,
                         overflow: 'hidden',
                         zIndex: 30,
@@ -422,7 +426,8 @@ export const RankingBoard = ({ rankings }: Props) => {
                     borderRadius: 16,
                     overflow: 'hidden',
                     boxShadow:
-                        '0 12px 36px rgba(0, 0, 0, 0.28), 0 1px 0 rgba(255, 255, 255, 0.06)',
+                        '0 1px 3px rgba(0,0,0,0.05), 0 12px 40px rgba(0,0,0,0.12)',
+                    border: `0.5px solid ${COLOR_BORDER}`,
                     zIndex: 20,
                 }}
             >
