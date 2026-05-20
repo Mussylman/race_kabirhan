@@ -48,9 +48,9 @@ streams:
   cam-23:
     - rtsp://admin:Zxcv2Zxcv2@10.223.70.29:554/Streaming/Channels/101
   cam-24:
-    - rtsp://admin:Zxcv2Zxcv2@10.223.70.45:554/Streaming/Channels/101
-  cam-25:
     - rtsp://admin:Zxcv2Zxcv2@10.223.70.23:554/Streaming/Channels/101
+  cam-25:
+    - rtsp://admin:Zxcv2Zxcv2@10.223.70.45:554/Streaming/Channels/101
   ptz-1:
     - rtsp://admin:Turkestan707@10.223.70.190:554/Streaming/Channels/101
 

@@ -59,8 +59,8 @@ export const ANALYTICS_CAMERAS: AnalyticsCameraConfig[] = [
     { id: 'cam-21', name: 'Cam .48',  go2rtcId: 'cam-21', rtspUrl: 'rtsp://admin:Zxcv2Zxcv2@10.223.70.48:554/Streaming/Channels/101', trackStart: 2000, trackEnd: 2110, status: 'offline' },
     { id: 'cam-22', name: 'Cam .24',  go2rtcId: 'cam-22', rtspUrl: 'rtsp://admin:Zxcv2Zxcv2@10.223.70.24:554/Streaming/Channels/101', trackStart: 2100, trackEnd: 2210, status: 'offline' },
     { id: 'cam-23', name: 'Cam .29',  go2rtcId: 'cam-23', rtspUrl: 'rtsp://admin:Zxcv2Zxcv2@10.223.70.29:554/Streaming/Channels/101', trackStart: 2200, trackEnd: 2310, status: 'offline' },
-    { id: 'cam-24', name: 'Cam .45',  go2rtcId: 'cam-24', rtspUrl: 'rtsp://admin:Zxcv2Zxcv2@10.223.70.45:554/Streaming/Channels/101', trackStart: 2300, trackEnd: 2410, status: 'offline' },
-    { id: 'cam-25', name: 'Cam .23',  go2rtcId: 'cam-25', rtspUrl: 'rtsp://admin:Zxcv2Zxcv2@10.223.70.23:554/Streaming/Channels/101', trackStart: 2400, trackEnd: 2500, status: 'offline' },
+    { id: 'cam-24', name: 'Cam .23',  go2rtcId: 'cam-24', rtspUrl: 'rtsp://admin:Zxcv2Zxcv2@10.223.70.23:554/Streaming/Channels/101', trackStart: 2300, trackEnd: 2410, status: 'offline' },
+    { id: 'cam-25', name: 'Cam .45',  go2rtcId: 'cam-25', rtspUrl: 'rtsp://admin:Zxcv2Zxcv2@10.223.70.45:554/Streaming/Channels/101', trackStart: 2400, trackEnd: 2500, status: 'offline' },
 ];
 
 // ============================================================
