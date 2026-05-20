@@ -34,7 +34,7 @@ GO2RTC_CFG="${RV_GO2RTC_CFG:-configs/go2rtc_live.yaml}"
 # ── DS tunables (production defaults; override via env) ───────────────
 TIGHT_SGIE="${RV_TIGHT_SGIE:-0}"                    # 0=OSNet, 1=DINOv2 fallback
 MIN_CONSEC="${RV_MIN_CONSEC:-1}"                    # stability gate frames (1=disable)
-MIN_DET_CONF="${RV_MIN_DET_CONF:-0.35}"              # YOLO conf gate before SHM/SGIE
+MIN_DET_CONF="${RV_MIN_DET_CONF:-0.4}"              # YOLO conf gate before SHM/SGIE
 COMPACT_LOG="${RV_COMPACT_LOG:-1}"                  # 1=compact diag, 0=legacy
 LOG_REJ="${RV_LOG_REJ:-0}"                          # 1=log DET REJECT lines
 RANK_LOG="${RV_RANK_LOG:-/tmp/rank_log.txt}"        # ranking-change history file
