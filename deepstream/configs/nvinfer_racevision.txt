@@ -46,7 +46,7 @@ custom-lib-path=/home/ipodrom/Рабочий стол/Ipodrom-Project/user/race_
 output-blob-names=output0
 
 [class-attrs-all]
-pre-cluster-threshold=0.2
+pre-cluster-threshold=0.12
 
 [class-attrs-0]
-pre-cluster-threshold=0.2
+pre-cluster-threshold=0.12
