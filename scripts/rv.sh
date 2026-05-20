@@ -39,8 +39,6 @@ COMPACT_LOG="${RV_COMPACT_LOG:-1}"                  # 1=compact diag, 0=legacy
 LOG_REJ="${RV_LOG_REJ:-0}"                          # 1=log DET REJECT lines
 RANK_LOG="${RV_RANK_LOG:-/tmp/rank_log.txt}"        # ranking-change history file
 RESET_INTERVAL_SEC="${RV_RESET_INTERVAL_SEC:-300}"  # TimeTracker auto-reset window (sec)
-FLICKER_WINDOW_MS="${RV_FLICKER_WINDOW_MS:-200}"    # anti-flicker window (ms), no_tracker path
-FLICKER_MIN_HITS="${RV_FLICKER_MIN_HITS:-2}"        # min same-color hits in window
 
 # ── video-only profile (file:// sources, no RTSP / go2rtc / Hikvision)
 VIDEO_MODE=0
@@ -138,8 +136,6 @@ start_ds() {
       RV_LOG_REJ="$LOG_REJ" \
       RV_RANK_LOG="$RANK_LOG" \
       RV_RESET_INTERVAL_SEC="$RESET_INTERVAL_SEC" \
-      RV_FLICKER_WINDOW_MS="$FLICKER_WINDOW_MS" \
-      RV_FLICKER_MIN_HITS="$FLICKER_MIN_HITS" \
       setsid python3 -m deepstream.main \
         --cameras "$CAMERAS_CFG" $ds_extra \
         >"$(svc_log ds)" 2>&1 &

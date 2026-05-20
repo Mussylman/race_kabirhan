@@ -29,7 +29,6 @@ import sys
 import threading
 import time
 import urllib.request
-from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -95,14 +94,6 @@ class DetectionProbe(BatchMetadataOperator):
     # track_id before ingesting to TimeTracker. Filters 1-off false classifications.
     MIN_CONSEC = int(os.environ.get("RV_MIN_CONSEC", "3"))
 
-    # Time-window anti-flicker gate (independent of nvtracker).
-    # Applied on the no_tracker fast-path: a (cam, color) pair must appear
-    # >= FLICKER_MIN_HITS times within FLICKER_WINDOW_MS before reaching
-    # TimeTracker. Filters single-frame false classifications when nvtracker
-    # is disabled (current default deploy).
-    FLICKER_WINDOW_MS = int(os.environ.get("RV_FLICKER_WINDOW_MS", "200"))
-    FLICKER_MIN_HITS  = int(os.environ.get("RV_FLICKER_MIN_HITS",  "2"))
-
     def __init__(self, plugin: RVPlugin, shm_handle, cam_ids: list[str],
                  mux_width: int, mux_height: int, log_every: int = 50,
                  cam_uris: list[str] | None = None,
@@ -118,8 +109,6 @@ class DetectionProbe(BatchMetadataOperator):
         self.sgie_active  = sgie_active
         # Stability state: (cam_id, track_id) -> {color, count}
         self._stability: dict[tuple[str, int], dict] = {}
-        # Anti-flicker time-window state: (cam_id, color) -> deque[ts_ms]
-        self._flicker_window: dict[tuple[str, str], deque] = {}
         # Compact one-line diagnostics (RV_COMPACT_LOG=1).
         self._compact_log = os.environ.get("RV_COMPACT_LOG", "0") == "1"
         self._log_det_min = float(os.environ.get("RV_LOG_DET_MIN", "0.5"))
@@ -725,22 +714,7 @@ class DetectionProbe(BatchMetadataOperator):
                 continue
             tid = int(d.track_id or 0)
             if tid <= 0 or tid >= 1_000_000_000:
-                # no tracker → time-window anti-flicker gate
-                ts_ms = ts_us / 1000.0
-                key_fw = (cam, cname)
-                dq = self._flicker_window.get(key_fw)
-                if dq is None:
-                    dq = deque()
-                    self._flicker_window[key_fw] = dq
-                dq.append(ts_ms)
-                cutoff = ts_ms - self.FLICKER_WINDOW_MS
-                while dq and dq[0] < cutoff:
-                    dq.popleft()
-                hits = len(dq)
-                if hits < self.FLICKER_MIN_HITS:
-                    per_det.append(("HOLD",
-                                    f"flicker={hits}/{self.FLICKER_MIN_HITS}"))
-                    continue
+                # no tracker → accept immediately (fallback)
                 stable_colors.append(
                     (d.center_x if hasattr(d,"center_x") else 0.5*(d.x1+d.x2),
                      cname, float(d.color_conf), 0.0,
